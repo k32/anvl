@@ -1,0 +1,101 @@
+:!sectids:
+= ANVL
+
+A parallel general-purpose non-opinionated task execution tool scriptable in Erlang.
+
+== Description
+
+ANVL is not a replacement for `rebar3`, it's a replacement for `make`.
+
+=== ANVL and `make`
+
+ANVL is a tool that aims to fill the same niche as GNU `make`: it allows to plan and execute tasks that potentially depend on each other.
+However, in many ways, it takes a radically different approach, and uses very different abstractions that make it more powerful (at cost of some verbosity).
+
+* Instead of a _target_, the core abstraction in `anvl` is _condition_
+* Conditions are NOT tied to files by default
+* Conditions may depend on each other
+* Conditions are plain Erlang functions (ANVL doesn't invent a DSL)
+* `make` mixes several concepts together:
+** Dependency management
+** Checking for updates
+** Resource management (`-n`). `anvl`, on the contrary, provides these concepts as independent library primitives.
+* `anvl` doesn't have an explicit dependency graph, all dependencies are discovered and resolved dynamically
+
+Let's compare `make` target with a similar `anvl` condition:
+
+[source,make]
+----
+foo.o : foo.c foo.h
+    gcc -o foo.o foo.c
+----
+
+[source,erlang]
+----
+foo_o(_Args) ->
+  newer("foo.c", "foo.o") or newer("foo.h", "foo.o") andalso
+    begin
+      %% Object file is older than the sources (or it doesn't exist), it means we have to rebuild it:
+      0 = anvl_os:cmd("gcc -o foo.o foo.c"),
+      %% Since we produced side-effects to satisfy the condition, return `true':
+      true
+    end.
+----
+
+The second definition can be translated to plain English like this:
+condition `foo_o` is satisfied if object file is newer than the source files used used to produce it, or if the source files have been compiled with GCC.
+Return `true` if the condition produced side effects, `false` otherwise.
+
+This simple example demonstrates separation of concepts:
+`anvl` don't assume anything about the nature of conditions, it only concerns with whether they have produced side effects.
+While this looks verbose at first, it opens up some possibilities.
+For example, if presence of a certain OS package is a precondition for building the sources:
+
+[source,erlang]
+----
+-module(foo).
+
+-import(anvl_condition, [precondition/1, newer/2]).
+
+gen_parser(SrcFile) ->
+  %% Having `yacc' is a precondition for satisfying this condition.
+  %% Make sure it's satisfied before the main action:
+  _IsChanged = precondition([os_deps:present("yacc")]),
+  %% Do stuff:
+  newer(SrcFile, SrcFile ++ ".c") andalso
+    begin
+       ...
+    end.
+----
+
+[source,erlang]
+----
+-module(os_deps).
+
+-export([present/1]).
+
+%% `anvl' conditions can be nicely packaged into modules. This
+%% function provides an interface for the condition:
+present(Executable) ->
+  {?MODULE, ensure_installed, Executable}.
+
+%% It's a good idea to hide the actual function that satisfies the
+%% condition:
+ensure_installed(Executable) ->
+  case os:find_executable(Executable) of
+    false ->
+      %% Executable is not present in the system, we need to install it:
+      0 = anvl_os:cmd("emerge " ++ gentoo_package(Executable)),
+      true;
+    _ ->
+      false
+  end.
+
+gentoo_package("yacc") ->
+  "dev-util/byacc".
+----
+
+Here one of the conditions doesn't create a file with a name known in advance (location of `yacc` executable is resolved dynamically via `PATH` environment variable).
+Note that something like that can't be implemented in `make` via phony targets (since normal targets that depend on the phony targets will be unconditionally rebuilt).
+`make` requires a "creative" solution that will probably involve empty files, while the corresponding `anvl` code remains boring and unimaginative.
+Hence we call `anvl` "general-purpose": it can do things beyond building source code.
