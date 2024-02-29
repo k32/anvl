@@ -1,4 +1,4 @@
--module(anvl_compile).
+-module(anvl_erlc).
 
 %% API:
 -export([app/1, beam/1, module/1]).
@@ -11,6 +11,7 @@
 
 -export_type([options/0]).
 
+-include_lib("kernel/include/logger.hrl").
 -import(anvl_condition, [precondition/1, newer/2, satisfies/1]).
 
 %%================================================================================
@@ -71,7 +72,7 @@ beam({Src, DestDir, COpts}) ->
   newer(Src, Beam) or
     precondition(beam_deps(#{src => Src, dest_dir => DestDir, beam => Beam, compile_options => COpts})) andalso
     begin
-      logger:info("Compiling ~s", [Src]),
+      ?LOG_NOTICE("Compiling ~s", [Src]),
       compile:noenv_file(Src, [{outdir, DestDir} | COpts]),
       true
     end.

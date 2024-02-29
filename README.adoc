@@ -35,7 +35,8 @@ foo.o : foo.c foo.h
 foo_o(_Args) ->
   newer("foo.c", "foo.o") or newer("foo.h", "foo.o") andalso
     begin
-      %% Object file is older than the sources (or it doesn't exist), it means we have to rebuild it:
+      %% Object file is older than the sources (or it doesn't exist),
+      %% it means we have to rebuild it:
       0 = anvl_os:cmd("gcc -o foo.o foo.c"),
       %% Since we produced side-effects to satisfy the condition, return `true':
       true
@@ -99,3 +100,8 @@ Here one of the conditions doesn't create a file with a name known in advance (l
 Note that something like that can't be implemented in `make` via phony targets (since normal targets that depend on the phony targets will be unconditionally rebuilt).
 `make` requires a "creative" solution that will probably involve empty files, while the corresponding `anvl` code remains boring and unimaginative.
 Hence we call `anvl` "general-purpose": it can do things beyond building source code.
+
+== Builtin rules
+
+`anvl` contains builtin rules for building Erlang applications and releases.
+They are needed for bootstrapping and building the plugins.

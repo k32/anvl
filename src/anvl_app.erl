@@ -8,27 +8,18 @@
 %% behavior callbacks:
 -export([start/2, stop/1]).
 
+-include_lib("kernel/include/logger.hrl").
+
 %%================================================================================
 %% Internal exports
 %%================================================================================
 
 bootstrap(["2"]) ->
   ?MODULE:start(normal, []),
-  logger:notice("Bootstrap: Stage 2"),
-  Result =
-    try
-      anvl_condition:precondition(anvl_compile:app(#{ src_dir => "."
-                                           , output_dir => "_anvl_build/stage2/"
-                                           })),
-      logger:notice("Complete."),
-      0
-    catch
-      _:_ ->
-        [logger:debug("Condition state: ~p", [S]) || S <- ets:tab2list(anvl_condition)],
-        1
-    end,
-  logger_std_h:filesync(default),
-  erlang:halt(Result).
+  ?LOG_NOTICE("Bootstrap: Stage 2"),
+  exec_top([anvl_erlc:app(#{ src_dir => "."
+                           , output_dir => "_anvl_build/stage2/"
+                           })]).
 
 %%================================================================================
 %% behavior callbacks
@@ -43,3 +34,20 @@ stop(_) ->
 %%================================================================================
 %% Internal functions
 %%================================================================================
+
+exec_top(Preconditions) ->
+  Result =
+    try
+      T1 = os:system_time(microsecond),
+      anvl_condition:precondition(Preconditions),
+      Dt = (os:system_time(microsecond) - T1) / 1000,
+      #{complete := Complete, changed := Changed} = anvl_condition:stats(),
+      ?LOG_NOTICE("All satisfied. ~p/~p changed. Net time: ~pms", [Changed, Complete, Dt]),
+      0
+    catch
+      _:_ ->
+        [?LOG_DEBUG("Condition state: ~p", [S]) || S <- ets:tab2list(anvl_condition)],
+        1
+    end,
+  logger_std_h:filesync(default),
+  erlang:halt(Result).

@@ -3,7 +3,7 @@
 -behavior(gen_server).
 
 %% API:
--export([precondition/1, newer/2]).
+-export([stats/0, precondition/1, newer/2]).
 -export([speculative/1, satisfies/1]).
 -export([get_result/1, set_result/2]).
 
@@ -16,6 +16,7 @@
 -export_type([t/0]).
 
 -include_lib("kernel/include/file.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 %%================================================================================
 %% Type declarations
@@ -45,6 +46,11 @@
 -define(tab, ?MODULE).
 -define(results, anvl_result_tab).
 -define(resolve_conditions, anvl_condition_resolve_targets).
+-define(counters, anvl_condition_counters).
+-define(cnt_started, 1).
+-define(cnt_complete, 2).
+-define(cnt_changed, 3).
+-define(cnt_failed, 4).
 
 %%================================================================================
 %% API functions
@@ -53,6 +59,15 @@
 -spec start_link() -> {ok, pid()}.
 start_link() ->
   gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+
+-spec stats() -> map().
+stats() ->
+  CRef = persistent_term:get(?counters),
+  #{ started => counters:get(CRef, ?cnt_started)
+   , complete => counters:get(CRef, ?cnt_complete)
+   , changed => counters:get(CRef, ?cnt_changed)
+   , failed => counters:get(CRef, ?cnt_failed)
+   }.
 
 -spec precondition(list() | t()) -> boolean().
 precondition(Tup) when is_tuple(Tup) ->
@@ -136,6 +151,7 @@ init([]) ->
   process_flag(trap_exit, true),
   ets:new(?tab, [set, named_table, public, {write_concurrency, false}, {read_concurrency, true}, {keypos, 2}]),
   ets:new(?results, [set, named_table, public, {write_concurrency, false}, {read_concurrency, true}, {keypos, 1}]),
+  persistent_term:put(?counters, counters:new(4, [])),
   S = #s{},
   {ok, S}.
 
@@ -163,15 +179,19 @@ condition_entrypoint(Condition, Parent) ->
       exit(retry);
     true ->
       Parent ! {self(), proceed},
-      logger:debug("Running ~p", [Condition]),
+      ?LOG_DEBUG("Running ~p", [Condition]),
+      inc_counter(?cnt_started),
       try exec(Condition) of
         Changed ->
           ets:insert(?tab, #done{id = Condition, changed = Changed}),
           resolve_speculative({done, Changed}),
+          inc_counter(?cnt_complete),
+          Changed andalso inc_counter(?cnt_changed),
           exit(Changed)
       catch
         EC:Err:Stack ->
-          logger:error("Failed: ~p (~p:~p:~p)", [Condition, EC, Err, Stack]),
+          ?LOG_ERROR("Failed: ~p (~p:~p:~p)", [Condition, EC, Err, Stack]),
+          inc_counter(?cnt_failed),
           ets:insert(?tab, #failed{id = Condition, error = {EC, Err, Stack}}),
           resolve_speculative(unsat),
           exit(failed)
@@ -194,6 +214,7 @@ wait_result(Condition, MRef) ->
   end.
 
 exec({M, F, A}) ->
+  logger:update_process_metadata(#{condition => M}),
   case apply(M, F, [A]) of
     Changed when is_boolean(Changed) ->
       Changed
@@ -236,7 +257,10 @@ resolve_speculative(Result) ->
                       [#in_progress{pid = Pid}] ->
                         Pid ! Result;
                       Other ->
-                        logger:error("Speculative condition ~p has been resolved by multiple recipies (~p)", [Cond, Other])
+                        ?LOG_WARNING("Speculative condition ~p has been resolved by multiple recipies (~p)", [Cond, Other])
                     end
                 end,
                 get_resolve_conditions()).
+
+inc_counter(Idx) ->
+  counters:add(persistent_term:get(?counters), Idx, 1).
