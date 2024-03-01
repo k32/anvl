@@ -1,7 +1,7 @@
 :!sectids:
 = ANVL
 
-A parallel general-purpose non-opinionated task execution tool scriptable in Erlang.
+A parallel, general-purpose, non-opinionated task execution tool scriptable in Erlang.
 
 == Description
 
@@ -39,6 +39,7 @@ foo_o(_Args) ->
       %% it means we have to rebuild it:
       0 = anvl_os:cmd("gcc -o foo.o foo.c"),
       %% Since we produced side-effects to satisfy the condition, return `true':
+
       true
     end.
 ----
@@ -56,7 +57,7 @@ For example, if presence of a certain OS package is a precondition for building 
 ----
 -module(foo).
 
--import(anvl_condition, [precondition/1, newer/2]).
+-include_lib("anvl/include/anvl_imports.hrl").
 
 gen_parser(SrcFile) ->
   %% Having `yacc' is a precondition for satisfying this condition.
@@ -101,7 +102,7 @@ Note that something like that can't be implemented in `make` via phony targets (
 `make` requires a "creative" solution that will probably involve empty files, while the corresponding `anvl` code remains boring and unimaginative.
 Hence we call `anvl` "general-purpose": it can do things beyond building source code.
 
-== Builtin rules
+== Built-in rules
 
 `anvl` contains builtin rules for building Erlang applications and releases.
 They are needed for bootstrapping and building the plugins.

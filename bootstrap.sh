@@ -5,7 +5,7 @@ set -xe
 # Build the most essential modules:
 export STAGE1_DIR=_anvl_build/stage1
 mkdir -p "${STAGE1_DIR}/ebin"
-erlc -o "${STAGE1_DIR}/ebin" src/anvl_condition.erl src/anvl_erlc.erl src/anvl_sup.erl src/anvl_app.erl
+erlc -o "${STAGE1_DIR}/ebin" -I include src/anvl_condition.erl src/anvl_lib.erl src/anvl_erlc.erl src/anvl_sup.erl src/anvl_app.erl
 
 ## Stage 2:
 # Build the modules that are needed for compiling plugins:

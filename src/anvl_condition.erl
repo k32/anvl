@@ -1,9 +1,27 @@
+%%================================================================================
+%% This file is part of anvl, a parallel general-purpose task
+%% execution tool.
+%%
+%% Copyright (C) 2024 k32
+%%
+%% This program is free software: you can redistribute it and/or
+%% modify it under the terms of the GNU Lesser General Public License
+%% version 3, as published by the Free Software Foundation
+%%
+%% This program is distributed in the hope that it will be useful,
+%% but WITHOUT ANY WARRANTY; without even the implied warranty of
+%% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%% GNU General Public License for more details.
+%%
+%% You should have received a copy of the GNU General Public License
+%% along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%%================================================================================
 -module(anvl_condition).
 
 -behavior(gen_server).
 
 %% API:
--export([stats/0, precondition/1, newer/2]).
+-export([stats/0, precondition/1]).
 -export([speculative/1, satisfies/1]).
 -export([get_result/1, set_result/2]).
 
@@ -15,7 +33,6 @@
 
 -export_type([t/0]).
 
--include_lib("kernel/include/file.hrl").
 -include_lib("kernel/include/logger.hrl").
 
 %%================================================================================
@@ -86,22 +103,6 @@ precondition(L0) when is_list(L0) ->
               end,
               false,
               Results).
-
--spec newer(file:filename_all(), file:filename_all()) -> boolean().
-newer(Src, Target) ->
-  case file:read_file_info(Src, [raw]) of
-    {ok, #file_info{mtime = SrcMtime}} ->
-      case file:read_file_info(Target, [raw]) of
-        {ok, #file_info{mtime = TargetMtime}} ->
-          SrcMtime >= TargetMtime;
-        {error, enoent} ->
-          true;
-        {error, Err} ->
-          error({target_file, Target, Err})
-      end;
-    {error, Reason} ->
-      error({no_src_file, Src, Reason})
-  end.
 
 %%%% Speculative targets:
 
@@ -190,7 +191,12 @@ condition_entrypoint(Condition, Parent) ->
           exit(Changed)
       catch
         EC:Err:Stack ->
-          ?LOG_ERROR("Failed: ~p (~p:~p:~p)", [Condition, EC, Err, Stack]),
+          LogLevel = case Err of
+                       unsat      -> debug;
+                       {unsat, _} -> debug;
+                       _          -> error
+                     end,
+          ?LOG(LogLevel, "Failed ~p (~p:~p). Stacktrace:~n~p", [Condition, EC, Err, Stack]),
           inc_counter(?cnt_failed),
           ets:insert(?tab, #failed{id = Condition, error = {EC, Err, Stack}}),
           resolve_speculative(unsat),
