@@ -17,9 +17,15 @@ However, in many ways, it takes a radically different approach, and uses very di
 * Conditions may depend on each other
 * Conditions are plain Erlang functions (ANVL doesn't invent a DSL)
 * `make` mixes several concepts together:
++
+--
 ** Dependency management
 ** Checking for updates
-** Resource management (`-n`). `anvl`, on the contrary, provides these concepts as independent library primitives.
+** Resource management (`-n`)
+--
++
+`anvl`, in contrast, presents these concepts as independent library primitives.
+
 * `anvl` doesn't have an explicit dependency graph, all dependencies are discovered and resolved dynamically
 
 Let's compare `make` target with a similar `anvl` condition:
@@ -37,9 +43,8 @@ foo_o(_Args) ->
     begin
       %% Object file is older than the sources (or it doesn't exist),
       %% it means we have to rebuild it:
-      0 = anvl_os:cmd("gcc -o foo.o foo.c"),
+      0 = anvl_lib:exec("gcc", ["-o", "foo.o", "foo.c"]),
       %% Since we produced side-effects to satisfy the condition, return `true':
-
       true
     end.
 ----
@@ -51,7 +56,8 @@ Return `true` if the condition produced side effects, `false` otherwise.
 This simple example demonstrates separation of concepts:
 `anvl` don't assume anything about the nature of conditions, it only concerns with whether they have produced side effects.
 While this looks verbose at first, it opens up some possibilities.
-For example, if presence of a certain OS package is a precondition for building the sources:
+First of all, a full-fledged programming language gives access to proper data structures and algorithms, and allows to packages build rules into reusable modules.
+Second, consider an example where presence of a certain OS package is a precondition for building the sources:
 
 [source,erlang]
 ----
@@ -87,7 +93,7 @@ ensure_installed(Executable) ->
   case os:find_executable(Executable) of
     false ->
       %% Executable is not present in the system, we need to install it:
-      0 = anvl_os:cmd("emerge " ++ gentoo_package(Executable)),
+      0 = anvl_lib:exec("emerge", ["-v", gentoo_package(Executable)]),
       true;
     _ ->
       false
@@ -97,9 +103,9 @@ gentoo_package("yacc") ->
   "dev-util/byacc".
 ----
 
-Here one of the conditions doesn't create a file with a name known in advance (location of `yacc` executable is resolved dynamically via `PATH` environment variable).
-Note that something like that can't be implemented in `make` via phony targets (since normal targets that depend on the phony targets will be unconditionally rebuilt).
-`make` requires a "creative" solution that will probably involve empty files, while the corresponding `anvl` code remains boring and unimaginative.
+Notable, one of the conditions doesn't create a file with a name known in advance (location of `yacc` executable is resolved dynamically via `PATH` environment variable).
+Something like that can't be implemented in `make` via phony targets (since normal targets that depend on the phony targets will be unconditionally rebuilt).
+`make` will require a "creative" solution that will probably involve empty files, while the corresponding `anvl` code remains boring and unimaginative.
 Hence we call `anvl` "general-purpose": it can do things beyond building source code.
 
 == Built-in rules
