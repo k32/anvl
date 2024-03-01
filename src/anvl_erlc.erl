@@ -31,6 +31,7 @@
 -export_type([options/0]).
 
 -include_lib("kernel/include/logger.hrl").
+-include("anvl_macros.hrl").
 -include("anvl_imports.hrl").
 
 %%================================================================================
@@ -191,8 +192,7 @@ render_app_spec(Sources, #{app := App, build_dir := BuildDir, src_root := SrcRoo
       file:close(FD),
       OldContent =/= NewContent;
     Error ->
-      ?LOG_ERROR("Missing or improper ~s~n~p", [AppSrcFile, Error]),
-      exit(unsat)
+      ?UNSAT("Missing or improper ~s~n~p", [AppSrcFile, Error])
   end.
 
 module_of_erl(Src) ->
@@ -211,8 +211,7 @@ process_attributes(OrigFile, EPP, Acc) ->
     {ok, {attribute, _, file, {File, _}}} when File =/= OrigFile ->
       process_attributes(OrigFile, EPP, [{file, File} | Acc]);
     {error, Err} ->
-      ?LOG_ERROR("Failed to derive dependencies~n~s:~s", [OrigFile, epp:format_error(Err)]),
-      exit(unsat);
+      ?UNSAT("Failed to derive dependencies~n~s:~s", [OrigFile, epp:format_error(Err)]);
     _ ->
       %% TODO: parse transforms, etc.
       process_attributes(OrigFile, EPP, Acc)

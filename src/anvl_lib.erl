@@ -21,13 +21,16 @@
 
 %% API:
 -export([newer/2, template/3, patsubst1/3, patsubst/3]).
+-export([exec/3]).
 
 %% internal exports:
 -export([]).
 
 -export_type([template_vars/0, filename_pattern/0]).
 
+-include_lib("kernel/include/logger.hrl").
 -include_lib("kernel/include/file.hrl").
+-include("anvl_macros.hrl").
 
 %%================================================================================
 %% Type declarations
@@ -73,15 +76,33 @@ template(Pattern, Substitutions0, iolist) ->
 -spec patsubst1(filename_pattern(), file:filename_all(), template_vars()) -> file:filename_all().
 patsubst1(Pattern, Src, TVars0) ->
   Ext = filename:extension(Src),
-  TVars = TVars0 #{ <<"basename">> => filename:basename(Src, Ext)
-                  , <<"extension">> => Ext
-                  , <<"dirname">> => filename:dirname(Src)
-                  },
+  TVars = TVars0#{ <<"basename">> => filename:basename(Src, Ext)
+                 , <<"extension">> => Ext
+                 , <<"dirname">> => filename:dirname(Src)
+                 },
   template(Pattern, TVars, binary).
 
 -spec patsubst(filename_pattern(), [file:filename_all()], template_vars()) -> [{file:filename_all(), file:filename_all()}].
 patsubst(Pattern, Filenames, TVars) ->
   [{Src, patsubst1(Pattern, Src, TVars)} || Src <- Filenames].
+
+-spec exec(string(), [string()], list()) -> integer().
+exec(Cmd0, Args, Opts0) ->
+  case proplists:get_value(search_path, Opts0, true) of
+    true ->
+      Cmd = os:find_executable(Cmd0),
+      case Cmd of
+        false -> ?UNSAT("Executable ~s is not found", [Cmd0]);
+        _     -> ok
+      end;
+    false ->
+      Cmd = Cmd0
+  end,
+  Opts = proplists:delete(search_path, Opts0),
+  Port = erlang:open_port( {spawn_executable, Cmd}
+                         , [exit_status, stderr_to_stdout, binary, {line, 300}, {args, Args} | Opts]
+                         ),
+  collect_port_output(Port).
 
 %%================================================================================
 %% Internal exports
@@ -101,4 +122,13 @@ template_normalize_substs(Iter, Acc0) ->
     {K, V, Next} when is_binary(K) ->
       Acc = maps:put(K, V, Acc0),
       template_normalize_substs(Next, Acc)
+  end.
+
+collect_port_output(Port) ->
+  receive
+    {Port, {exit_status, Status}} ->
+      Status;
+    {Port, AA} ->
+      ?LOG_INFO("~p", AA),
+      collect_port_output(Port)
   end.
