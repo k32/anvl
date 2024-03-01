@@ -1,0 +1,9 @@
+{application,typerefl,
+             [{description,"Runtime type-checker for Erlang"},
+              {vsn,"git"},
+              {registered,[]},
+              {applications,[kernel,stdlib]},
+              {env,[]},
+              {modules,[]},
+              {licenses,["public domain"]},
+              {links,[{"Github","https://github.com/k32/typerefl"}]}]}.

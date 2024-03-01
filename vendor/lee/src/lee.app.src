@@ -1,0 +1,12 @@
+%% -*- mode: erlang -*-
+{application, lee,
+ [{description, "Simple data modelling DSL"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {applications, [kernel, stdlib, mnesia, typerefl, xmerl]},
+  {env,[]},
+  {modules, []},
+
+  {licenses, ["public domain"]},
+  {links, [{"Github","https://github.com/k32/Lee"}]}
+ ]}.

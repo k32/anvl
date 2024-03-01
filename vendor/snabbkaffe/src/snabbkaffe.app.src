@@ -1,0 +1,9 @@
+{application,snabbkaffe,
+             [{description,"Simple trace-based testing framework"},
+              {vsn,"git"},
+              {registered,[]},
+              {applications,[kernel,stdlib]},
+              {env,[]},
+              {modules,[]},
+              {licenses,["Apache 2.0"]},
+              {links,[{"Github","https://github.com/k32/snabbkaffe"}]}]}.
