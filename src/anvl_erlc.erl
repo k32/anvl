@@ -20,7 +20,7 @@
 -module(anvl_erlc).
 
 %% API:
--export([defaults/0, defaults/1, app/1, module/1]).
+-export([defaults/0, defaults/1, escript/1, app/1, module/1]).
 
 %% behavior callbacks:
 -export([]).
@@ -77,7 +77,7 @@ defaults() ->
    }.
 
 %% @doc Condition: Erlang application has been compiled
--spec app(options()) -> anvl_condition:t().
+-spec app(atom() | options()) -> anvl_condition:t().
 app(UserOptions = #{app := App}) ->
   Options = #{app := App} = maps:merge(defaults(), UserOptions),
   {?MODULE, ?FUNCTION_NAME, {App, maps:remove(app, Options)}};
@@ -88,7 +88,7 @@ app({App, Options}) ->
    , includes := IncludePatterns
    , sources := SrcPatterns
    } = Options,
-  BuildDir = filename:join(BuildRoot, atom_to_list(App)),
+  BuildDir = build_dir(BuildRoot, App),
   %% Build the context:
   %% 0. Add constants:
   Ctx0 = #{app => App, build_root => BuildRoot, build_dir => BuildDir, src_root => SrcRoot},
@@ -118,6 +118,34 @@ app({App, Options}) ->
 -spec module(module()) -> anvl_condition:t().
 module(Module) ->
   anvl_condition:speculative({erlang_module_compiled, Module}).
+
+-spec escript(map()) -> anvl_condition:t().
+escript(#{escript_name := Name, apps := _, build_root := _} = Options) ->
+  {?MODULE, ?FUNCTION_NAME, {Name, maps:remove(escript_name, Options)}};
+escript({Name, #{apps := Apps, build_root := BuildRoot}}) ->
+  Filename = filename:join(BuildRoot, Name),
+  ?LOG_NOTICE("Creating escript ~s", [Filename]),
+  Paths = [Path ||
+            App <- Apps,
+            Kind <- ["*.beam", "*.app"],
+            Path <- begin
+                      Pattern = filename:join([build_dir(BuildRoot, App), "ebin", Kind]),
+                      filelib:wildcard(Pattern)
+                    end],
+  Files = lists:map(fun(Path) ->
+                        case file:read_file(Path) of
+                          {ok, Bin}    -> {filename:basename(Path), Bin};
+                          {error, Err} -> ?UNSAT("Failed to add ~s to escript: ~p", [Path, Err])
+                        end
+                    end,
+                    Paths),
+  Sections = [shebang, {archive, Files, []}],
+  case escript:create(Filename, Sections) of
+    ok           -> 0 = anvl_lib:exec("chmod", ["+x", Filename], []);
+    {error, Err} -> ?UNSAT("Failed to create escript ~s~nError: ~p", [Name, Err])
+  end,
+  %% TODO:
+  true.
 
 %%================================================================================
 %% Internal exports
@@ -228,6 +256,9 @@ beam_of_erl(Src, Context) ->
 
 dep_of_erl(Src, Context) ->
   patsubst1("${build_dir}/anvl_deps/${basename}${extension}.dep", Src, Context).
+
+build_dir(BuildRoot, App) ->
+  filename:join(BuildRoot, atom_to_list(App)).
 
 process_attributes(OrigFile, EPP, Acc) ->
   case epp:parse_erl_form(EPP) of

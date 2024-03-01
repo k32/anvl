@@ -2,6 +2,6 @@
 {application, anvl,
  [ {description, "A parallel general-purpose task scheduling tool"}
  , {vsn, "0.0.1"}
- , {applications, [kernel, compiler]}
+ , {applications, [kernel, compiler, lee]}
  , {mod, {anvl_app, []}}
  ]}.

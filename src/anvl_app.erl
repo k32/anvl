@@ -21,6 +21,9 @@
 
 -behavior(application).
 
+%% escript entrypoint:
+-export([main/1]).
+
 %% behavior callbacks:
 -export([start/2, stop/1]).
 
@@ -29,6 +32,14 @@
 
 -include_lib("kernel/include/logger.hrl").
 -include("anvl_imports.hrl").
+
+%%================================================================================
+%% API
+%%================================================================================
+
+main(CLIArgs) ->
+  {ok, Apps} = application:ensure_all_started(anvl),
+  io:format("Apps started ~p~n", [Apps]).
 
 %%================================================================================
 %% Internal exports
@@ -60,7 +71,11 @@ bootstrapped(_) ->
               , #{ app => anvl
                  , build_root => BuildRoot
                  }
-              ]).
+              ])
+    or precondition(anvl_erlc:escript(#{ escript_name => "anvl_app"
+                                       , build_root => BuildRoot
+                                       , apps => [anvl, lee, typerefl]
+                                       })).
 
 %%================================================================================
 %% behavior callbacks
