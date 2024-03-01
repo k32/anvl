@@ -91,17 +91,20 @@ app({App, Options}) ->
   %% 1. Enrich compile options with the paths to the include directories:
   IncludeDirs = [template(I, Ctx0, list) || I <- IncludePatterns],
   COpts = [{i, I} || I <- IncludeDirs] ++ COpts0,
-  Ctx1 = Ctx0 #{includes => IncludeDirs, compile_options => COpts},
+  Context = Ctx0 #{includes => IncludeDirs, compile_options => COpts},
   %% 2. Get list of source files:
   Sources = lists:flatmap(fun(SrcPat) ->
                               filelib:wildcard(template(SrcPat, Ctx0, list))
                           end,
                           SrcPatterns),
   CRef = self(),
-  set_ctx(CRef, Ctx1),
+  set_ctx(CRef, Context),
   ok = filelib:ensure_path(filename:join(BuildDir, "ebin")),
   ok = filelib:ensure_path(filename:join(BuildDir, "anvl_deps")),
-  precondition([{?MODULE, beam, {Src, CRef}} || Src <- Sources]).
+  %% Build BEAM files:
+  precondition([{?MODULE, beam, {Src, CRef}} || Src <- Sources]) or
+    clean_orphans(Sources, Context) or
+    render_app_spec(Sources, Context).
 
 %% @doc Speculative condition: a particular module has been compiled.
 -spec module(module()) -> anvl_condition:t().
@@ -114,9 +117,9 @@ module(Module) ->
 
 beam({Src, CRef}) ->
   #{compile_options := COpts} = Context = get_ctx(CRef),
-  Module = list_to_atom(filename:basename(Src, ".erl")),
+  Module = module_of_erl(Src),
   satisfies(module(Module)),
-  Beam = binary_to_list(patsubst1("${build_dir}/ebin/${basename}.beam", Src, Context)),
+  Beam = beam_of_erl(Src, Context),
   newer(Src, Beam) or precondition({?MODULE, beam_deps, {Src, Beam, CRef}}) andalso
     begin
       ?LOG_NOTICE("Compiling ~s", [Src]),
@@ -127,8 +130,7 @@ beam({Src, CRef}) ->
 %% @private Precondition: Compile-time dependencies of the Erlang
 %% module are satisfied
 beam_deps({Src, Beam, CRef}) ->
-  Context = get_ctx(CRef),
-  DepFile = patsubst1("${build_dir}/anvl_deps/${basename}${extension}.dep", Src, Context),
+  DepFile = dep_of_erl(Src, get_ctx(CRef)),
   precondition({?MODULE, depfile, {Src, DepFile, CRef}}),
   {ok, Dependencies} = file:consult(DepFile),
   lists:any(fun({file, Dep}) ->
@@ -155,6 +157,52 @@ depfile({Src, DepFile, CRef}) ->
 %%================================================================================
 %% Internal functions
 %%================================================================================
+
+%% @private Clean ebin directory of files that don't have sources:
+clean_orphans(Sources, Context) ->
+  Orphans = filelib:wildcard(beam_of_erl("*.erl", Context)) -- [beam_of_erl(Src, Context) || Src <- Sources],
+  {ok, CWD} = file:get_cwd(),
+  lists:foreach(fun(Path) ->
+                    case filelib:safe_relative_path(Path, CWD) of
+                      unsafe ->
+                        ?LOG_ERROR("Unsafe BEAM file location ~s in context ~p", [Path, Context]);
+                      SafePath ->
+                        ?LOG_INFO("Removing orphaned file ~s", [SafePath]),
+                        file:delete(SafePath)
+                    end
+                end,
+                Orphans),
+  false.
+
+%% @private Render application specification:
+render_app_spec(Sources, #{app := App, build_dir := BuildDir, src_root := SrcRoot}) ->
+  AppFile = filename:join([BuildDir, "ebin", atom_to_list(App) ++ ".app"]),
+  AppSrcFile = filename:join([SrcRoot, "src", atom_to_list(App) ++ ".app.src"]),
+  case file:consult(AppFile) of
+    {ok, [OldContent]} -> ok;
+    _ -> OldContent = []
+  end,
+  case file:consult(AppSrcFile) of
+    {ok, [{application, App, Properties}]} when is_list(Properties) ->
+      Modules = [module_of_erl(I) || I <- Sources],
+      NewContent = {application, App, [{modules, Modules} | Properties]},
+      {ok, FD} = file:open(AppFile, [write]),
+      io:format(FD, "~p.~n", [NewContent]),
+      file:close(FD),
+      OldContent =/= NewContent;
+    Error ->
+      ?LOG_ERROR("Missing or improper ~s~n~p", [AppSrcFile, Error]),
+      exit(unsat)
+  end.
+
+module_of_erl(Src) ->
+  list_to_atom(filename:basename(Src, ".erl")).
+
+beam_of_erl(Src, Context) ->
+  binary_to_list(patsubst1("${build_dir}/ebin/${basename}.beam", Src, Context)).
+
+dep_of_erl(Src, Context) ->
+  patsubst1("${build_dir}/anvl_deps/${basename}${extension}.dep", Src, Context).
 
 process_attributes(OrigFile, EPP, Acc) ->
   case epp:parse_erl_form(EPP) of
