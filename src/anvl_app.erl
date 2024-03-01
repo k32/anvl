@@ -21,13 +21,14 @@
 
 -behavior(application).
 
-%% internal exports:
--export([bootstrap/1]).
-
 %% behavior callbacks:
 -export([start/2, stop/1]).
 
+%% internal exports:
+-export([bootstrap/1, bootstrapped/1]).
+
 -include_lib("kernel/include/logger.hrl").
+-include("anvl_imports.hrl").
 
 %%================================================================================
 %% Internal exports
@@ -36,9 +37,30 @@
 bootstrap(["2"]) ->
   ?MODULE:start(normal, []),
   ?LOG_NOTICE("Bootstrap: Stage 2"),
-  exec_top([anvl_erlc:app(#{ app => anvl
-                           , build_root => "_anvl_build/stage2/"
-                           })]).
+  exec_top([{?MODULE, bootstrapped, []}]).
+
+bootstrapped(_) ->
+  BuildRoot = "_anvl_build/stage2/",
+  lists:foldl(fun(Spec, Acc) ->
+                  Acc or precondition(anvl_erlc:app(Spec))
+              end,
+              false,
+              [ #{ app => typerefl
+                 , build_root => BuildRoot
+                 , src_root => "vendor/typerefl"
+                 }
+              , #{ app => snabbkaffe
+                 , build_root => BuildRoot
+                 , src_root => "vendor/snabbkaffe"
+                 }
+              , #{ app => lee
+                 , build_root => BuildRoot
+                 , src_root => "vendor/lee"
+                 }
+              , #{ app => anvl
+                 , build_root => BuildRoot
+                 }
+              ]).
 
 %%================================================================================
 %% behavior callbacks
@@ -58,7 +80,7 @@ exec_top(Preconditions) ->
   T0 = os:system_time(microsecond),
   Result =
     try
-      anvl_condition:precondition(Preconditions),
+      precondition(Preconditions),
       0
     catch
       _:_ ->

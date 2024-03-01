@@ -20,7 +20,7 @@
 -module(anvl_erlc).
 
 %% API:
--export([defaults/0, app/1, module/1]).
+-export([defaults/0, defaults/1, app/1, module/1]).
 
 %% behavior callbacks:
 -export([]).
@@ -63,6 +63,9 @@
 %% API functions
 %%================================================================================
 
+defaults(Key) ->
+  maps:get(Key, defaults()).
+
 defaults() ->
   COpts = [],
   BuildRoot = filename:join(["_anvl_build", integer_to_binary(erlang:phash2(COpts))]),
@@ -101,10 +104,14 @@ app({App, Options}) ->
   CRef = self(),
   set_ctx(CRef, Context),
   ok = filelib:ensure_path(filename:join(BuildDir, "ebin")),
+  ok = filelib:ensure_path(filename:join(BuildDir, "include")),
   ok = filelib:ensure_path(filename:join(BuildDir, "anvl_deps")),
+  %% TODO: this is a hack, should be done by dependency manager:
+  code:add_pathz(filename:join(BuildDir, "ebin")),
   %% Build BEAM files:
   precondition([{?MODULE, beam, {Src, CRef}} || Src <- Sources]) or
     clean_orphans(Sources, Context) or
+    copy_includes(Context) or
     render_app_spec(Sources, Context).
 
 %% @doc Speculative condition: a particular module has been compiled.
@@ -135,7 +142,9 @@ beam_deps({Src, Beam, CRef}) ->
   precondition({?MODULE, depfile, {Src, DepFile, CRef}}),
   {ok, Dependencies} = file:consult(DepFile),
   lists:any(fun({file, Dep}) ->
-                newer(Dep, Beam)
+                newer(Dep, Beam);
+               ({parse_trans, ParseTrans}) ->
+                precondition(module(ParseTrans))
             end,
             Dependencies).
 
@@ -175,6 +184,22 @@ clean_orphans(Sources, Context) ->
                 Orphans),
   false.
 
+%% @private Copy hrl files to the build directory
+copy_includes(#{build_dir := BuildDir, src_root := SrcRoot}) ->
+  Includes = filelib:wildcard(filename:join([SrcRoot, "include", "*.hrl"])),
+  lists:foldl(fun(Src, Acc) ->
+                  Dst = filename:join([BuildDir, "include", filename:basename(Src)]),
+                  case newer(Src, Dst) of
+                    false ->
+                      Acc;
+                    true ->
+                      {ok, _} = file:copy(Src, Dst),
+                      true
+                  end
+              end,
+              false,
+              Includes).
+
 %% @private Render application specification:
 render_app_spec(Sources, #{app := App, build_dir := BuildDir, src_root := SrcRoot}) ->
   AppFile = filename:join([BuildDir, "ebin", atom_to_list(App) ++ ".app"]),
@@ -210,10 +235,11 @@ process_attributes(OrigFile, EPP, Acc) ->
       Acc;
     {ok, {attribute, _, file, {File, _}}} when File =/= OrigFile ->
       process_attributes(OrigFile, EPP, [{file, File} | Acc]);
+    {ok, {attribute, _, compile, {parse_transform, ParseTrans}}} ->
+      process_attributes(OrigFile, EPP, [{parse_trans, ParseTrans} | Acc]);
     {error, Err} ->
       ?UNSAT("Failed to derive dependencies~n~s:~s", [OrigFile, epp:format_error(Err)]);
     _ ->
-      %% TODO: parse transforms, etc.
       process_attributes(OrigFile, EPP, Acc)
   end.
 
