@@ -128,7 +128,7 @@ collect_port_output(Port) ->
   receive
     {Port, {exit_status, Status}} ->
       Status;
-    {Port, AA} ->
-      ?LOG_INFO("~p", AA),
+    {Port, {data, {_, Data}}} ->
+      ?LOG_INFO(Data),
       collect_port_output(Port)
   end.

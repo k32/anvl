@@ -16,6 +16,11 @@
 %% You should have received a copy of the GNU General Public License
 %% along with this program.  If not, see <https://www.gnu.org/licenses/>.
 %%================================================================================
+
+%% At the heart of `anvl` lies a very simple memoization library.
+%%
+%% Build system = memoization.
+%% More specifically, `build_target(Target) -> memoize(changed(Target) andalso rebuild(Target))'
 -module(anvl_condition).
 
 -behavior(gen_server).

@@ -39,7 +39,9 @@
 
 main(CLIArgs) ->
   {ok, Apps} = application:ensure_all_started(anvl),
-  io:format("Apps started ~p~n", [Apps]).
+  io:format("Apps started ~p~n", [Apps]),
+  anvl_lib:exec("ls", [], []),
+  exec_top([]).
 
 %%================================================================================
 %% Internal exports
@@ -51,31 +53,8 @@ bootstrap(["2"]) ->
   exec_top([{?MODULE, bootstrapped, []}]).
 
 bootstrapped(_) ->
-  BuildRoot = "_anvl_build/stage2/",
-  lists:foldl(fun(Spec, Acc) ->
-                  Acc or precondition(anvl_erlc:app(Spec))
-              end,
-              false,
-              [ #{ app => typerefl
-                 , build_root => BuildRoot
-                 , src_root => "vendor/typerefl"
-                 }
-              , #{ app => snabbkaffe
-                 , build_root => BuildRoot
-                 , src_root => "vendor/snabbkaffe"
-                 }
-              , #{ app => lee
-                 , build_root => BuildRoot
-                 , src_root => "vendor/lee"
-                 }
-              , #{ app => anvl
-                 , build_root => BuildRoot
-                 }
-              ])
-    or precondition(anvl_erlc:escript(#{ escript_name => "anvl_app"
-                                       , build_root => BuildRoot
-                                       , apps => [anvl, lee, typerefl]
-                                       })).
+  Profile = stage2,
+  precondition(anvl_erlc:escript(Profile, "anvl_app")).
 
 %%================================================================================
 %% behavior callbacks

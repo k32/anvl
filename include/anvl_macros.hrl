@@ -28,4 +28,6 @@
           exit(unsat)
         end).
 
+-define(CONFIG, anvl).
+
 -endif.

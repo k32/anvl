@@ -20,15 +20,15 @@
 -module(anvl_erlc).
 
 %% API:
--export([defaults/0, defaults/1, escript/1, app/1, module/1]).
+-export([defaults/0, escript/2, app/2, module/1]).
 
 %% behavior callbacks:
 -export([]).
 
 %% internal exports:
--export([beam/1, beam_deps/1, depfile/1]).
+-export([app_/1, escript_/1, beam/1, beam_deps/1, depfile/1]).
 
--export_type([options/0]).
+-export_type([options/0, application/0]).
 
 -include_lib("kernel/include/logger.hrl").
 -include("anvl_macros.hrl").
@@ -38,8 +38,14 @@
 %% Type declarations
 %%================================================================================
 
+-type profile() :: atom().
+
+-type application() :: atom().
+
 -type options() ::
-        #{ app := atom()
+        #{ app := application()
+         , profile => profile()
+         , dependencies => [application()]
          , build_root => file:filename_all()
          , src_root => file:filename_all()
          , includes => [anvl_lib:filename_pattern()]
@@ -59,39 +65,46 @@
 
 -type cref() :: term().
 
+-define(app_path(PROFILE, APP), {?MODULE, app_path, PROFILE, APP}).
+
 %%================================================================================
 %% API functions
 %%================================================================================
 
-defaults(Key) ->
-  maps:get(Key, defaults()).
-
 defaults() ->
   COpts = [],
-  BuildRoot = filename:join(["_anvl_build", integer_to_binary(erlang:phash2(COpts))]),
+  BuildRoot = filename:join(["_anvl_build", integer_to_list(erlang:phash2(COpts))]),
   #{ src_root => "."
    , sources => ["${src_root}/src/*.erl", "${src_root}/src/*/*.erl"]
    , includes => ["${src_root}/include", "${src_root}/src"]
    , compile_options => COpts
    , build_root => BuildRoot
+   , dependencies => []
    }.
 
 %% @doc Condition: Erlang application has been compiled
--spec app(atom() | options()) -> anvl_condition:t().
-app(UserOptions = #{app := App}) ->
-  Options = #{app := App} = maps:merge(defaults(), UserOptions),
-  {?MODULE, ?FUNCTION_NAME, {App, maps:remove(app, Options)}};
-app({App, Options}) ->
+-spec app(profile(), application()) -> anvl_condition:t().
+app(Profile, App) ->
+  {?MODULE, app_, {Profile, App}}.
+
+-spec app_path(profile(), application()) -> file:filename_all().
+app_path(Profile, App) ->
+  anvl_condition:get_result(?app_path(Profile, App)).
+
+app_({Profile, App}) ->
   #{ build_root := BuildRoot
    , src_root := SrcRoot
    , compile_options := COpts0
    , includes := IncludePatterns
    , sources := SrcPatterns
-   } = Options,
+   , dependencies := Dependencies
+   } = ?CONFIG:app_config(Profile, App, defaults()),
+  %% Satisfy the dependencies:
+  _ = precondition([app(Profile, Dep) || Dep <- Dependencies]),
   BuildDir = build_dir(BuildRoot, App),
-  %% Build the context:
+  %% Create the context:
   %% 0. Add constants:
-  Ctx0 = #{app => App, build_root => BuildRoot, build_dir => BuildDir, src_root => SrcRoot},
+  Ctx0 = #{app => App, profile => Profile, build_root => BuildRoot, build_dir => BuildDir, src_root => SrcRoot},
   %% 1. Enrich compile options with the paths to the include directories:
   IncludeDirs = [template(I, Ctx0, list) || I <- IncludePatterns],
   COpts = [{i, I} || I <- IncludeDirs] ++ COpts0,
@@ -119,17 +132,22 @@ app({App, Options}) ->
 module(Module) ->
   anvl_condition:speculative({erlang_module_compiled, Module}).
 
--spec escript(map()) -> anvl_condition:t().
-escript(#{escript_name := Name, apps := _, build_root := _} = Options) ->
-  {?MODULE, ?FUNCTION_NAME, {Name, maps:remove(escript_name, Options)}};
-escript({Name, #{apps := Apps, build_root := BuildRoot}}) ->
-  Filename = filename:join(BuildRoot, Name),
+-spec escript(profile(), string()) -> anvl_condition:t().
+escript(Profile, EscriptName) ->
+  {?MODULE, escript_, {Profile, EscriptName}}.
+
+escript_({Profile, EscriptName}) ->
+  Filename = filename:join(["_anvl_build", Profile, EscriptName]),
+  ok = filelib:ensure_dir(Filename),
   ?LOG_NOTICE("Creating escript ~s", [Filename]),
+  %% Satisfy dependencies:
+  Apps = ?CONFIG:escript_apps(Profile, EscriptName),
+  _Changed0 = precondition([app(Profile, App) || App <- Apps]),
   Paths = [Path ||
             App <- Apps,
             Kind <- ["*.beam", "*.app"],
             Path <- begin
-                      Pattern = filename:join([build_dir(BuildRoot, App), "ebin", Kind]),
+                      Pattern = filename:join([app_path(Profile, App), "ebin", Kind]),
                       filelib:wildcard(Pattern)
                     end],
   Files = lists:map(fun(Path) ->
@@ -142,7 +160,7 @@ escript({Name, #{apps := Apps, build_root := BuildRoot}}) ->
   Sections = [shebang, {archive, Files, []}],
   case escript:create(Filename, Sections) of
     ok           -> 0 = anvl_lib:exec("chmod", ["+x", Filename], []);
-    {error, Err} -> ?UNSAT("Failed to create escript ~s~nError: ~p", [Name, Err])
+    {error, Err} -> ?UNSAT("Failed to create escript ~s~nError: ~p", [EscriptName, Err])
   end,
   %% TODO:
   true.
@@ -229,7 +247,7 @@ copy_includes(#{build_dir := BuildDir, src_root := SrcRoot}) ->
               Includes).
 
 %% @private Render application specification:
-render_app_spec(Sources, #{app := App, build_dir := BuildDir, src_root := SrcRoot}) ->
+render_app_spec(Sources, #{app := App, profile := Profile, build_dir := BuildDir, src_root := SrcRoot}) ->
   AppFile = filename:join([BuildDir, "ebin", atom_to_list(App) ++ ".app"]),
   AppSrcFile = filename:join([SrcRoot, "src", atom_to_list(App) ++ ".app.src"]),
   case file:consult(AppFile) of
@@ -243,6 +261,7 @@ render_app_spec(Sources, #{app := App, build_dir := BuildDir, src_root := SrcRoo
       {ok, FD} = file:open(AppFile, [write]),
       io:format(FD, "~p.~n", [NewContent]),
       file:close(FD),
+      anvl_condition:set_result(?app_path(Profile, App), BuildDir),
       OldContent =/= NewContent;
     Error ->
       ?UNSAT("Missing or improper ~s~n~p", [AppSrcFile, Error])
