@@ -26,7 +26,7 @@
 -export([]).
 
 %% internal exports:
--export([app_/1, escript_/1, beam/1, beam_deps/1, depfile/1]).
+-export([app_/1, escript_/1, beam_/1, beam_deps/1, depfile/1]).
 
 -export_type([options/0, application/0]).
 
@@ -66,6 +66,7 @@
 -type cref() :: term().
 
 -define(app_path(PROFILE, APP), {?MODULE, app_path, PROFILE, APP}).
+-define(app_spec(PROFILE, APP), {?MODULE, app_spec, PROFILE, APP}).
 
 %%================================================================================
 %% API functions
@@ -90,6 +91,10 @@ app(Profile, App) ->
 -spec app_path(profile(), application()) -> file:filename_all().
 app_path(Profile, App) ->
   anvl_condition:get_result(?app_path(Profile, App)).
+
+-spec app_spec(profile(), application()) -> {application, application(), proplists:proplist()}.
+app_spec(Profile, App) ->
+  anvl_condition:get_result(?app_spec(Profile, App)).
 
 app_({Profile, App}) ->
   #{ build_root := BuildRoot
@@ -122,7 +127,7 @@ app_({Profile, App}) ->
   %% TODO: this is a hack, should be done by dependency manager:
   code:add_pathz(filename:join(BuildDir, "ebin")),
   %% Build BEAM files:
-  precondition([{?MODULE, beam, {Src, CRef}} || Src <- Sources]) or
+  precondition([{?MODULE, beam_, {Src, CRef}} || Src <- Sources]) or
     clean_orphans(Sources, Context) or
     copy_includes(Context) or
     render_app_spec(Sources, Context).
@@ -143,13 +148,15 @@ escript_({Profile, EscriptName}) ->
   %% Satisfy dependencies:
   Apps = ?CONFIG:escript_apps(Profile, EscriptName),
   _Changed0 = precondition([app(Profile, App) || App <- Apps]),
-  Paths = [Path ||
-            App <- Apps,
-            Kind <- ["*.beam", "*.app"],
-            Path <- begin
-                      Pattern = filename:join([app_path(Profile, App), "ebin", Kind]),
-                      filelib:wildcard(Pattern)
-                    end],
+  Paths = lists:flatmap(fun(App) ->
+                            Dir = filename:join(app_path(Profile, App), "ebin"),
+                            {application, App, Props} = app_spec(Profile, App),
+                            Modules = proplists:get_value(modules, Props),
+                            [ filename:join(Dir, atom_to_list(App) ++ ".app")
+                            | [filename:join(Dir, atom_to_list(Mod) ++ ".beam") || Mod <- Modules]
+                            ]
+                        end,
+                        Apps),
   Files = lists:map(fun(Path) ->
                         case file:read_file(Path) of
                           {ok, Bin}    -> {filename:basename(Path), Bin};
@@ -169,7 +176,7 @@ escript_({Profile, EscriptName}) ->
 %% Internal exports
 %%================================================================================
 
-beam({Src, CRef}) ->
+beam_({Src, CRef}) ->
   #{compile_options := COpts} = Context = get_ctx(CRef),
   Module = module_of_erl(Src),
   satisfies(module(Module)),
@@ -177,8 +184,20 @@ beam({Src, CRef}) ->
   newer(Src, Beam) or precondition({?MODULE, beam_deps, {Src, Beam, CRef}}) andalso
     begin
       ?LOG_NOTICE("Compiling ~s", [Src]),
-      compile:noenv_file(Src, [{outdir, filename:dirname(Beam)} | COpts]),
-      true
+      case compile:noenv_file(Src, [report, {outdir, filename:dirname(Beam)} | COpts]) of
+        {ok, Module} ->
+          true;
+        {ok, Module, Warnings} ->
+          [?LOG_WARNING(compile:format_error(Warn)) || Warn <- Warnings],
+          %% TODO: warnings as errors?
+          true;
+        {error, Errors, Warnings} ->
+          [?LOG_WARNING(compile:format_error(Warn)) || Warn <- Warnings],
+          [?LOG_ERROR(compile:format_error(Err)) || Err <- Errors],
+          exit(unsat);
+        error ->
+          ?UNSAT("Compilation of ~s failed", [Src])
+      end
     end.
 
 %% @private Precondition: Compile-time dependencies of the Erlang
@@ -223,7 +242,7 @@ clean_orphans(Sources, Context) ->
                       unsafe ->
                         ?LOG_ERROR("Unsafe BEAM file location ~s in context ~p", [Path, Context]);
                       SafePath ->
-                        ?LOG_INFO("Removing orphaned file ~s", [SafePath]),
+                        ?LOG_NOTICE("Removing orphaned file ~s", [SafePath]),
                         file:delete(SafePath)
                     end
                 end,
@@ -262,6 +281,7 @@ render_app_spec(Sources, #{app := App, profile := Profile, build_dir := BuildDir
       io:format(FD, "~p.~n", [NewContent]),
       file:close(FD),
       anvl_condition:set_result(?app_path(Profile, App), BuildDir),
+      anvl_condition:set_result(?app_spec(Profile, App), NewContent),
       OldContent =/= NewContent;
     Error ->
       ?UNSAT("Missing or improper ~s~n~p", [AppSrcFile, Error])

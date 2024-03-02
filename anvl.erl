@@ -26,6 +26,9 @@
 %% behavior callbacks
 %%================================================================================
 
+plugins() ->
+  [anvl_erlc_plugin].
+
 app_config(_Profile, anvl, Default) ->
   Default#{dependencies => [lee, typerefl]};
 app_config(_Profile, lee, Default) ->
@@ -38,6 +41,9 @@ app_config(_Profile, snabbkaffe, Default) ->
   Default#{src_root => "vendor/snabbkaffe"};
 app_config(_Profile, _App, Default) ->
   Default.
+
+escripts(_Profile) ->
+  ["anvl_app"].
 
 escript_apps(_Profile, "anvl_app") ->
   [anvl, lee, typerefl].

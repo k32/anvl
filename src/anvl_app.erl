@@ -22,7 +22,7 @@
 -behavior(application).
 
 %% escript entrypoint:
--export([main/1]).
+-export([main/1, halt/1]).
 
 %% behavior callbacks:
 -export([start/2, stop/1]).
@@ -38,10 +38,18 @@
 %%================================================================================
 
 main(CLIArgs) ->
+  application:set_env(anvl, cli_args, CLIArgs),
   {ok, Apps} = application:ensure_all_started(anvl),
+  {ok, anvl, Bin} = compile:noenv_file("anvl.erl", [report, binary]),
+  code:load_binary(anvl, "anvl.erl", Bin),
+  anvl_plugin:init(),
   io:format("Apps started ~p~n", [Apps]),
   anvl_lib:exec("ls", [], []),
-  exec_top([]).
+  exec_top(anvl_plugin:conditions()).
+
+halt(ExitCode) ->
+  logger_std_h:filesync(default),
+  erlang:halt(ExitCode).
 
 %%================================================================================
 %% Internal exports
@@ -61,7 +69,7 @@ bootstrapped(_) ->
 %%================================================================================
 
 start(_StartType, _StartArgs) ->
-   anvl_sup:start_link().
+  anvl_sup:start_link().
 
 stop(_) ->
   ok.
@@ -72,7 +80,7 @@ stop(_) ->
 
 exec_top(Preconditions) ->
   T0 = os:system_time(microsecond),
-  Result =
+  ExitCode =
     try
       precondition(Preconditions),
       0
@@ -84,5 +92,4 @@ exec_top(Preconditions) ->
   Dt = (os:system_time(microsecond) - T0) / 1000,
   #{complete := Complete, changed := Changed, failed := Failed} = anvl_condition:stats(),
   ?LOG_NOTICE("~p satisfied ~p failed ~p changed. Net time: ~pms", [Complete, Failed, Changed, Dt]),
-  logger_std_h:filesync(default),
-  erlang:halt(Result).
+  ?MODULE:halt(ExitCode).
