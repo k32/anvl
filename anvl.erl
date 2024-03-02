@@ -21,6 +21,7 @@
 -module(anvl).
 
 -compile(export_all).
+-behavior(anvl_erlc).
 
 %%================================================================================
 %% behavior callbacks
@@ -29,27 +30,30 @@
 plugins() ->
   [anvl_erlc].
 
-erlc_profiles() ->
-  [default].
+profiles() ->
+  [default, stage2].
 
-app_config(_Profile, anvl, Default) ->
-  Default#{dependencies => [lee, typerefl]};
-app_config(_Profile, lee, Default) ->
-  Default#{ src_root => "vendor/lee"
-          , dependencies => [typerefl, snabbkaffe]
-          };
-app_config(_Profile, typerefl, Default) ->
-  Default#{src_root => "vendor/typerefl"};
-app_config(_Profile, snabbkaffe, Default) ->
-  Default#{src_root => "vendor/snabbkaffe"};
-app_config(_Profile, _App, Default) ->
-  Default.
+erlc_compile_options(_Profile, Defaults) ->
+  Defaults.
 
-escripts(_Profile) ->
-  ["anvl_app"].
+erlc_compile_options_overrides(_Profile, Defaults) ->
+  #{ anvl =>
+       Defaults#{dependencies => [lee, typerefl]}
+   , lee =>
+       Defaults#{ src_root => "vendor/lee"
+                , dependencies => [typerefl, snabbkaffe]
+                }
+   , typerefl =>
+       Defaults#{src_root => "vendor/typerefl"}
+   , snabbkaffe =>
+       Defaults#{src_root => "vendor/snabbkaffe"}
+   }.
 
-escript_apps(_Profile, "anvl_app") ->
-  [anvl, lee, typerefl].
+erlc_escripts(_Profile) ->
+  #{anvl_app =>
+      #{ apps => [anvl, lee, typerefl]
+       , emu_args => ""
+       }}.
 
 %%================================================================================
 %% Internal functions

@@ -61,7 +61,7 @@ bootstrap() ->
 
 bootstrapped(_) ->
   Profile = stage2,
-  precondition(anvl_erlc:escript(Profile, "anvl_app")).
+  precondition(anvl_erlc:escript(Profile, anvl_app)).
 
 %%================================================================================
 %% behavior callbacks

@@ -268,8 +268,9 @@ resolve_speculative(Result) ->
                     case ets:lookup(?tab, Cond) of
                       [#in_progress{pid = Pid}] ->
                         Pid ! Result;
-                      Other ->
-                        ?LOG_WARNING("Speculative condition ~p has been resolved by multiple recipies (~p)", [Cond, Other])
+                      [#done{changed = Changed}] ->
+                        ?LOG_WARNING("Speculative condition ~p has been resolved by multiple recipies", [Cond]),
+                        Changed
                     end
                 end,
                 get_resolve_conditions()).

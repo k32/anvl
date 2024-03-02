@@ -19,21 +19,17 @@
 
 -module(anvl_erlc).
 
--ifndef(BOOTSTRAP).
 -behavior(anvl_plugin).
 
+%% API:
+-export([defaults/0, escript/2, app/2, module/2, app_path/2, app_spec/2]).
+
+-ifndef(BOOTSTRAP).
 %% behavior callbacks:
 -export([model/0, conditions/0]).
+
 -include_lib("typerefl/include/types.hrl").
 -endif. %% !BOOTSTRAP
-
-%% API:
--export([defaults/0, escript/2, app/2, module/1, app_path/2, app_spec/2]).
-
-%% behavior callbacks:
--export([]).
-
--export_type([options/0, application/0]).
 
 -include_lib("kernel/include/logger.hrl").
 -include("anvl_macros.hrl").
@@ -47,15 +43,19 @@
 
 -type application() :: atom().
 
--type options() ::
-        #{ app := application()
-         , profile => profile()
+-type compile_options() ::
+        #{ src_root := file:filename_all()
          , dependencies => [application()]
-         , ubild_root => file:filename_all()
-         , src_root => file:filename_all()
          , includes => [anvl_lib:filename_pattern()]
          , sources => [anvl_lib:filename_pattern()]
          , compile_options => list()
+         }.
+
+-type escript_name() :: atom().
+
+-type escript_spec() ::
+        #{ apps := [application()]
+         , emu_args := string()
          }.
 
 -type context() ::
@@ -73,18 +73,40 @@
 -define(app_path(PROFILE, APP), {?MODULE, app_path, PROFILE, APP}).
 -define(app_spec(PROFILE, APP), {?MODULE, app_spec, PROFILE, APP}).
 
+-ifndef(BOOTSTRAP).
+  -define(TYPE(T), T).
+-else.
+  -define(TYPE(T), typerefl:term()).
+-endif.
+
+-reflect_type([profile/0, compile_options/0, compile_options_overrides/0, escripts_ret/0]).
+
+%%================================================================================
+%% Config behavior
+%%================================================================================
+
+-callback erlc_profiles() -> [profile(), ...].
+
+-callback erlc_compile_options(profile(), _Defaults :: compile_options()) -> compile_options().
+
+-callback erlc_compile_options_overrides(profile(), _Defaults :: compile_options()) -> compile_options_overrides().
+-type compile_options_overrides() :: #{application() => compile_options()}.
+
+-callback erlc_escripts(profile()) -> escripts_ret().
+-type escripts_ret() :: #{escript_name() => escript_spec()}.
+
+-optional_callbacks([erlc_compile_options_overrides/2, erlc_escripts/1, erlc_profiles/0]).
+
 %%================================================================================
 %% API functions
 %%================================================================================
 
 defaults() ->
   COpts = [],
-  BuildRoot = filename:join([?BUILD_ROOT, integer_to_list(erlang:phash2(COpts))]),
   #{ src_root => "."
    , sources => ["${src_root}/src/*.erl", "${src_root}/src/*/*.erl"]
    , includes => ["${src_root}/include", "${src_root}/src"]
    , compile_options => COpts
-   , build_root => BuildRoot
    , dependencies => []
    }.
 
@@ -94,9 +116,9 @@ app(Profile, App) ->
   {?CNAME("app"), fun app/1, {Profile, App}}.
 
 %% @doc Speculative condition: a particular module has been compiled.
--spec module(module()) -> anvl_condition:t().
-module(Module) ->
-  anvl_condition:speculative({erlang_module_compiled, Module}).
+-spec module(profile(), module()) -> anvl_condition:t().
+module(Profile, Module) ->
+  anvl_condition:speculative({erlang_module_compiled, Profile, Module}).
 
 -spec escript(profile(), string()) -> anvl_condition:t().
 escript(Profile, EscriptName) ->
@@ -120,6 +142,7 @@ app_spec(Profile, App) ->
 %% plugin interface.
 
 model() ->
+  Profiles = profiles(),
   #{anvl_erlc =>
       #{ escript =>
            {[map, cli_action],
@@ -128,14 +151,14 @@ model() ->
              },
             #{ name =>
                  {[value, cli_positional],
-                  #{ type => list(string())
+                  #{ type => [atom()]
                    , default => []
                    , cli_arg_position => rest
                    }}
              , profile =>
                  {[value, cli_param],
-                  #{ type => union(?CONFIG:erlc_profiles())
-                   , default => hd(?CONFIG:erlc_profiles())
+                  #{ type => typerefl:union(Profiles)
+                   , default => hd(Profiles)
                    , cli_operand => "profile"
                    , cli_short => $p
                    }}
@@ -152,13 +175,14 @@ conditions() ->
 %%================================================================================
 
 app({Profile, App}) ->
-  #{ build_root := BuildRoot
-   , src_root := SrcRoot
+  ProfileOpts = compile_options(Profile),
+  #{ src_root := SrcRoot
    , compile_options := COpts0
    , includes := IncludePatterns
    , sources := SrcPatterns
    , dependencies := Dependencies
-   } = ?CONFIG:app_config(Profile, App, defaults()),
+   } = maps:get(App, compile_options_overrides(Profile, ProfileOpts), ProfileOpts),
+  BuildRoot = filename:join([?BUILD_ROOT, integer_to_list(erlang:phash2(COpts0))]),
   %% Satisfy the dependencies:
   _ = precondition([app(Profile, Dep) || Dep <- Dependencies]),
   BuildDir = build_dir(BuildRoot, App),
@@ -188,11 +212,19 @@ app({Profile, App}) ->
     render_app_spec(Sources, Context).
 
 escript({Profile, EscriptName}) ->
+  case escript_specs(Profile) of
+    #{EscriptName := #{apps := Apps, emu_args := EmuArgs}} ->
+      escript(Profile, EscriptName, Apps, EmuArgs);
+    _ ->
+      ?LOG_CRITICAL("Couldn't find escript spec for ~p in profile ~p~n~p", [EscriptName, Profile]),
+      exit(unsat)
+  end.
+
+escript(Profile, EscriptName, Apps, EmuFlags) ->
   Filename = filename:join([?BUILD_ROOT, Profile, EscriptName]),
   ok = filelib:ensure_dir(Filename),
   ?LOG_NOTICE("Creating ~s", [Filename]),
   %% Satisfy dependencies:
-  Apps = ?CONFIG:escript_apps(Profile, EscriptName),
   _Changed0 = precondition([app(Profile, App) || App <- Apps]),
   Paths = lists:flatmap(fun(App) ->
                             Dir = filename:join(app_path(Profile, App), "ebin"),
@@ -210,7 +242,7 @@ escript({Profile, EscriptName}) ->
                         end
                     end,
                     Paths),
-  Sections = [shebang, {emu_args, "+JPperf true"}, {archive, Files, []}],
+  Sections = [shebang, {emu_args, EmuFlags}, {archive, Files, []}],
   case escript:create(Filename, Sections) of
     ok           -> 0 = anvl_lib:exec("chmod", ["+x", Filename], []);
     {error, Err} -> ?UNSAT("Failed to create escript ~s~nError: ~p", [EscriptName, Err])
@@ -219,9 +251,9 @@ escript({Profile, EscriptName}) ->
   true.
 
 beam({Src, CRef}) ->
-  #{compile_options := COpts} = Context = get_ctx(CRef),
+  #{profile := Profile, compile_options := COpts} = Context = get_ctx(CRef),
   Module = module_of_erl(Src),
-  satisfies(module(Module)),
+  satisfies(module(Profile, Module)),
   Beam = beam_of_erl(Src, Context),
   newer(Src, Beam) or precondition({?CNAME("beam_deps"), fun beam_deps/1, {Src, Beam, CRef}}) andalso
     begin
@@ -237,25 +269,29 @@ beam({Src, CRef}) ->
 %% @private Precondition: Compile-time dependencies of the Erlang
 %% module are satisfied
 beam_deps({Src, Beam, CRef}) ->
-  DepFile = dep_of_erl(Src, get_ctx(CRef)),
+  #{profile := Profile} = Ctx = get_ctx(CRef),
+  DepFile = dep_of_erl(Src, Ctx),
   precondition({?CNAME("beam_deps"), fun depfile/1, {Src, DepFile, CRef}}),
   {ok, Dependencies} = file:consult(DepFile),
   lists:foldl(fun({file, Dep}, Acc) ->
                   Acc or newer(Dep, Beam);
                  ({parse_transform, ParseTransform}, Acc) ->
-                  Acc or precondition(module(ParseTransform))
+                  Acc or precondition(module(Profile, ParseTransform))
               end,
               false,
               Dependencies).
 
 %% @private Precondition: .dep file for the module is up to date
 depfile({Src, DepFile, CRef}) ->
-  #{includes := IncludeDirs} = get_ctx(CRef),
+  #{includes := IncludeDirs, compile_options := COpts} = get_ctx(CRef),
   newer(Src, DepFile) andalso
     begin
       ?LOG_INFO("Updating dependencies for ~s", [Src]),
-      %% TODO:
-      PredefMacros = [],
+      PredefMacros = lists:filtermap(fun({d, D})    -> {true, D};
+                                        ({d, D, V}) -> {true, {D, V}};
+                                        (_)         -> false
+                                     end,
+                                     COpts),
       {ok, EPP} = epp:open(Src, IncludeDirs, PredefMacros),
       Data = process_attributes(Src, EPP, []),
       {ok, DestFD} = file:open(DepFile, [write]),
@@ -273,7 +309,7 @@ get_escripts() ->
   lists:flatmap(fun(Key) ->
                     Profile = anvl_plugin:conf(Key ++ [profile]),
                     case anvl_plugin:conf(Key ++ [name]) of
-                      []       -> Escripts = ?CONFIG:escripts(Profile);
+                      []       -> Escripts = maps:keys(escript_specs(Profile));
                       Escripts -> ok
                     end,
                     [anvl_erlc:escript(Profile, I) || I <- Escripts]
@@ -367,3 +403,23 @@ get_ctx(CRef) ->
 -spec set_ctx(cref(), context()) -> ok.
 set_ctx(CRef, Ctx) ->
   persistent_term:put({?MODULE, context, CRef}, Ctx).
+
+%%================================================================================
+%% Configuration:
+%%================================================================================
+
+profiles() ->
+  anvl_lib:pcfg(erlc_profiles, [], [default],
+                ?TYPE(nonempty_list(profile()))).
+
+compile_options(Profile) ->
+  anvl_lib:pcfg(erlc_compile_options, [Profile, defaults()],
+                ?TYPE(compile_options())).
+
+compile_options_overrides(Profile, Defaults) ->
+  anvl_lib:pcfg(erlc_compile_options_overrides, [Profile, Defaults], #{},
+                ?TYPE(compile_options_overrides())).
+
+escript_specs(Profile) ->
+  anvl_lib:pcfg(erlc_escripts, [Profile], #{},
+                ?TYPE(escripts_ret())).

@@ -24,13 +24,16 @@
 -export([exec/3]).
 
 %% internal exports:
--export([]).
+-export([pcfg/4, pcfg/3]).
 
--export_type([template_vars/0, filename_pattern/0]).
+-export_type([template_vars/0]).
 
 -include_lib("kernel/include/logger.hrl").
 -include_lib("kernel/include/file.hrl").
 -include("anvl_macros.hrl").
+-ifndef(BOOTSTRAP).
+-include_lib("typerefl/include/types.hrl").
+-endif. %% !BOOTSTRAP
 
 %%================================================================================
 %% Type declarations
@@ -38,6 +41,8 @@
 
 -type template_vars() :: #{atom() | binary() => string()}.
 -type filename_pattern() :: string().
+
+-reflect_type([filename_pattern/0]).
 
 %%================================================================================
 %% API functions
@@ -107,6 +112,37 @@ exec(Cmd0, Args, Opts0) ->
 %%================================================================================
 %% Internal exports
 %%================================================================================
+
+-spec pcfg(atom(), list(), Result, typerefl:type()) -> Result.
+pcfg(Function, Args, Default, ExpectedType) ->
+  case lists:member({Function, length(Args)}, ?CONFIG:module_info(exports)) of
+    true ->
+      pcfg(Function, Args, ExpectedType);
+    false ->
+      Default
+  end.
+
+-spec pcfg(atom(), list(), typerefl:type()) -> _Result.
+pcfg(Function, Args, ExpectedType) ->
+  try apply(?CONFIG, Function, Args) of
+    Val ->
+      case typerefl:typecheck(ExpectedType, Val) of
+        ok ->
+          Val;
+        {error, #{expected := Expected, got := Got}} ->
+          ?LOG_CRITICAL("Invalid return value of ~p:~p:~nExpected type: ~s~nGot: ~p",
+                        [?CONFIG, Function, Expected, Got]),
+          exit(unsat)
+      end
+  catch
+    EC:Err:Stack ->
+      ?LOG_CRITICAL("Failed to get configuration ~p:~p~n"
+                    "Args: ~p~n"
+                    "Error: ~p:~p~n"
+                    "Stacktrace: ~p",
+                    [?CONFIG, Function, Args, EC, Err, Stack]),
+      exit(unsat)
+  end.
 
 %%================================================================================
 %% Internal functions

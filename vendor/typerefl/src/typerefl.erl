@@ -20,6 +20,7 @@
         , regexp_string/1, regexp_binary/1
         , ip4_address/0, ip6_address/0, ip_address/0, listen_port_ip4/0
         , integer/1, atom/1, unicode_charlist/0, unicode_chardata/0
+        , filename_all/0
         ]).
 
 %% Internal
@@ -603,6 +604,10 @@ ip_address() ->
                      , pretty_print => fun inet:ntoa/1
                      },
   alias("ip_address", BaseType, AdditionalAttrs, []).
+
+-spec filename_all() -> type().
+filename_all() ->
+  alias("filename_all", union([binary(), string()])).
 
 %% @doc Get type name.
 -spec name(type() | ?type_var(atom())) -> string().
