@@ -44,7 +44,8 @@
 %% Type declarations
 %%================================================================================
 
--type t() :: {module(), atom(), term()}.
+-type t() :: {module(), atom(), term()}
+           | {_Descr :: atom() | string(), fun((Arg) -> boolean()), Arg}.
 
 -type speculative() :: term().
 
@@ -224,12 +225,12 @@ wait_result(Condition, MRef) ->
       end
   end.
 
+exec({M, Fun, A}) when is_function(Fun, 1) ->
+  logger:update_process_metadata(#{condition => M}),
+  ensure_boolean(apply(Fun, [A]));
 exec({M, F, A}) ->
   logger:update_process_metadata(#{condition => M}),
-  case apply(M, F, [A]) of
-    Changed when is_boolean(Changed) ->
-      Changed
-  end.
+  ensure_boolean(apply(M, F, [A])).
 
 -spec sat_async1(t()) -> {done, boolean()} | {in_progress, t(), reference()}.
 sat_async1(Condition) ->
@@ -275,3 +276,9 @@ resolve_speculative(Result) ->
 
 inc_counter(Idx) ->
   counters:add(persistent_term:get(?counters), Idx, 1).
+
+ensure_boolean(Bool) when is_boolean(Bool) ->
+  Bool;
+ensure_boolean(Other) ->
+  ?LOG_ERROR("(Plugin error): condition returned non-boolean result ~p", [Other]),
+  exit(unsat).

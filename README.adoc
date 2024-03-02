@@ -32,25 +32,26 @@ Let's compare `make` target with a similar `anvl` condition:
 
 [source,make]
 ----
-foo.o : foo.c foo.h
-    gcc -o foo.o foo.c
+%.o : %.c %.h
+    gcc -o $@ $<
 ----
 
 [source,erlang]
 ----
-foo_o(_Args) ->
-  newer("foo.c", "foo.o") or newer("foo.h", "foo.o") andalso
+o(Src) ->
+  Obj = patsubst1("${baseneme}.o", Src),
+  newer(Src, Obj) or newer(patsubst1("${baseneme}.h", Src), Obj) andalso
     begin
       %% Object file is older than the sources (or it doesn't exist),
       %% it means we have to rebuild it:
-      0 = anvl_lib:exec("gcc", ["-o", "foo.o", "foo.c"]),
+      0 = anvl_lib:exec("gcc", ["-o", Obj, Src]),
       %% Since we produced side-effects to satisfy the condition, return `true':
       true
     end.
 ----
 
 The second definition can be translated to plain English like this:
-condition `foo_o` is satisfied if object file is newer than the source files used used to produce it, or if the source files have been compiled with GCC.
+condition `o` is satisfied if the object file is newer than the source files used used to produce it, or if the source files have been compiled with GCC.
 Return `true` if the condition produced side effects, `false` otherwise.
 
 This simple example demonstrates separation of concepts:
@@ -85,7 +86,7 @@ gen_parser(SrcFile) ->
 %% `anvl' conditions can be nicely packaged into modules. This
 %% function provides an interface for the condition:
 present(Executable) ->
-  {?MODULE, ensure_installed, Executable}.
+  {?MODULE, fun ensure_installed/1, Executable}.
 
 %% It's a good idea to hide the actual function that satisfies the
 %% condition:

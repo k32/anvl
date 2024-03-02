@@ -25,9 +25,6 @@
 %% behavior callbacks:
 -export([]).
 
-%% internal exports:
--export([app_/1, escript_/1, beam_/1, beam_deps_/1, depfile/1]).
-
 -export_type([options/0, application/0]).
 
 -include_lib("kernel/include/logger.hrl").
@@ -46,7 +43,7 @@
         #{ app := application()
          , profile => profile()
          , dependencies => [application()]
-         , build_root => file:filename_all()
+         , ubild_root => file:filename_all()
          , src_root => file:filename_all()
          , includes => [anvl_lib:filename_pattern()]
          , sources => [anvl_lib:filename_pattern()]
@@ -86,7 +83,7 @@ defaults() ->
 %% @doc Condition: Erlang application has been compiled
 -spec app(profile(), application()) -> anvl_condition:t().
 app(Profile, App) ->
-  {?MODULE, app_, {Profile, App}}.
+  {?CNAME("app"), fun app/1, {Profile, App}}.
 
 -spec app_path(profile(), application()) -> file:filename_all().
 app_path(Profile, App) ->
@@ -96,7 +93,7 @@ app_path(Profile, App) ->
 app_spec(Profile, App) ->
   anvl_condition:get_result(?app_spec(Profile, App)).
 
-app_({Profile, App}) ->
+app({Profile, App}) ->
   #{ build_root := BuildRoot
    , src_root := SrcRoot
    , compile_options := COpts0
@@ -127,7 +124,7 @@ app_({Profile, App}) ->
   %% TODO: this is a hack, should be done by dependency manager:
   code:add_pathz(filename:join(BuildDir, "ebin")),
   %% Build BEAM files:
-  precondition([{?MODULE, beam_, {Src, CRef}} || Src <- Sources]) or
+  precondition([{?CNAME("erlc"), fun beam/1, {Src, CRef}} || Src <- Sources]) or
     clean_orphans(Sources, Context) or
     copy_includes(Context) or
     render_app_spec(Sources, Context).
@@ -139,12 +136,12 @@ module(Module) ->
 
 -spec escript(profile(), string()) -> anvl_condition:t().
 escript(Profile, EscriptName) ->
-  {?MODULE, escript_, {Profile, EscriptName}}.
+  {?CNAME("escript"), fun escript/1, {Profile, EscriptName}}.
 
-escript_({Profile, EscriptName}) ->
+escript({Profile, EscriptName}) ->
   Filename = filename:join([?BUILD_ROOT, Profile, EscriptName]),
   ok = filelib:ensure_dir(Filename),
-  ?LOG_NOTICE("Creating escript ~s", [Filename]),
+  ?LOG_NOTICE("Creating ~s", [Filename]),
   %% Satisfy dependencies:
   Apps = ?CONFIG:escript_apps(Profile, EscriptName),
   _Changed0 = precondition([app(Profile, App) || App <- Apps]),
@@ -176,12 +173,12 @@ escript_({Profile, EscriptName}) ->
 %% Internal exports
 %%================================================================================
 
-beam_({Src, CRef}) ->
+beam({Src, CRef}) ->
   #{compile_options := COpts} = Context = get_ctx(CRef),
   Module = module_of_erl(Src),
   satisfies(module(Module)),
   Beam = beam_of_erl(Src, Context),
-  newer(Src, Beam) or precondition({?MODULE, beam_deps_, {Src, Beam, CRef}}) andalso
+  newer(Src, Beam) or precondition({?CNAME("beam_deps"), fun beam_deps/1, {Src, Beam, CRef}}) andalso
     begin
       ?LOG_NOTICE("Compiling ~s", [Src]),
       case compile:noenv_file(Src, [report, {outdir, filename:dirname(Beam)} | COpts]) of
@@ -202,9 +199,9 @@ beam_({Src, CRef}) ->
 
 %% @private Precondition: Compile-time dependencies of the Erlang
 %% module are satisfied
-beam_deps_({Src, Beam, CRef}) ->
+beam_deps({Src, Beam, CRef}) ->
   DepFile = dep_of_erl(Src, get_ctx(CRef)),
-  precondition({?MODULE, depfile, {Src, DepFile, CRef}}),
+  precondition({?CNAME("beam_deps"), fun depfile/1, {Src, DepFile, CRef}}),
   {ok, Dependencies} = file:consult(DepFile),
   lists:foldl(fun({file, Dep}, Acc) ->
                   Acc or newer(Dep, Beam);
