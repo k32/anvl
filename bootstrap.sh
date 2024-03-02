@@ -9,7 +9,7 @@ erlc -o "${STAGE1_DIR}/ebin" -I include src/anvl_condition.erl src/anvl_lib.erl 
 
 ## Stage 2:
 # Build the modules that are needed for compiling the escript:
-erl -config bootstrap -noshell -pz "${STAGE1_DIR}/ebin" -run anvl_app bootstrap 2
+erl -config bootstrap -noshell -pz "${STAGE1_DIR}/ebin" -run anvl_app bootstrap
 
 ## Stage 3:
 time _anvl_build/stage2/anvl_app --log-level info @escript

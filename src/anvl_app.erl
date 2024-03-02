@@ -28,7 +28,7 @@
 -export([start/2, stop/1]).
 
 %% internal exports:
--export([bootstrap/1, bootstrapped/1]).
+-export([bootstrap/0, bootstrapped/1]).
 
 -include_lib("kernel/include/logger.hrl").
 -include("anvl_imports.hrl").
@@ -39,9 +39,9 @@
 
 main(CLIArgs) ->
   application:set_env(anvl, cli_args, CLIArgs),
-  {ok, Apps} = application:ensure_all_started(anvl),
+  {ok, _} = application:ensure_all_started(anvl),
   set_logger_conf(),
-  {ok, anvl, Bin} = compile:noenv_file("anvl.erl", [report, binary]),
+  {ok, anvl, Bin} = compile:noenv_file("anvl.erl", [report, binary, nowarn_export_all]),
   code:load_binary(anvl, "anvl.erl", Bin),
   anvl_plugin:init(),
   exec_top(anvl_plugin:conditions()).
@@ -54,7 +54,7 @@ halt(ExitCode) ->
 %% Internal exports
 %%================================================================================
 
-bootstrap(["2"]) ->
+bootstrap() ->
   ?MODULE:start(normal, []),
   ?LOG_NOTICE("Bootstrap: Stage 2"),
   exec_top([{?MODULE, bootstrapped, []}]).

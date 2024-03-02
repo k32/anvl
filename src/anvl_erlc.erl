@@ -20,7 +20,7 @@
 -module(anvl_erlc).
 
 %% API:
--export([defaults/0, escript/2, app/2, module/1]).
+-export([defaults/0, escript/2, app/2, module/1, app_path/2, app_spec/2]).
 
 %% behavior callbacks:
 -export([]).
@@ -74,7 +74,7 @@
 
 defaults() ->
   COpts = [],
-  BuildRoot = filename:join(["_anvl_build", integer_to_list(erlang:phash2(COpts))]),
+  BuildRoot = filename:join([?BUILD_ROOT, integer_to_list(erlang:phash2(COpts))]),
   #{ src_root => "."
    , sources => ["${src_root}/src/*.erl", "${src_root}/src/*/*.erl"]
    , includes => ["${src_root}/include", "${src_root}/src"]
@@ -142,7 +142,7 @@ escript(Profile, EscriptName) ->
   {?MODULE, escript_, {Profile, EscriptName}}.
 
 escript_({Profile, EscriptName}) ->
-  Filename = filename:join(["_anvl_build", Profile, EscriptName]),
+  Filename = filename:join([?BUILD_ROOT, Profile, EscriptName]),
   ok = filelib:ensure_dir(Filename),
   ?LOG_NOTICE("Creating escript ~s", [Filename]),
   %% Satisfy dependencies:

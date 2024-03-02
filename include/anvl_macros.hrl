@@ -30,4 +30,6 @@
 
 -define(CONFIG, anvl).
 
+-define(BUILD_ROOT, "_anvl_build").
+
 -endif.
