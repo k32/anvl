@@ -43,7 +43,6 @@ main(CLIArgs) ->
   {ok, anvl, Bin} = compile:noenv_file("anvl.erl", [report, binary]),
   code:load_binary(anvl, "anvl.erl", Bin),
   anvl_plugin:init(),
-  io:format("Apps started ~p~n", [Apps]),
   anvl_lib:exec("ls", [], []),
   exec_top(anvl_plugin:conditions()).
 

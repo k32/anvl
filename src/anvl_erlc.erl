@@ -26,7 +26,7 @@
 -export([]).
 
 %% internal exports:
--export([app_/1, escript_/1, beam_/1, beam_deps/1, depfile/1]).
+-export([app_/1, escript_/1, beam_/1, beam_deps_/1, depfile/1]).
 
 -export_type([options/0, application/0]).
 
@@ -181,7 +181,7 @@ beam_({Src, CRef}) ->
   Module = module_of_erl(Src),
   satisfies(module(Module)),
   Beam = beam_of_erl(Src, Context),
-  newer(Src, Beam) or precondition({?MODULE, beam_deps, {Src, Beam, CRef}}) andalso
+  newer(Src, Beam) or precondition({?MODULE, beam_deps_, {Src, Beam, CRef}}) andalso
     begin
       ?LOG_NOTICE("Compiling ~s", [Src]),
       case compile:noenv_file(Src, [report, {outdir, filename:dirname(Beam)} | COpts]) of
@@ -202,16 +202,17 @@ beam_({Src, CRef}) ->
 
 %% @private Precondition: Compile-time dependencies of the Erlang
 %% module are satisfied
-beam_deps({Src, Beam, CRef}) ->
+beam_deps_({Src, Beam, CRef}) ->
   DepFile = dep_of_erl(Src, get_ctx(CRef)),
   precondition({?MODULE, depfile, {Src, DepFile, CRef}}),
   {ok, Dependencies} = file:consult(DepFile),
-  lists:any(fun({file, Dep}) ->
-                newer(Dep, Beam);
-               ({parse_trans, ParseTrans}) ->
-                precondition(module(ParseTrans))
-            end,
-            Dependencies).
+  lists:foldl(fun({file, Dep}, Acc) ->
+                  Acc or newer(Dep, Beam);
+                 ({parse_transform, ParseTransform}, Acc) ->
+                  Acc or precondition(module(ParseTransform))
+              end,
+              false,
+              Dependencies).
 
 %% @private Precondition: .dep file for the module is up to date
 depfile({Src, DepFile, CRef}) ->
@@ -305,8 +306,8 @@ process_attributes(OrigFile, EPP, Acc) ->
       Acc;
     {ok, {attribute, _, file, {File, _}}} when File =/= OrigFile ->
       process_attributes(OrigFile, EPP, [{file, File} | Acc]);
-    {ok, {attribute, _, compile, {parse_transform, ParseTrans}}} ->
-      process_attributes(OrigFile, EPP, [{parse_trans, ParseTrans} | Acc]);
+    {ok, {attribute, _, compile, {parse_transform, ParseTransform}}} ->
+      process_attributes(OrigFile, EPP, [{parse_transform, ParseTransform} | Acc]);
     {error, Err} ->
       ?UNSAT("Failed to derive dependencies~n~s:~s", [OrigFile, epp:format_error(Err)]);
     _ ->
