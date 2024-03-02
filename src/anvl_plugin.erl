@@ -76,7 +76,22 @@ list_conf(Key) ->
   lee:list(?conf_storage, Key).
 
 model() ->
-  #{}.
+  #{ log =>
+       #{ global_level =>
+            {[value, os_env, cli_param, logger_level],
+             #{ default     => notice
+              , type        => lee_logger:level()
+              , cli_operand => "log-level"
+              }}
+        , default_handler_level =>
+            {[value, os_env, logger_level],
+             #{ oneliner       => "Log level for the default handler"
+              , type           => lee_logger:level()
+              , default_ref    => [log, global_level]
+              , logger_handler => default
+              }}
+        }
+   }.
 
 %%================================================================================
 %% Internal functions

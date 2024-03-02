@@ -12,4 +12,4 @@ erlc -o "${STAGE1_DIR}/ebin" -I include src/anvl_condition.erl src/anvl_lib.erl 
 erl -config bootstrap -noshell -pz "${STAGE1_DIR}/ebin" -run anvl_app bootstrap 2
 
 ## Stage 3:
-time _anvl_build/stage2/anvl_app @escript
+time _anvl_build/stage2/anvl_app --log-level info @escript

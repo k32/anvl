@@ -40,10 +40,10 @@
 main(CLIArgs) ->
   application:set_env(anvl, cli_args, CLIArgs),
   {ok, Apps} = application:ensure_all_started(anvl),
+  set_logger_conf(),
   {ok, anvl, Bin} = compile:noenv_file("anvl.erl", [report, binary]),
   code:load_binary(anvl, "anvl.erl", Bin),
   anvl_plugin:init(),
-  anvl_lib:exec("ls", [], []),
   exec_top(anvl_plugin:conditions()).
 
 halt(ExitCode) ->
@@ -92,3 +92,15 @@ exec_top(Preconditions) ->
   #{complete := Complete, changed := Changed, failed := Failed} = anvl_condition:stats(),
   ?LOG_NOTICE("~p satisfied ~p failed ~p changed. Net time: ~pms", [Complete, Failed, Changed, Dt]),
   ?MODULE:halt(ExitCode).
+
+set_logger_conf() ->
+  logger:update_handler_config(default, type, standart_io),
+  logger:update_handler_config(default, sync_mode_qlen, 0),
+  Formatter = {logger_formatter,
+               #{ single_line => false
+                , template => [ "[" , level, {condition, [" ", condition], []}, "] "
+                              , msg
+                              , "\n"
+                              ]
+                }},
+  logger:update_handler_config(default, formatter, Formatter).
