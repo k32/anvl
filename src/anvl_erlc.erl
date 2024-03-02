@@ -19,6 +19,14 @@
 
 -module(anvl_erlc).
 
+-ifndef(BOOTSTRAP).
+-behavior(anvl_plugin).
+
+%% behavior callbacks:
+-export([model/0, conditions/0]).
+-include_lib("typerefl/include/types.hrl").
+-endif. %% !BOOTSTRAP
+
 %% API:
 -export([defaults/0, escript/2, app/2, module/1, app_path/2, app_spec/2]).
 
@@ -85,6 +93,15 @@ defaults() ->
 app(Profile, App) ->
   {?CNAME("app"), fun app/1, {Profile, App}}.
 
+%% @doc Speculative condition: a particular module has been compiled.
+-spec module(module()) -> anvl_condition:t().
+module(Module) ->
+  anvl_condition:speculative({erlang_module_compiled, Module}).
+
+-spec escript(profile(), string()) -> anvl_condition:t().
+escript(Profile, EscriptName) ->
+  {?CNAME("escript"), fun escript/1, {Profile, EscriptName}}.
+
 -spec app_path(profile(), application()) -> file:filename_all().
 app_path(Profile, App) ->
   anvl_condition:get_result(?app_path(Profile, App)).
@@ -92,6 +109,47 @@ app_path(Profile, App) ->
 -spec app_spec(profile(), application()) -> {application, application(), proplists:proplist()}.
 app_spec(Profile, App) ->
   anvl_condition:get_result(?app_spec(Profile, App)).
+
+%%================================================================================
+%% Behavior callbacks
+%%================================================================================
+
+-ifndef(BOOTSTRAP).
+%% During the bootstrap stage we don't have the parse transforms and
+%% 3rd party libraries needed for handling the schema, so we hide the
+%% plugin interface.
+
+model() ->
+  #{anvl_erlc =>
+      #{ escript =>
+           {[map, cli_action],
+            #{ key_elements => [[name]]
+             , cli_operand => "escript"
+             },
+            #{ name =>
+                 {[value, cli_positional],
+                  #{ type => list(string())
+                   , default => []
+                   , cli_arg_position => rest
+                   }}
+             , profile =>
+                 {[value, cli_param],
+                  #{ type => union(?CONFIG:erlc_profiles())
+                   , default => hd(?CONFIG:erlc_profiles())
+                   , cli_operand => "profile"
+                   , cli_short => $p
+                   }}
+             }}
+       }}.
+
+conditions() ->
+  get_escripts().
+
+-endif. %% !BOOTSTRAP
+
+%%================================================================================
+%% Condition implementations
+%%================================================================================
 
 app({Profile, App}) ->
   #{ build_root := BuildRoot
@@ -129,15 +187,6 @@ app({Profile, App}) ->
     copy_includes(Context) or
     render_app_spec(Sources, Context).
 
-%% @doc Speculative condition: a particular module has been compiled.
--spec module(module()) -> anvl_condition:t().
-module(Module) ->
-  anvl_condition:speculative({erlang_module_compiled, Module}).
-
--spec escript(profile(), string()) -> anvl_condition:t().
-escript(Profile, EscriptName) ->
-  {?CNAME("escript"), fun escript/1, {Profile, EscriptName}}.
-
 escript({Profile, EscriptName}) ->
   Filename = filename:join([?BUILD_ROOT, Profile, EscriptName]),
   ok = filelib:ensure_dir(Filename),
@@ -161,17 +210,13 @@ escript({Profile, EscriptName}) ->
                         end
                     end,
                     Paths),
-  Sections = [shebang, {archive, Files, []}],
+  Sections = [shebang, {emu_args, "+JPperf true"}, {archive, Files, []}],
   case escript:create(Filename, Sections) of
     ok           -> 0 = anvl_lib:exec("chmod", ["+x", Filename], []);
     {error, Err} -> ?UNSAT("Failed to create escript ~s~nError: ~p", [EscriptName, Err])
   end,
   %% TODO:
   true.
-
-%%================================================================================
-%% Internal exports
-%%================================================================================
 
 beam({Src, CRef}) ->
   #{compile_options := COpts} = Context = get_ctx(CRef),
@@ -222,6 +267,18 @@ depfile({Src, DepFile, CRef}) ->
 %%================================================================================
 %% Internal functions
 %%================================================================================
+
+get_escripts() ->
+  Keys = anvl_plugin:list_conf([anvl_erlc, escript, {}]),
+  lists:flatmap(fun(Key) ->
+                    Profile = anvl_plugin:conf(Key ++ [profile]),
+                    case anvl_plugin:conf(Key ++ [name]) of
+                      []       -> Escripts = ?CONFIG:escripts(Profile);
+                      Escripts -> ok
+                    end,
+                    [anvl_erlc:escript(Profile, I) || I <- Escripts]
+                end,
+                Keys).
 
 %% @private Clean ebin directory of files that don't have sources:
 clean_orphans(Sources, Context) ->
