@@ -184,14 +184,6 @@ beam({Src, CRef}) ->
       case compile:noenv_file(Src, [report, {outdir, filename:dirname(Beam)} | COpts]) of
         {ok, Module} ->
           true;
-        {ok, Module, Warnings} ->
-          [?LOG_WARNING(compile:format_error(Warn)) || Warn <- Warnings],
-          %% TODO: warnings as errors?
-          true;
-        {error, Errors, Warnings} ->
-          [?LOG_WARNING(compile:format_error(Warn)) || Warn <- Warnings],
-          [?LOG_ERROR(compile:format_error(Err)) || Err <- Errors],
-          exit(unsat);
         error ->
           ?UNSAT("Compilation of ~s failed", [Src])
       end
@@ -216,7 +208,7 @@ depfile({Src, DepFile, CRef}) ->
   #{includes := IncludeDirs} = get_ctx(CRef),
   newer(Src, DepFile) andalso
     begin
-      ?LOG_NOTICE("Updating dependencies for ~s", [Src]),
+      ?LOG_INFO("Updating dependencies for ~s", [Src]),
       %% TODO:
       PredefMacros = [],
       {ok, EPP} = epp:open(Src, IncludeDirs, PredefMacros),

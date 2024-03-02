@@ -46,8 +46,8 @@ model() ->
                    }}
              , profile =>
                  {[value, cli_param],
-                  #{ type => atom()
-                   , default => default
+                  #{ type => union(?CONFIG:erlc_profiles())
+                   , default => hd(?CONFIG:erlc_profiles())
                    , cli_operand => "profile"
                    , cli_short => $p
                    }}

@@ -29,6 +29,9 @@
 plugins() ->
   [anvl_erlc_plugin].
 
+erlc_profiles() ->
+  [default].
+
 app_config(_Profile, anvl, Default) ->
   Default#{dependencies => [lee, typerefl]};
 app_config(_Profile, lee, Default) ->
