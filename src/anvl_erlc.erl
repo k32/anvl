@@ -22,7 +22,7 @@
 -behavior(anvl_plugin).
 
 %% API:
--export([defaults/0, escript/2, app/2, module/2, app_path/2, app_spec/2]).
+-export([defaults/0, sources_discovered/2, src_root/2, escript/2, app/2, module/2, app_path/2, app_spec/2]).
 
 -ifndef(BOOTSTRAP).
 %% behavior callbacks:
@@ -44,8 +44,7 @@
 -type application() :: atom().
 
 -type compile_options() ::
-        #{ src_root := file:filename_all()
-         , dependencies => [application()]
+        #{ dependencies => [application()]
          , includes => [anvl_lib:filename_pattern()]
          , sources => [anvl_lib:filename_pattern()]
          , compile_options => list()
@@ -79,13 +78,16 @@
   -define(TYPE(T), typerefl:term()).
 -endif.
 
--reflect_type([profile/0, compile_options/0, compile_options_overrides/0, escripts_ret/0]).
+-reflect_type([profile/0, source_location_ret/0, compile_options/0, compile_options_overrides/0, escripts_ret/0]).
 
 %%================================================================================
 %% Config behavior
 %%================================================================================
 
 -callback erlc_profiles() -> [profile(), ...].
+
+-callback erlc_source_location(profile()) -> source_location_ret().
+-type source_location_ret() :: #{application() => string() | {atom(), term()}}.
 
 -callback erlc_compile_options(profile(), _Defaults :: compile_options()) -> compile_options().
 
@@ -102,13 +104,19 @@
 %%================================================================================
 
 defaults() ->
-  COpts = [],
-  #{ src_root => "."
-   , sources => ["${src_root}/src/*.erl", "${src_root}/src/*/*.erl"]
+  #{ sources => ["${src_root}/src/*.erl", "${src_root}/src/*/*.erl"]
    , includes => ["${src_root}/include", "${src_root}/src"]
-   , compile_options => COpts
+   , compile_options => []
    , dependencies => []
    }.
+
+-spec sources_discovered(profile(), application()) -> anvl_condition:t().
+sources_discovered(Profile, App) ->
+  {?CNAME("discover"), fun discovered/1, {Profile, App}}.
+
+-spec src_root(profile(), application()) -> file:filename_all().
+src_root(Profile, App) ->
+  anvl_condition:get_result({?MODULE, src_root, Profile, App}).
 
 %% @doc Condition: Erlang application has been compiled
 -spec app(profile(), application()) -> anvl_condition:t().
@@ -189,10 +197,21 @@ conditions() ->
 %% Condition implementations
 %%================================================================================
 
+discovered({Profile, App}) ->
+  %% TODO: locations can be specified by the dependencies too...
+  Dir = case maps:get(App, cfg_source_location(Profile)) of
+          Str when is_list(Str) ->
+            Str;
+          {subdir, SubDir} ->
+            filename:join(SubDir, App)
+        end,
+  anvl_condition:set_result({?MODULE, src_root, Profile, App}, Dir).
+
 app({Profile, App}) ->
   ProfileOpts = compile_options(Profile),
-  #{ src_root := SrcRoot
-   , compile_options := COpts0
+  _ = precondition(sources_discovered(Profile, App)),
+  SrcRoot = src_root(Profile, App),
+  #{ compile_options := COpts0
    , includes := IncludePatterns
    , sources := SrcPatterns
    , dependencies := Dependencies0
@@ -440,6 +459,10 @@ set_ctx(CRef, Ctx) ->
 profiles() ->
   anvl_lib:pcfg(erlc_profiles, [], [default],
                 ?TYPE(nonempty_list(profile()))).
+
+cfg_source_location(Profile) ->
+  anvl_lib:pcfg(erlc_source_location, [Profile],
+               ?TYPE(source_location_ret())).
 
 compile_options(Profile) ->
   anvl_lib:pcfg(erlc_compile_options, [Profile, defaults()],

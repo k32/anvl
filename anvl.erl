@@ -33,19 +33,24 @@ plugins() ->
 erlc_profiles() ->
   [default, stage2].
 
+erlc_source_location(_Profile) ->
+  #{ anvl => "."
+   , typerefl => {subdir, "vendor"}
+   , lee => {subdir, "vendor"}
+   , snabbkaffe => {subdir, "vendor"}
+   }.
+
 erlc_compile_options(_Profile, Defaults) ->
   Defaults.
 
 erlc_compile_options_overrides(_Profile, Defaults) ->
-  #{ lee        => Defaults#{src_root => "vendor/lee", dependencies => [snabbkaffe]}
-   , typerefl   => Defaults#{src_root => "vendor/typerefl"}
-   , snabbkaffe => Defaults#{src_root => "vendor/snabbkaffe"}
+  #{ lee => Defaults#{dependencies => [snabbkaffe]}
    }.
 
 erlc_escripts(_Profile) ->
   #{anvl =>
       #{ apps => [anvl, lee, typerefl]
-       , emu_args => "-escript main anvl_app"
+       , emu_args => "-escript main anvl_app +JPperf true"
        }}.
 
 %%================================================================================

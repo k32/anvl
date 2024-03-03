@@ -156,8 +156,8 @@ set_result(Key, Value) ->
 
 init([]) ->
   process_flag(trap_exit, true),
-  ets:new(?tab, [set, named_table, public, {write_concurrency, false}, {read_concurrency, true}, {keypos, 2}]),
-  ets:new(?results, [set, named_table, public, {write_concurrency, false}, {read_concurrency, true}, {keypos, 1}]),
+  ets:new(?tab, [set, named_table, public, {write_concurrency, true}, {read_concurrency, true}, {keypos, 2}]),
+  ets:new(?results, [set, named_table, public, {write_concurrency, true}, {read_concurrency, true}, {keypos, 1}]),
   persistent_term:put(?counters, counters:new(4, [])),
   S = #s{},
   {ok, S}.
