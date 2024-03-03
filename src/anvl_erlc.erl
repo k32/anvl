@@ -293,7 +293,7 @@ beam({Src, CRef}) ->
   Beam = beam_of_erl(Src, Context),
   newer(Src, Beam) or precondition({?CNAME("beam_deps"), fun beam_deps/1, {Src, Beam, CRef}}) andalso
     begin
-      ?LOG_NOTICE("Compiling ~s", [Src]),
+      ?LOG_INFO("Compiling ~s", [Src]),
       case compile:noenv_file(Src, [report, {outdir, filename:dirname(Beam)} | COpts]) of
         {ok, Module} ->
           true;

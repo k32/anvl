@@ -26,7 +26,7 @@
 -behavior(gen_server).
 
 %% API:
--export([stats/0, precondition/1]).
+-export([stats/0, precondition/1, precondition/2]).
 -export([speculative/1, satisfies/1]).
 -export([get_result/1, set_result/2]).
 
@@ -91,23 +91,38 @@ stats() ->
    , failed => counters:get(CRef, ?cnt_failed)
    }.
 
--spec precondition(list() | t()) -> boolean().
+-spec precondition([t()] | t()) -> boolean().
 precondition(Tup) when is_tuple(Tup) ->
   precondition([Tup]);
-precondition(L0) when is_list(L0) ->
-  L = lists:flatten(L0),
-  Futures = [sat_async1(I) || I <- L],
-  Results = lists:map(fun({done, Result}) ->
-                          Result;
-                         ({in_progress, Task, MRef}) ->
-                          wait_result(Task, MRef)
-                      end,
-                      Futures),
-  lists:foldl(fun(Result, Acc) ->
-                  Acc orelse Result
-              end,
-              false,
-              Results).
+precondition(L) when is_list(L) ->
+  precondition(L, 100).
+
+-spec precondition([t()], pos_integer() | infinity) -> boolean().
+precondition(L, ChunkSize) when ChunkSize > 0 ->
+  precondition1(L, false, ChunkSize).
+
+precondition1([], Result, _ChunkSize) ->
+  Result;
+precondition1(L, Result0, ChunkSize) ->
+  {Result1, WaitL, Rest} = precondition2(L, Result0, [], 0, ChunkSize),
+  Result = lists:foldl(fun({Task, MRef}, Acc) ->
+                           Acc or wait_result(Task, MRef)
+                       end,
+                       Result1,
+                       WaitL),
+  precondition1(Rest, Result, ChunkSize).
+
+precondition2([], ResultAcc, WaitingAcc, _, _) ->
+  {ResultAcc, WaitingAcc, []};
+precondition2(Rest, ResultAcc, WaitingAcc, N, Nmax) when N >= Nmax ->
+  {ResultAcc, WaitingAcc, Rest};
+precondition2([Cond | CondL], ResultAcc, WaitingAcc, N, Nmax) ->
+  case sat_async1(Cond) of
+    {done, Result} ->
+      precondition2(CondL, Result or ResultAcc, WaitingAcc, N, Nmax);
+    {in_progress, Task, MRef} ->
+      precondition2(CondL, ResultAcc, [{Task, MRef} | WaitingAcc], N + 1, Nmax)
+  end.
 
 %%%% Speculative targets:
 

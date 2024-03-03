@@ -38,6 +38,7 @@ erlc_source_location(_Profile) ->
    , typerefl => {subdir, "vendor"}
    , lee => {subdir, "vendor"}
    , snabbkaffe => {subdir, "vendor"}
+   , dummy => "test/dummy"
    }.
 
 erlc_compile_options(_Profile, Defaults) ->
