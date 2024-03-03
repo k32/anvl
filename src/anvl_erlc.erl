@@ -180,8 +180,10 @@ app({Profile, App}) ->
    , compile_options := COpts0
    , includes := IncludePatterns
    , sources := SrcPatterns
-   , dependencies := Dependencies
+   , dependencies := Dependencies0
    } = maps:get(App, compile_options_overrides(Profile, ProfileOpts), ProfileOpts),
+  AppSrcProperties = app_src(App, SrcRoot),
+  Dependencies = non_otp_apps(Dependencies0 ++ proplists:get_value(applications, AppSrcProperties, [])),
   BuildRoot = filename:join([?BUILD_ROOT, integer_to_list(erlang:phash2(COpts0))]),
   %% Satisfy the dependencies:
   _ = precondition([app(Profile, Dep) || Dep <- Dependencies]),
@@ -209,7 +211,7 @@ app({Profile, App}) ->
   precondition([{?CNAME("erlc"), fun beam/1, {Src, CRef}} || Src <- Sources]) or
     clean_orphans(Sources, Context) or
     copy_includes(Context) or
-    render_app_spec(Sources, Context).
+    render_app_spec(AppSrcProperties, Sources, Context).
 
 escript({Profile, EscriptName}) ->
   case escript_specs(Profile) of
@@ -349,25 +351,28 @@ copy_includes(#{build_dir := BuildDir, src_root := SrcRoot}) ->
               Includes).
 
 %% @private Render application specification:
-render_app_spec(Sources, #{app := App, profile := Profile, build_dir := BuildDir, src_root := SrcRoot}) ->
+render_app_spec(AppSrcProperties, Sources, #{app := App, profile := Profile, build_dir := BuildDir, src_root := SrcRoot}) ->
   AppFile = filename:join([BuildDir, "ebin", atom_to_list(App) ++ ".app"]),
-  AppSrcFile = filename:join([SrcRoot, "src", atom_to_list(App) ++ ".app.src"]),
   case file:consult(AppFile) of
     {ok, [OldContent]} -> ok;
     _ -> OldContent = []
   end,
-  case file:consult(AppSrcFile) of
+  Modules = [module_of_erl(I) || I <- Sources],
+  NewContent = {application, App, [{modules, Modules} | AppSrcProperties]},
+  {ok, FD} = file:open(AppFile, [write]),
+  io:format(FD, "~p.~n", [NewContent]),
+  file:close(FD),
+  anvl_condition:set_result(?app_path(Profile, App), BuildDir),
+  anvl_condition:set_result(?app_spec(Profile, App), NewContent),
+  OldContent =/= NewContent.
+
+app_src(App, SrcRoot) ->
+  File = filename:join([SrcRoot, "src", atom_to_list(App) ++ ".app.src"]),
+  case file:consult(File) of
     {ok, [{application, App, Properties}]} when is_list(Properties) ->
-      Modules = [module_of_erl(I) || I <- Sources],
-      NewContent = {application, App, [{modules, Modules} | Properties]},
-      {ok, FD} = file:open(AppFile, [write]),
-      io:format(FD, "~p.~n", [NewContent]),
-      file:close(FD),
-      anvl_condition:set_result(?app_path(Profile, App), BuildDir),
-      anvl_condition:set_result(?app_spec(Profile, App), NewContent),
-      OldContent =/= NewContent;
-    Error ->
-      ?UNSAT("Missing or improper ~s~n~p", [AppSrcFile, Error])
+      Properties;
+    _Error ->
+      ?UNSAT("Malformed or missing ~s file", [File])
   end.
 
 module_of_erl(Src) ->
@@ -423,3 +428,7 @@ compile_options_overrides(Profile, Defaults) ->
 escript_specs(Profile) ->
   anvl_lib:pcfg(erlc_escripts, [Profile], #{},
                 ?TYPE(escripts_ret())).
+
+non_otp_apps(Apps) ->
+  %% FIXME: hack
+  Apps -- [kernel, compiler, mnesia, stdlib, xmerl].

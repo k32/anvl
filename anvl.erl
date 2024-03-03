@@ -37,16 +37,9 @@ erlc_compile_options(_Profile, Defaults) ->
   Defaults.
 
 erlc_compile_options_overrides(_Profile, Defaults) ->
-  #{ anvl =>
-       Defaults#{dependencies => [lee, typerefl]}
-   , lee =>
-       Defaults#{ src_root => "vendor/lee"
-                , dependencies => [typerefl, snabbkaffe]
-                }
-   , typerefl =>
-       Defaults#{src_root => "vendor/typerefl"}
-   , snabbkaffe =>
-       Defaults#{src_root => "vendor/snabbkaffe"}
+  #{ lee        => Defaults#{src_root => "vendor/lee", dependencies => [snabbkaffe]}
+   , typerefl   => Defaults#{src_root => "vendor/typerefl"}
+   , snabbkaffe => Defaults#{src_root => "vendor/snabbkaffe"}
    }.
 
 erlc_escripts(_Profile) ->
