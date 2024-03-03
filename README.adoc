@@ -104,7 +104,7 @@ gentoo_package("yacc") ->
   "dev-util/byacc".
 ----
 
-Notable, one of the conditions doesn't create a file with a name known in advance (location of `yacc` executable is resolved dynamically via `PATH` environment variable).
+Notably, one of the conditions doesn't create a file with a name known in advance (location of `yacc` executable is resolved dynamically via `PATH` environment variable).
 Something like that can't be implemented in `make` via phony targets (since normal targets that depend on the phony targets will be unconditionally rebuilt).
 `make` will require a "creative" solution that will probably involve empty files, while the corresponding `anvl` code remains boring and unimaginative.
 Hence we call `anvl` "general-purpose": it can do things beyond building source code.

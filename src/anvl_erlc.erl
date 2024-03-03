@@ -252,7 +252,7 @@ escript({Profile, EscriptName}) ->
     #{EscriptName := #{apps := Apps, emu_args := EmuArgs}} ->
       escript(Profile, EscriptName, Apps, EmuArgs);
     _ ->
-      ?LOG_CRITICAL("Couldn'app_compiledind escript spec for ~p in profile ~p~n~p", [EscriptName, Profile]),
+      ?LOG_CRITICAL("Couldn't find escript specification for ~p in profile ~p~n~p", [EscriptName, Profile]),
       exit(unsat)
   end.
 
