@@ -63,6 +63,7 @@
          , build_root := file:filename_all()
          , build_dir := file:filename_all()
          , compile_options := list()
+         , sources := [anvl_lib:filename_pattern()]
            %% List of directories where hrl files are located:
          , includes := [file:filename_all()]
          }.
@@ -224,16 +225,15 @@ app({Profile, App}) ->
   BuildDir = build_dir(BuildRoot, App),
   %% Create the context:
   %% 0. Add constants:
-  Ctx0 = #{app => App, profile => Profile, build_root => BuildRoot, build_dir => BuildDir, src_root => SrcRoot},
+  Ctx0 = #{ app => App, profile => Profile, build_root => BuildRoot, build_dir => BuildDir, src_root => SrcRoot
+          , sources => SrcPatterns
+          },
   %% 1. Enrich compile options with the paths to the include directories:
   IncludeDirs = [template(I, Ctx0, list) || I <- IncludePatterns],
   COpts = [{i, I} || I <- IncludeDirs] ++ COpts0,
   Context = Ctx0 #{includes => IncludeDirs, compile_options => COpts},
   %% 2. Get list of source files:
-  Sources = lists:flatmap(fun(SrcPat) ->
-                              filelib:wildcard(template(SrcPat, Ctx0, list))
-                          end,
-                          SrcPatterns),
+  Sources = list_app_sources(Context),
   CRef = self(),
   set_ctx(CRef, Context),
   ok = filelib:ensure_path(filename:join(BuildDir, "ebin")),
@@ -242,7 +242,7 @@ app({Profile, App}) ->
   %% TODO: this is a hack, should be done by dependency manager:
   code:add_pathz(filename:join(BuildDir, "ebin")),
   %% Build BEAM files:
-  precondition([{?CNAME("erlc"), fun beam/1, {Src, CRef}} || Src <- Sources]) or
+  precondition([beam(Src, CRef) || Src <- Sources]) or
     clean_orphans(Sources, Context) or
     copy_includes(Context) or
     render_app_spec(AppSrcProperties, Sources, Context).
@@ -286,6 +286,9 @@ escript(Profile, EscriptName, Apps, EmuFlags) ->
   %% TODO:
   true.
 
+beam(Src, CRef) ->
+  {?CNAME("beam"), fun beam/1, {Src, CRef}}.
+
 beam({Src, CRef}) ->
   #{profile := Profile, compile_options := COpts} = Context = get_ctx(CRef),
   Module = module_of_erl(Src),
@@ -312,11 +315,41 @@ beam_deps({Src, Beam, CRef}) ->
   Dependencies = binary_to_term(Bin),
   lists:foldl(fun({file, Dep}, Acc) ->
                   Acc or newer(Dep, Beam);
-                 ({parse_transform, ParseTransform}, Acc) ->
-                  Acc or precondition(module(Profile, ParseTransform))
+                 ({parse_transform, ParseTransMod}, Acc) ->
+                  Acc or parse_transform(Profile, ParseTransMod, CRef)
               end,
               false,
               Dependencies).
+
+parse_transform(Profile, Module, CRef) ->
+  %% The logic is the following:
+  %%
+  %% 1. If the parse transform module has been already compiled for
+  %% this profile, just return whether it has changed.
+  %%
+  %% 2 Otherwise, we assume that it is defined in the same
+  %% application, and make it a precondition `beam/1'.
+  %%
+  %% 3. If it doesn't work, we fail: it means the source dependency is
+  %% missing from the config, and user must fix it.
+  case anvl_condition:is_changed(module(Profile, Module)) of
+    Changed when is_boolean(Changed) ->
+      Changed;
+    undefined ->
+      precondition({?CNAME("parse_trans"), fun local_parse_transform/1, {Module, CRef}})
+  end.
+
+local_parse_transform({Module, CRef}) ->
+  Ctx = #{src_root := SrcRoot} = get_ctx(CRef),
+  case lists:search(fun(Src) ->
+                        module_of_erl(Src) =:= Module
+                    end,
+                    list_app_sources(Ctx)) of
+    {value, Src} ->
+      anvl_condition:set_result({?MODULE, parse_transform, Module}, precondition(beam(Src, CRef)));
+    false ->
+      ?UNSAT("Parse transform ~p is not found in ~s, or in any of the application dependencies", [Module, SrcRoot])
+  end.
 
 %% @private Precondition: .dep file for the module is up to date
 depfile({Src, DepFile, CRef}) ->
@@ -442,6 +475,12 @@ process_attributes(OrigFile, EPP, Acc) ->
     _ ->
       process_attributes(OrigFile, EPP, Acc)
   end.
+
+list_app_sources(Ctx = #{sources := SrcPatterns}) ->
+  lists:flatmap(fun(SrcPat) ->
+                    filelib:wildcard(template(SrcPat, Ctx, list))
+                end,
+                SrcPatterns).
 
 -spec get_ctx(cref()) -> context().
 get_ctx(CRef) ->

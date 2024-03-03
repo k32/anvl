@@ -26,7 +26,7 @@
 -behavior(gen_server).
 
 %% API:
--export([stats/0, precondition/1, precondition/2]).
+-export([stats/0, precondition/1, precondition/2, is_changed/1]).
 -export([speculative/1, satisfies/1]).
 -export([get_result/1, set_result/2]).
 
@@ -97,6 +97,15 @@ precondition(Tup) when is_tuple(Tup) ->
 precondition(L) when is_list(L) ->
   precondition(L, 100).
 
+-spec is_changed(t()) -> boolean() | undefined.
+is_changed(Cond) ->
+  case ets:lookup(?tab, key(Cond)) of
+    [#done{changed = Changed}] ->
+      Changed;
+    _ ->
+      undefined
+  end.
+
 -spec precondition([t()], pos_integer() | infinity) -> boolean().
 precondition(L, ChunkSize) when ChunkSize > 0 ->
   precondition1(L, false, ChunkSize).
@@ -117,7 +126,7 @@ precondition2([], ResultAcc, WaitingAcc, _, _) ->
 precondition2(Rest, ResultAcc, WaitingAcc, N, Nmax) when N >= Nmax ->
   {ResultAcc, WaitingAcc, Rest};
 precondition2([Cond | CondL], ResultAcc, WaitingAcc, N, Nmax) ->
-  case sat_async1(Cond) of
+  case precondition_async1(Cond) of
     {done, Result} ->
       precondition2(CondL, Result or ResultAcc, WaitingAcc, N, Nmax);
     {in_progress, Task, MRef} ->
@@ -242,13 +251,20 @@ wait_result(Condition, MRef) ->
 
 exec({M, Fun, A}) when is_function(Fun, 1) ->
   logger:update_process_metadata(#{condition => M}),
-  ensure_boolean(apply(Fun, [A])).
+  case apply(Fun, [A]) of
+    Bool when is_boolean(Bool) ->
+      Bool;
+    Other ->
+      ?LOG_CRITICAL("(Plugin error): condition returned non-boolean result ~p", [Other]),
+      exit(unsat)
+  end.
+
 %% exec({M, F, A}) ->
 %%   logger:update_process_metadata(#{condition => M}),
 %%   ensure_boolean(apply(M, F, [A])).
 
--spec sat_async1(t()) -> {done, boolean()} | {in_progress, t(), reference()}.
-sat_async1(Condition) ->
+-spec precondition_async1(t()) -> {done, boolean()} | {in_progress, t(), reference()}.
+precondition_async1(Condition) ->
   case ets:lookup(?tab, key(Condition)) of
     [#done{changed = Changed}] ->
       {done, Changed};
@@ -263,7 +279,7 @@ sat_async1(Condition) ->
           {in_progress, Condition, MRef};
         {'DOWN', MRef, _, _, Reason} ->
           retry = Reason,
-          sat_async1(Condition)
+          precondition_async1(Condition)
       end
   end.
 
@@ -279,7 +295,7 @@ get_resolve_conditions() ->
 resolve_speculative(Result) ->
   lists:foreach(fun(Cond) ->
                     %% Ensure speculative process is running:
-                    _ = sat_async1(Cond),
+                    _ = precondition_async1(Cond),
                     case ets:lookup(?tab, key(Cond)) of
                       [#in_progress{pid = Pid}] ->
                         Pid ! Result;
@@ -292,12 +308,6 @@ resolve_speculative(Result) ->
 
 inc_counter(Idx) ->
   counters:add(persistent_term:get(?counters), Idx, 1).
-
-ensure_boolean(Bool) when is_boolean(Bool) ->
-  Bool;
-ensure_boolean(Other) ->
-  ?LOG_ERROR("(Plugin error): condition returned non-boolean result ~p", [Other]),
-  exit(unsat).
 
 key({_Descr, Fun, Arg}) ->
   {Fun, Arg}.
