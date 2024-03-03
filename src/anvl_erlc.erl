@@ -143,6 +143,12 @@ app_spec(Profile, App) ->
 
 model() ->
   Profiles = profiles(),
+  Profile = {[value, cli_param],
+             #{ type => typerefl:union(Profiles)
+              , default => hd(Profiles)
+              , cli_operand => "profile"
+              , cli_short => $p
+              }},
   #{anvl_erlc =>
       #{ escript =>
            {[map, cli_action],
@@ -151,22 +157,31 @@ model() ->
              },
             #{ name =>
                  {[value, cli_positional],
-                  #{ type => [atom()]
+                  #{ type => list(atom())
                    , default => []
                    , cli_arg_position => rest
                    }}
              , profile =>
-                 {[value, cli_param],
-                  #{ type => typerefl:union(Profiles)
-                   , default => hd(Profiles)
-                   , cli_operand => "profile"
-                   , cli_short => $p
+                 Profile
+             }}
+       , compile =>
+           {[map, cli_action],
+            #{ key_elements => [[apps]]
+             , cli_operand => "erlc"
+             },
+            #{ apps =>
+                 {[value, cli_positional],
+                  #{ type => list(atom())
+                   , default => []
+                   , cli_arg_position => rest
                    }}
+             , profile =>
+                 Profile
              }}
        }}.
 
 conditions() ->
-  get_escripts().
+  get_compile_apps() ++ get_escripts().
 
 -endif. %% !BOOTSTRAP
 
@@ -315,6 +330,15 @@ get_escripts() ->
                       Escripts -> ok
                     end,
                     [anvl_erlc:escript(Profile, I) || I <- Escripts]
+                end,
+                Keys).
+
+get_compile_apps() ->
+  Keys = anvl_plugin:list_conf([anvl_erlc, compile, {}]),
+  lists:flatmap(fun(Key) ->
+                    Profile = anvl_plugin:conf(Key ++ [profile]),
+                    Apps = anvl_plugin:conf(Key ++ [apps]),
+                    [anvl_erlc:app(Profile, I) || I <- Apps]
                 end,
                 Keys).
 

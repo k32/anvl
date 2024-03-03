@@ -30,7 +30,7 @@
 plugins() ->
   [anvl_erlc].
 
-profiles() ->
+erlc_profiles() ->
   [default, stage2].
 
 erlc_compile_options(_Profile, Defaults) ->
