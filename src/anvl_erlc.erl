@@ -308,7 +308,8 @@ beam_deps({Src, Beam, CRef}) ->
   #{profile := Profile} = Ctx = get_ctx(CRef),
   DepFile = dep_of_erl(Src, Ctx),
   precondition({?CNAME("beam_deps"), fun depfile/1, {Src, DepFile, CRef}}),
-  {ok, Dependencies} = file:consult(DepFile),
+  {ok, Bin} = file:read_file(DepFile),
+  Dependencies = binary_to_term(Bin),
   lists:foldl(fun({file, Dep}, Acc) ->
                   Acc or newer(Dep, Beam);
                  ({parse_transform, ParseTransform}, Acc) ->
@@ -330,9 +331,7 @@ depfile({Src, DepFile, CRef}) ->
                                      COpts),
       {ok, EPP} = epp:open(Src, IncludeDirs, PredefMacros),
       Data = process_attributes(Src, EPP, []),
-      {ok, DestFD} = file:open(DepFile, [write]),
-      [io:format(DestFD, "~p.~n", [I]) || I <- Data],
-      file:close(DestFD),
+      ok = file:write_file(DepFile, term_to_binary(Data)),
       true
     end.
 
