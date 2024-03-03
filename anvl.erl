@@ -50,9 +50,9 @@ erlc_compile_options_overrides(_Profile, Defaults) ->
    }.
 
 erlc_escripts(_Profile) ->
-  #{anvl_app =>
+  #{anvl =>
       #{ apps => [anvl, lee, typerefl]
-       , emu_args => ""
+       , emu_args => "-escript main anvl_app"
        }}.
 
 %%================================================================================
