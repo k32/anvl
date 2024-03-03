@@ -22,7 +22,7 @@
 -behavior(anvl_plugin).
 
 %% API:
--export([defaults/0, sources_discovered/2, src_root/2, escript/2, app/2, module/2, app_path/2, app_spec/2]).
+-export([defaults/0, sources_discovered/2, src_root/2, escript/2, app_compiled/2, module/2, app_path/2, app_spec/2]).
 
 -ifndef(BOOTSTRAP).
 %% behavior callbacks:
@@ -119,8 +119,8 @@ src_root(Profile, App) ->
   anvl_condition:get_result({?MODULE, src_root, Profile, App}).
 
 %% @doc Condition: Erlang application has been compiled
--spec app(profile(), application()) -> anvl_condition:t().
-app(Profile, App) ->
+-spec app_compiled(profile(), application()) -> anvl_condition:t().
+app_compiled(Profile, App) ->
   {?CNAME("app"), fun app/1, {Profile, App}}.
 
 %% @doc Speculative condition: a particular module has been compiled.
@@ -220,7 +220,7 @@ app({Profile, App}) ->
   Dependencies = non_otp_apps(Dependencies0 ++ proplists:get_value(applications, AppSrcProperties, [])),
   BuildRoot = filename:join([?BUILD_ROOT, integer_to_list(erlang:phash2(COpts0))]),
   %% Satisfy the dependencies:
-  _ = precondition([app(Profile, Dep) || Dep <- Dependencies]),
+  _ = precondition([app_compiled(Profile, Dep) || Dep <- Dependencies]),
   BuildDir = build_dir(BuildRoot, App),
   %% Create the context:
   %% 0. Add constants:
@@ -252,7 +252,7 @@ escript({Profile, EscriptName}) ->
     #{EscriptName := #{apps := Apps, emu_args := EmuArgs}} ->
       escript(Profile, EscriptName, Apps, EmuArgs);
     _ ->
-      ?LOG_CRITICAL("Couldn't find escript spec for ~p in profile ~p~n~p", [EscriptName, Profile]),
+      ?LOG_CRITICAL("Couldn'app_compiledind escript spec for ~p in profile ~p~n~p", [EscriptName, Profile]),
       exit(unsat)
   end.
 
@@ -261,7 +261,7 @@ escript(Profile, EscriptName, Apps, EmuFlags) ->
   ok = filelib:ensure_dir(Filename),
   ?LOG_NOTICE("Creating ~s", [Filename]),
   %% Satisfy dependencies:
-  _Changed0 = precondition([app(Profile, App) || App <- Apps]),
+  _Changed0 = precondition([app_compiled(Profile, App) || App <- Apps]),
   Paths = lists:flatmap(fun(App) ->
                             Dir = filename:join(app_path(Profile, App), "ebin"),
                             {application, App, Props} = app_spec(Profile, App),
@@ -356,7 +356,7 @@ get_compile_apps() ->
   lists:flatmap(fun(Key) ->
                     Profile = anvl_plugin:conf(Key ++ [profile]),
                     Apps = anvl_plugin:conf(Key ++ [apps]),
-                    [anvl_erlc:app(Profile, I) || I <- Apps]
+                    [anvl_erlc:app_compiled(Profile, I) || I <- Apps]
                 end,
                 Keys).
 
@@ -451,6 +451,10 @@ get_ctx(CRef) ->
 set_ctx(CRef, Ctx) ->
   persistent_term:put({?MODULE, context, CRef}, Ctx).
 
+non_otp_apps(Apps) ->
+  %% FIXME: hack
+  Apps -- [kernel, compiler, mnesia, stdlib, xmerl].
+
 %%================================================================================
 %% Configuration:
 %%================================================================================
@@ -474,7 +478,3 @@ compile_options_overrides(Profile, Defaults) ->
 escript_specs(Profile) ->
   anvl_lib:pcfg(erlc_escripts, [Profile], #{},
                 ?TYPE(escripts_ret())).
-
-non_otp_apps(Apps) ->
-  %% FIXME: hack
-  Apps -- [kernel, compiler, mnesia, stdlib, xmerl].
