@@ -44,8 +44,7 @@
 %% Type declarations
 %%================================================================================
 
--type t() :: {module(), atom(), term()}
-           | {_Descr :: atom() | string(), fun((Arg) -> boolean()), Arg}.
+-type t() :: {_Descr :: atom() | string(), fun((Arg) -> boolean()), Arg}.
 
 -type speculative() :: term().
 
@@ -97,7 +96,7 @@ precondition(Tup) when is_tuple(Tup) ->
   precondition([Tup]);
 precondition(L0) when is_list(L0) ->
   L = lists:flatten(L0),
-  Futures = [sat_async1(Task) || Task <- L],
+  Futures = [sat_async1(I) || I <- L],
   Results = lists:map(fun({done, Result}) ->
                           Result;
                          ({in_progress, Task, MRef}) ->
@@ -122,13 +121,14 @@ satisfies(Cond) ->
 %% situations where a concrete recipe that satisfies the condition is
 %% not known in advance.
 -spec speculative(speculative()) -> ok.
-speculative({'$speculative', Cond}) ->
-  receive
-    {done, Bool} -> Bool;
-    unsat        -> unsat(Cond)
-  end;
 speculative(Cond) ->
-  {?MODULE, ?FUNCTION_NAME, {'$speculative', Cond}}.
+  Body = fun(C) ->
+             receive
+               {done, Bool} -> Bool;
+               unsat        -> unsat(C)
+             end
+         end,
+  {speculative, Body, Cond}.
 
 %%% Return values:
 
@@ -180,7 +180,7 @@ terminate(_Reason, _S) ->
 
 condition_entrypoint(Condition, Parent) ->
   process_flag(trap_exit, true),
-  case ets:insert_new(?tab, #in_progress{id = Condition, pid = self()}) of
+  case ets:insert_new(?tab, #in_progress{id = key(Condition), pid = self()}) of
     false ->
       %% Race condition: the same task was spawned by other actor; retry
       exit(retry);
@@ -190,7 +190,7 @@ condition_entrypoint(Condition, Parent) ->
       inc_counter(?cnt_started),
       try exec(Condition) of
         Changed ->
-          ets:insert(?tab, #done{id = Condition, changed = Changed}),
+          ets:insert(?tab, #done{id = key(Condition), changed = Changed}),
           resolve_speculative({done, Changed}),
           inc_counter(?cnt_complete),
           Changed andalso inc_counter(?cnt_changed),
@@ -202,7 +202,7 @@ condition_entrypoint(Condition, Parent) ->
                        {unsat, _} -> debug;
                        _          -> error
                      end,
-          ?LOG(LogLevel, "Failed ~p (~p:~p). Stacktrace:~n~p", [Condition, EC, Err, Stack]),
+          ?LOG(LogLevel, "!!! Failed ~p~n~p:~p~nStacktrace:~n~p", [Condition, EC, Err, Stack]),
           inc_counter(?cnt_failed),
           ets:insert(?tab, #failed{id = Condition, error = {EC, Err, Stack}}),
           resolve_speculative(unsat),
@@ -227,14 +227,14 @@ wait_result(Condition, MRef) ->
 
 exec({M, Fun, A}) when is_function(Fun, 1) ->
   logger:update_process_metadata(#{condition => M}),
-  ensure_boolean(apply(Fun, [A]));
-exec({M, F, A}) ->
-  logger:update_process_metadata(#{condition => M}),
-  ensure_boolean(apply(M, F, [A])).
+  ensure_boolean(apply(Fun, [A])).
+%% exec({M, F, A}) ->
+%%   logger:update_process_metadata(#{condition => M}),
+%%   ensure_boolean(apply(M, F, [A])).
 
 -spec sat_async1(t()) -> {done, boolean()} | {in_progress, t(), reference()}.
 sat_async1(Condition) ->
-  case ets:lookup(?tab, Condition) of
+  case ets:lookup(?tab, key(Condition)) of
     [#done{changed = Changed}] ->
       {done, Changed};
     [#failed{}] ->
@@ -265,7 +265,7 @@ resolve_speculative(Result) ->
   lists:foreach(fun(Cond) ->
                     %% Ensure speculative process is running:
                     _ = sat_async1(Cond),
-                    case ets:lookup(?tab, Cond) of
+                    case ets:lookup(?tab, key(Cond)) of
                       [#in_progress{pid = Pid}] ->
                         Pid ! Result;
                       [#done{changed = Changed}] ->
@@ -283,3 +283,6 @@ ensure_boolean(Bool) when is_boolean(Bool) ->
 ensure_boolean(Other) ->
   ?LOG_ERROR("(Plugin error): condition returned non-boolean result ~p", [Other]),
   exit(unsat).
+
+key({_Descr, Fun, Arg}) ->
+  {Fun, Arg}.

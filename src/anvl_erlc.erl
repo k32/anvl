@@ -393,7 +393,7 @@ copy_includes(#{build_dir := BuildDir, src_root := SrcRoot}) ->
               Includes).
 
 %% @private Render application specification:
-render_app_spec(AppSrcProperties, Sources, #{app := App, profile := Profile, build_dir := BuildDir, src_root := SrcRoot}) ->
+render_app_spec(AppSrcProperties, Sources, #{app := App, profile := Profile, build_dir := BuildDir}) ->
   AppFile = filename:join([BuildDir, "ebin", atom_to_list(App) ++ ".app"]),
   case file:consult(AppFile) of
     {ok, [OldContent]} -> ok;

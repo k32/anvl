@@ -28,7 +28,7 @@
 -export([start/2, stop/1]).
 
 %% internal exports:
--export([bootstrap/0, bootstrapped/1]).
+-export([bootstrap/0]).
 
 -include_lib("kernel/include/logger.hrl").
 -include("anvl_imports.hrl").
@@ -57,7 +57,7 @@ halt(ExitCode) ->
 bootstrap() ->
   ?MODULE:start(normal, []),
   ?LOG_NOTICE("Bootstrap: Stage 2"),
-  exec_top([{?MODULE, bootstrapped, []}]).
+  exec_top([{?MODULE, fun bootstrapped/1, []}]).
 
 bootstrapped(_) ->
   Profile = stage2,
