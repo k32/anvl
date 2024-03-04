@@ -151,7 +151,7 @@ app_spec(Profile, App) ->
 %% plugin interface.
 
 model() ->
-  Profiles = profiles(),
+  Profiles = cfg_profiles(),
   Profile = {[value, cli_param],
              #{ type => typerefl:union(Profiles)
               , default => hd(Profiles)
@@ -209,14 +209,14 @@ discovered({Profile, App}) ->
   anvl_condition:set_result({?MODULE, src_root, Profile, App}, Dir).
 
 app({Profile, App}) ->
-  ProfileOpts = compile_options(Profile),
+  ProfileOpts = cfg_compile_options(Profile),
   _ = precondition(sources_discovered(Profile, App)),
   SrcRoot = src_root(Profile, App),
   #{ compile_options := COpts0
    , includes := IncludePatterns
    , sources := SrcPatterns
    , dependencies := Dependencies0
-   } = maps:get(App, compile_options_overrides(Profile, ProfileOpts), ProfileOpts),
+   } = maps:get(App, cfg_compile_options_overrides(Profile, ProfileOpts), ProfileOpts),
   AppSrcProperties = app_src(App, SrcRoot),
   Dependencies = non_otp_apps(Dependencies0 ++ proplists:get_value(applications, AppSrcProperties, [])),
   BuildRoot = filename:join([?BUILD_ROOT, integer_to_list(erlang:phash2(COpts0))]),
@@ -248,7 +248,7 @@ app({Profile, App}) ->
     render_app_spec(AppSrcProperties, Sources, Context).
 
 escript({Profile, EscriptName}) ->
-  case escript_specs(Profile) of
+  case cfg_escript_specs(Profile) of
     #{EscriptName := #{apps := Apps, emu_args := EmuArgs}} ->
       escript(Profile, EscriptName, Apps, EmuArgs);
     _ ->
@@ -377,7 +377,7 @@ get_escripts() ->
   lists:flatmap(fun(Key) ->
                     Profile = anvl_plugin:conf(Key ++ [profile]),
                     case anvl_plugin:conf(Key ++ [name]) of
-                      []       -> Escripts = maps:keys(escript_specs(Profile));
+                      []       -> Escripts = maps:keys(cfg_escript_specs(Profile));
                       Escripts -> ok
                     end,
                     [anvl_erlc:escript(Profile, I) || I <- Escripts]
@@ -498,7 +498,7 @@ non_otp_apps(Apps) ->
 %% Configuration:
 %%================================================================================
 
-profiles() ->
+cfg_profiles() ->
   anvl_lib:pcfg(erlc_profiles, [], [default],
                 ?TYPE(nonempty_list(profile()))).
 
@@ -506,14 +506,14 @@ cfg_source_location(Profile) ->
   anvl_lib:pcfg(erlc_source_location, [Profile],
                ?TYPE(source_location_ret())).
 
-compile_options(Profile) ->
+cfg_compile_options(Profile) ->
   anvl_lib:pcfg(erlc_compile_options, [Profile, defaults()],
                 ?TYPE(compile_options())).
 
-compile_options_overrides(Profile, Defaults) ->
+cfg_compile_options_overrides(Profile, Defaults) ->
   anvl_lib:pcfg(erlc_compile_options_overrides, [Profile, Defaults], #{},
                 ?TYPE(compile_options_overrides())).
 
-escript_specs(Profile) ->
+cfg_escript_specs(Profile) ->
   anvl_lib:pcfg(erlc_escripts, [Profile], #{},
                 ?TYPE(escripts_ret())).

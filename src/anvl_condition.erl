@@ -110,29 +110,6 @@ is_changed(Cond) ->
 precondition(L, ChunkSize) when ChunkSize > 0 ->
   precondition1(L, false, ChunkSize).
 
-precondition1([], Result, _ChunkSize) ->
-  Result;
-precondition1(L, Result0, ChunkSize) ->
-  {Result1, WaitL, Rest} = precondition2(L, Result0, [], 0, ChunkSize),
-  Result = lists:foldl(fun({Task, MRef}, Acc) ->
-                           Acc or wait_result(Task, MRef)
-                       end,
-                       Result1,
-                       WaitL),
-  precondition1(Rest, Result, ChunkSize).
-
-precondition2([], ResultAcc, WaitingAcc, _, _) ->
-  {ResultAcc, WaitingAcc, []};
-precondition2(Rest, ResultAcc, WaitingAcc, N, Nmax) when N >= Nmax ->
-  {ResultAcc, WaitingAcc, Rest};
-precondition2([Cond | CondL], ResultAcc, WaitingAcc, N, Nmax) ->
-  case precondition_async1(Cond) of
-    {done, Result} ->
-      precondition2(CondL, Result or ResultAcc, WaitingAcc, N, Nmax);
-    {in_progress, Task, MRef} ->
-      precondition2(CondL, ResultAcc, [{Task, MRef} | WaitingAcc], N + 1, Nmax)
-  end.
-
 %%%% Speculative targets:
 
 %% @doc This function is called by the condition process to specify
@@ -237,6 +214,30 @@ condition_entrypoint(Condition, Parent) ->
 %%================================================================================
 %% Internal functions
 %%================================================================================
+
+precondition1([], Result, _ChunkSize) ->
+  Result;
+precondition1(L, Result0, ChunkSize) ->
+  {Result1, WaitL, Rest} = precondition2(L, Result0, [], 0, ChunkSize),
+  Result = lists:foldl(fun({Task, MRef}, Acc) ->
+                           Acc or wait_result(Task, MRef)
+                       end,
+                       Result1,
+                       WaitL),
+  precondition1(Rest, Result, ChunkSize).
+
+precondition2([], ResultAcc, WaitingAcc, _Nwaiting, _Nmax) ->
+  {ResultAcc, WaitingAcc, []};
+precondition2(Rest, ResultAcc, WaitingAcc, Nwaiting, Nmax) when Nwaiting >= Nmax ->
+  {ResultAcc, WaitingAcc, Rest};
+precondition2([Cond | CondL], ResultAcc, WaitingAcc, Nwaiting, Nmax) ->
+  case precondition_async1(Cond) of
+    {done, Result} ->
+      precondition2(CondL, Result or ResultAcc, WaitingAcc, Nwaiting, Nmax);
+    {in_progress, Task, MRef} ->
+      precondition2(CondL, ResultAcc, [{Task, MRef} | WaitingAcc], Nwaiting + 1, Nmax)
+  end.
+
 
 wait_result(Condition, MRef) ->
   receive
