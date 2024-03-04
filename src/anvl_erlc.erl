@@ -24,12 +24,9 @@
 %% API:
 -export([defaults/0, sources_discovered/2, src_root/2, escript/2, app_compiled/2, module/2, app_path/2, app_spec/2]).
 
--ifndef(BOOTSTRAP).
+
 %% behavior callbacks:
 -export([model/0, conditions/0]).
-
--include_lib("typerefl/include/types.hrl").
--endif. %% !BOOTSTRAP
 
 -include_lib("kernel/include/logger.hrl").
 -include("anvl_macros.hrl").
@@ -74,10 +71,11 @@
 -define(app_spec(PROFILE, APP), {?MODULE, app_spec, PROFILE, APP}).
 
 -ifndef(BOOTSTRAP).
+  -include_lib("typerefl/include/types.hrl").
   -define(TYPE(T), T).
 -else.
   -define(TYPE(T), typerefl:term()).
--endif.
+-endif. %% !BOOTSTRAP
 
 -reflect_type([profile/0, source_location_ret/0, compile_options/0, compile_options_overrides/0, escripts_ret/0]).
 
@@ -145,11 +143,6 @@ app_spec(Profile, App) ->
 %% Behavior callbacks
 %%================================================================================
 
--ifndef(BOOTSTRAP).
-%% During the bootstrap stage we don't have the parse transforms and
-%% 3rd party libraries needed for handling the schema, so we hide the
-%% plugin interface.
-
 model() ->
   Profiles = cfg_profiles(),
   Profile = {[value, cli_param],
@@ -166,7 +159,7 @@ model() ->
              },
             #{ name =>
                  {[value, cli_positional],
-                  #{ type => list(atom())
+                  #{ type => ?TYPE(list(atom()))
                    , default => []
                    , cli_arg_position => rest
                    }}
@@ -180,7 +173,7 @@ model() ->
              },
             #{ apps =>
                  {[value, cli_positional],
-                  #{ type => list(atom())
+                  #{ type => ?TYPE(list(atom()))
                    , default => []
                    , cli_arg_position => rest
                    }}
@@ -191,8 +184,6 @@ model() ->
 
 conditions() ->
   get_compile_apps() ++ get_escripts().
-
--endif. %% !BOOTSTRAP
 
 %%================================================================================
 %% Condition implementations
