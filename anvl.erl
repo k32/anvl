@@ -18,9 +18,8 @@
 %%================================================================================
 
 %% @doc Config file used for the second stage of bootstrap
--module(anvl).
+-module(anvl_config).
 
--compile(export_all).
 -behavior(anvl_erlc).
 
 %%================================================================================

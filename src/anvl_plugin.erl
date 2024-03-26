@@ -29,6 +29,7 @@
 
 -include("anvl_macros.hrl").
 -include_lib("lee/include/lee.hrl").
+-include_lib("typerefl/include/types.hrl").
 
 %%================================================================================
 %% Type declarations
@@ -36,7 +37,7 @@
 
 -callback model() -> lee:model_module().
 
--callback conditions() -> [anvl_condition:t()].
+-callback conditions(file:filename_all()) -> [anvl_condition:t()].
 
 -define(conf_storage, ?lee_persistent_term_storage(anvl_conf_storage)).
 
@@ -65,7 +66,7 @@ init() ->
   end.
 
 conditions() ->
-  lists:flatmap(fun(Plugin) -> Plugin:conditions() end, plugins()).
+  lists:flatmap(fun(Plugin) -> Plugin:conditions(anvl_lib:root()) end, plugins()).
 
 -spec conf(lee:key()) -> term().
 conf(Key) ->
@@ -98,7 +99,7 @@ model() ->
 %%================================================================================
 
 plugins() ->
-  ?CONFIG:plugins().
+  anvl_lib:pcfg(anvl_lib:root(), plugins, [], [], [module()]).
 
 metamodel() ->
   [ lee:base_metamodel()

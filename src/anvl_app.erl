@@ -32,6 +32,7 @@
 
 -include_lib("kernel/include/logger.hrl").
 -include("anvl_imports.hrl").
+-include("anvl_macros.hrl").
 
 %%================================================================================
 %% API
@@ -41,11 +42,10 @@ main(CLIArgs) ->
   application:set_env(anvl, cli_args, CLIArgs),
   {ok, _} = application:ensure_all_started(anvl),
   set_logger_conf(),
-  {ok, anvl, Bin} = compile:noenv_file("anvl.erl", [report, binary, nowarn_export_all]),
-  code:load_binary(anvl, "anvl.erl", Bin),
   anvl_plugin:init(),
   exec_top(anvl_plugin:conditions()).
 
+-spec halt(char()) -> no_return().
 halt(ExitCode) ->
   logger_std_h:filesync(default),
   erlang:halt(ExitCode).
@@ -57,11 +57,12 @@ halt(ExitCode) ->
 bootstrap() ->
   ?MODULE:start(normal, []),
   ?LOG_NOTICE("Bootstrap: Stage 2"),
-  exec_top([{?MODULE, fun bootstrapped/1, []}]).
-
-bootstrapped(_) ->
-  Profile = stage2,
-  precondition(anvl_erlc:escript(Profile, anvl)).
+  Do = fun(_) ->
+           {ok, RootDir} = file:get_cwd(),
+           Profile = stage2,
+           precondition(anvl_erlc:escript(RootDir, Profile, anvl))
+       end,
+  exec_top([{"stage2", Do, []}]).
 
 %%================================================================================
 %% behavior callbacks
@@ -104,3 +105,7 @@ set_logger_conf() ->
                               ]
                 }},
   logger:update_handler_config(default, formatter, Formatter).
+
+%%================================================================================
+%% Configuration handling
+%%================================================================================

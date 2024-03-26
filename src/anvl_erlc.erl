@@ -22,11 +22,10 @@
 -behavior(anvl_plugin).
 
 %% API:
--export([defaults/0, sources_discovered/2, src_root/2, escript/2, app_compiled/2, module/2, app_path/2, app_spec/2]).
-
+-export([defaults/0, sources_discovered/3, src_root/2, escript/3, app_compiled/3, module/2, app_path/2, app_spec/2]).
 
 %% behavior callbacks:
--export([model/0, conditions/0]).
+-export([model/0, conditions/1]).
 
 -include_lib("kernel/include/logger.hrl").
 -include("anvl_macros.hrl").
@@ -109,27 +108,27 @@ defaults() ->
    , dependencies => []
    }.
 
--spec sources_discovered(profile(), application()) -> anvl_condition:t().
-sources_discovered(Profile, App) ->
-  {?CNAME("discover"), fun discovered/1, {Profile, App}}.
+-spec sources_discovered(file:filename_all(), profile(), application()) -> anvl_condition:t().
+sources_discovered(ProjectRoot, Profile, App) ->
+  {?CNAME("discover"), fun discovered/1, {ProjectRoot, Profile, App}}.
 
 -spec src_root(profile(), application()) -> file:filename_all().
 src_root(Profile, App) ->
   anvl_condition:get_result({?MODULE, src_root, Profile, App}).
 
 %% @doc Condition: Erlang application has been compiled
--spec app_compiled(profile(), application()) -> anvl_condition:t().
-app_compiled(Profile, App) ->
-  {?CNAME("app"), fun app/1, {Profile, App}}.
+-spec app_compiled(file:filename_all(), profile(), application()) -> anvl_condition:t().
+app_compiled(ProjectRoot, Profile, App) ->
+  {?CNAME("app"), fun app/1, {ProjectRoot, Profile, App}}.
 
 %% @doc Speculative condition: a particular module has been compiled.
 -spec module(profile(), module()) -> anvl_condition:t().
 module(Profile, Module) ->
   anvl_condition:speculative({erlang_module_compiled, Profile, Module}).
 
--spec escript(profile(), string()) -> anvl_condition:t().
-escript(Profile, EscriptName) ->
-  {?CNAME("escript"), fun escript/1, {Profile, EscriptName}}.
+-spec escript(file:filename_all(), profile(), string()) -> anvl_condition:t().
+escript(ProjectRoot, Profile, EscriptName) ->
+  {?CNAME("escript"), fun escript/1, {ProjectRoot, Profile, EscriptName}}.
 
 -spec app_path(profile(), application()) -> file:filename_all().
 app_path(Profile, App) ->
@@ -144,7 +143,7 @@ app_spec(Profile, App) ->
 %%================================================================================
 
 model() ->
-  Profiles = cfg_profiles(),
+  Profiles = profiles(anvl_lib:root()),
   Profile = {[value, cli_param],
              #{ type => typerefl:union(Profiles)
               , default => hd(Profiles)
@@ -182,16 +181,16 @@ model() ->
              }}
        }}.
 
-conditions() ->
-  get_compile_apps() ++ get_escripts().
+conditions(ProjectRoot) ->
+  get_compile_apps(ProjectRoot) ++ get_escripts(ProjectRoot).
 
 %%================================================================================
 %% Condition implementations
 %%================================================================================
 
-discovered({Profile, App}) ->
+discovered({ProjectRoot, Profile, App}) ->
   %% TODO: locations can be specified by the dependencies too...
-  Dir = case maps:get(App, cfg_source_location(Profile)) of
+  Dir = case maps:get(App, cfg_source_location(ProjectRoot, Profile)) of
           Str when is_list(Str) ->
             Str;
           {subdir, SubDir} ->
@@ -199,20 +198,20 @@ discovered({Profile, App}) ->
         end,
   anvl_condition:set_result({?MODULE, src_root, Profile, App}, Dir).
 
-app({Profile, App}) ->
-  ProfileOpts = cfg_compile_options(Profile),
-  _ = precondition(sources_discovered(Profile, App)),
+app({ProjectRoot, Profile, App}) ->
+  ProfileOpts = cfg_compile_options(ProjectRoot, Profile),
+  _ = precondition(sources_discovered(ProjectRoot, Profile, App)),
   SrcRoot = src_root(Profile, App),
   #{ compile_options := COpts0
    , includes := IncludePatterns
    , sources := SrcPatterns
    , dependencies := Dependencies0
-   } = maps:get(App, cfg_compile_options_overrides(Profile, ProfileOpts), ProfileOpts),
+   } = maps:get(App, cfg_compile_options_overrides(ProjectRoot, Profile, ProfileOpts), ProfileOpts),
   AppSrcProperties = app_src(App, SrcRoot),
   Dependencies = non_otp_apps(Dependencies0 ++ proplists:get_value(applications, AppSrcProperties, [])),
   BuildRoot = filename:join([?BUILD_ROOT, integer_to_list(erlang:phash2(COpts0))]),
   %% Satisfy the dependencies:
-  _ = precondition([app_compiled(Profile, Dep) || Dep <- Dependencies]),
+  _ = precondition([app_compiled(ProjectRoot, Profile, Dep) || Dep <- Dependencies]),
   BuildDir = build_dir(BuildRoot, App),
   %% Create the context:
   %% 0. Add constants:
@@ -238,21 +237,21 @@ app({Profile, App}) ->
     copy_includes(Context) or
     render_app_spec(AppSrcProperties, Sources, Context).
 
-escript({Profile, EscriptName}) ->
-  case cfg_escript_specs(Profile) of
+escript({ProjectRoot, Profile, EscriptName}) ->
+  case cfg_escript_specs(ProjectRoot, Profile) of
     #{EscriptName := #{apps := Apps, emu_args := EmuArgs}} ->
-      escript(Profile, EscriptName, Apps, EmuArgs);
+      escript(ProjectRoot, Profile, EscriptName, Apps, EmuArgs);
     _ ->
       ?LOG_CRITICAL("Couldn't find escript specification for ~p in profile ~p~n~p", [EscriptName, Profile]),
       exit(unsat)
   end.
 
-escript(Profile, EscriptName, Apps, EmuFlags) ->
+escript(ProjectRoot, Profile, EscriptName, Apps, EmuFlags) ->
   Filename = filename:join([?BUILD_ROOT, Profile, EscriptName]),
   ok = filelib:ensure_dir(Filename),
   ?LOG_NOTICE("Creating ~s", [Filename]),
   %% Satisfy dependencies:
-  _Changed0 = precondition([app_compiled(Profile, App) || App <- Apps]),
+  _Changed0 = precondition([app_compiled(ProjectRoot, Profile, App) || App <- Apps]),
   Paths = lists:flatmap(fun(App) ->
                             Dir = filename:join(app_path(Profile, App), "ebin"),
                             {application, App, Props} = app_spec(Profile, App),
@@ -363,19 +362,19 @@ depfile({Src, DepFile, CRef}) ->
 %% Internal functions
 %%================================================================================
 
-get_escripts() ->
+get_escripts(ProjectRoot) ->
   Keys = anvl_plugin:list_conf([anvl_erlc, escript, {}]),
   lists:flatmap(fun(Key) ->
                     Profile = anvl_plugin:conf(Key ++ [profile]),
                     case anvl_plugin:conf(Key ++ [name]) of
-                      []       -> Escripts = maps:keys(cfg_escript_specs(Profile));
+                      []       -> Escripts = maps:keys(cfg_escript_specs(ProjectRoot, Profile));
                       Escripts -> ok
                     end,
-                    [anvl_erlc:escript(Profile, I) || I <- Escripts]
+                    [escript(ProjectRoot, Profile, I) || I <- Escripts]
                 end,
                 Keys).
 
-get_compile_apps() ->
+get_compile_apps(ProjectRoot) ->
   Keys = anvl_plugin:list_conf([anvl_erlc, compile, {}]),
   lists:flatmap(fun(Key) ->
                     Profile = anvl_plugin:conf(Key ++ [profile]),
@@ -489,22 +488,22 @@ non_otp_apps(Apps) ->
 %% Configuration:
 %%================================================================================
 
-cfg_profiles() ->
-  anvl_lib:pcfg(erlc_profiles, [], [default],
+profiles(ProjectRoot) ->
+  anvl_lib:pcfg(ProjectRoot, erlc_profiles, [], [default],
                 ?TYPE(nonempty_list(profile()))).
 
-cfg_source_location(Profile) ->
-  anvl_lib:pcfg(erlc_source_location, [Profile],
+cfg_source_location(ProjectRoot, Profile) ->
+  anvl_lib:pcfg(ProjectRoot, erlc_source_location, [Profile],
                ?TYPE(source_location_ret())).
 
-cfg_compile_options(Profile) ->
-  anvl_lib:pcfg(erlc_compile_options, [Profile, defaults()],
+cfg_compile_options(ProjectRoot, Profile) ->
+  anvl_lib:pcfg(ProjectRoot, erlc_compile_options, [Profile, defaults()],
                 ?TYPE(compile_options())).
 
-cfg_compile_options_overrides(Profile, Defaults) ->
-  anvl_lib:pcfg(erlc_compile_options_overrides, [Profile, Defaults], #{},
+cfg_compile_options_overrides(ProjectRoot, Profile, Defaults) ->
+  anvl_lib:pcfg(ProjectRoot, erlc_compile_options_overrides, [Profile, Defaults], #{},
                 ?TYPE(compile_options_overrides())).
 
-cfg_escript_specs(Profile) ->
-  anvl_lib:pcfg(erlc_escripts, [Profile], #{},
+cfg_escript_specs(ProjectRoot, Profile) ->
+  anvl_lib:pcfg(ProjectRoot, erlc_escripts, [Profile], #{},
                 ?TYPE(escripts_ret())).
