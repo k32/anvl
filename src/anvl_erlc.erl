@@ -64,8 +64,6 @@
          , includes := [file:filename_all()]
          }.
 
--type cref() :: term().
-
 -define(app_path(PROFILE, APP), {?MODULE, app_path, PROFILE, APP}).
 -define(app_spec(PROFILE, APP), {?MODULE, app_spec, PROFILE, APP}).
 
@@ -224,8 +222,7 @@ app({ProjectRoot, Profile, App}) ->
   Context = Ctx0 #{includes => IncludeDirs, compile_options => COpts},
   %% 2. Get list of source files:
   Sources = list_app_sources(Context),
-  CRef = self(),
-  set_ctx(CRef, Context),
+  CRef = anvl_condition:make_context(Context),
   ok = filelib:ensure_path(filename:join(BuildDir, "ebin")),
   ok = filelib:ensure_path(filename:join(BuildDir, "include")),
   ok = filelib:ensure_path(filename:join(BuildDir, "anvl_deps")),
@@ -280,7 +277,7 @@ beam(Src, CRef) ->
   {?CNAME("beam"), fun beam/1, {Src, CRef}}.
 
 beam({Src, CRef}) ->
-  #{profile := Profile, compile_options := COpts} = Context = get_ctx(CRef),
+  #{profile := Profile, compile_options := COpts} = Context = anvl_condition:get_context(CRef),
   Module = module_of_erl(Src),
   satisfies(module(Profile, Module)),
   Beam = beam_of_erl(Src, Context),
@@ -298,7 +295,7 @@ beam({Src, CRef}) ->
 %% @private Precondition: Compile-time dependencies of the Erlang
 %% module are satisfied
 beam_deps({Src, Beam, CRef}) ->
-  #{profile := Profile} = Ctx = get_ctx(CRef),
+  #{profile := Profile} = Ctx = anvl_condition:get_context(CRef),
   DepFile = dep_of_erl(Src, Ctx),
   precondition({?CNAME("beam_deps"), fun depfile/1, {Src, DepFile, CRef}}),
   {ok, Bin} = file:read_file(DepFile),
@@ -330,7 +327,7 @@ parse_transform(Profile, Module, CRef) ->
   end.
 
 local_parse_transform({Module, CRef}) ->
-  Ctx = #{src_root := SrcRoot} = get_ctx(CRef),
+  Ctx = #{src_root := SrcRoot} = anvl_condition:get_context(CRef),
   case lists:search(fun(Src) ->
                         module_of_erl(Src) =:= Module
                     end,
@@ -343,7 +340,7 @@ local_parse_transform({Module, CRef}) ->
 
 %% @private Precondition: .dep file for the module is up to date
 depfile({Src, DepFile, CRef}) ->
-  #{includes := IncludeDirs, compile_options := COpts} = get_ctx(CRef),
+  #{includes := IncludeDirs, compile_options := COpts} = anvl_condition:get_context(CRef),
   newer(Src, DepFile) andalso
     begin
       ?LOG_INFO("Updating dependencies for ~s", [Src]),
@@ -471,14 +468,6 @@ list_app_sources(Ctx = #{sources := SrcPatterns}) ->
                     filelib:wildcard(template(SrcPat, Ctx, list))
                 end,
                 SrcPatterns).
-
--spec get_ctx(cref()) -> context().
-get_ctx(CRef) ->
-  persistent_term:get({?MODULE, context, CRef}).
-
--spec set_ctx(cref(), context()) -> ok.
-set_ctx(CRef, Ctx) ->
-  persistent_term:put({?MODULE, context, CRef}, Ctx).
 
 non_otp_apps(Apps) ->
   %% FIXME: hack

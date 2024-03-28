@@ -29,6 +29,7 @@
 -export([stats/0, precondition/1, precondition/2, is_changed/1]).
 -export([speculative/1, satisfies/1]).
 -export([get_result/1, set_result/2]).
+-export([make_context/1, get_context/1]).
 
 %% behavior callbacks:
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
@@ -36,7 +37,7 @@
 %% internal exports:
 -export([start_link/0, condition_entrypoint/2]).
 
--export_type([t/0]).
+-export_type([t/0, cref/0]).
 
 -include_lib("kernel/include/logger.hrl").
 
@@ -45,6 +46,8 @@
 %%================================================================================
 
 -type t() :: {_Descr :: atom() | string(), fun((Arg) -> boolean()), Arg}.
+
+-opaque cref() :: term().
 
 -type speculative() :: term().
 
@@ -148,6 +151,20 @@ get_result(Key) ->
 -spec set_result(_Key, _Value) -> true.
 set_result(Key, Value) ->
   true = ets:insert_new(?results, {Key, Value}).
+
+%%% Context is a term that can be shared with the preconditions of
+%%% some complex condition. Only one context is allowed per condition.
+%%% It's guaranteed to be available until the condition is satisfied.
+
+-spec get_context(cref()) -> term().
+get_context(CRef) ->
+  persistent_term:get({?MODULE, context, CRef}).
+
+-spec make_context(term()) -> cref().
+make_context(Ctx) ->
+  CRef = self(),
+  persistent_term:put({?MODULE, context, CRef}, Ctx),
+  CRef.
 
 %%================================================================================
 %% behavior callbacks
