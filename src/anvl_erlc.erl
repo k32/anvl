@@ -200,7 +200,8 @@ discovered({ProjectRoot, Profile, App}) ->
           {subdir, SubDir} ->
             filename:join(SubDir, App)
         end,
-  anvl_condition:set_result({?MODULE, src_root, Profile, App}, Dir).
+  anvl_condition:set_result({?MODULE, src_root, Profile, App}, Dir),
+  false.
 
 app({ProjectRoot, Profile, App}) ->
   ProfileOpts = cfg_compile_options(ProjectRoot, Profile),

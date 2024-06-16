@@ -149,9 +149,10 @@ get_result(Key) ->
       error({no_result, Key})
   end.
 
--spec set_result(_Key, _Value) -> true.
+-spec set_result(_Key, Value) -> Value.
 set_result(Key, Value) ->
-  true = ets:insert_new(?results, {Key, Value}).
+  true = ets:insert_new(?results, {Key, Value}),
+  Value.
 
 %%% Context is a term that can be shared with the preconditions of
 %%% some complex condition. Only one context is allowed per condition.
@@ -240,6 +241,7 @@ condition_entrypoint(Condition, Parent) ->
           resolve_speculative({done, Changed}),
           inc_counter(?cnt_complete),
           Changed andalso inc_counter(?cnt_changed),
+          ?LOG_DEBUG("Changed ~p = ~p", [Condition, Changed]),
           exit(Changed)
       catch
         EC:Err:Stack ->
