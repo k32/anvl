@@ -26,7 +26,7 @@
 -behavior(gen_server).
 
 %% API:
--export([stats/0, precondition/1, precondition/2, is_changed/1]).
+-export([stats/0, precondition/1, precondition/2, is_changed/1, with_resource/2]).
 -export([speculative/1, satisfies/1]).
 -export([get_result/1, set_result/2]).
 -export([make_context/1, get_context/1]).
@@ -76,6 +76,7 @@
 -define(cnt_complete, 2).
 -define(cnt_changed, 3).
 -define(cnt_failed, 4).
+-define(anvl_reslock, anvl_resouce_lock).
 
 %%================================================================================
 %% API functions
@@ -166,6 +167,33 @@ make_context(Ctx) ->
   persistent_term:put({?MODULE, context, CRef}, Ctx),
   CRef.
 
+%% Aquire a resource semaphore.
+%%
+%% Warning: don't abuse this API. It is only useful for calling
+%% external commands, like calling `gcc' or `git'.
+%%
+%% There are some limitations to avoid deadlocks:
+%%
+%% - Condition can hold at most one resource at a time
+%% - While resource is locked, it cannot invoke preconditions
+-spec with_resource(atom(), fun(() -> A)) -> A.
+with_resource(undefined, _Fun) ->
+  error(badarg);
+with_resource(Resource, Fun) ->
+  case erlang:get(?anvl_reslock) of
+    undefined ->
+      try
+        erlang:put(?anvl_reslock, Resource),
+        anvl_resource:grab(Resource),
+        Fun()
+      after
+        anvl_resource:release(Resource),
+        erlang:erase(?anvl_reslock)
+      end;
+    OldResource ->
+      error(#{msg => "Condition can hold at most one resource", new_resource => Resource, held_resource => OldResource})
+  end.
+
 %%================================================================================
 %% behavior callbacks
 %%================================================================================
@@ -235,6 +263,10 @@ condition_entrypoint(Condition, Parent) ->
 precondition1([], Result, _ChunkSize) ->
   Result;
 precondition1(L, Result0, ChunkSize) ->
+  case erlang:get(?anvl_reslock) of
+    undefined -> ok;
+    Resource  -> error(#{msg => "Condition cannot invoke preconditions while holding a resource lock", resource => Resource})
+  end,
   {Result1, WaitL, Rest} = precondition2(L, Result0, [], 0, ChunkSize),
   Result = lists:foldl(fun({Task, MRef}, Acc) ->
                            Acc or wait_result(Task, MRef)

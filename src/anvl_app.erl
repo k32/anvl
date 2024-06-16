@@ -55,7 +55,7 @@ halt(ExitCode) ->
 %%================================================================================
 
 bootstrap() ->
-  ?MODULE:start(normal, []),
+  {ok, _} = ?MODULE:start(normal, []),
   ?LOG_NOTICE("Bootstrap: Stage 2"),
   Do = fun(_) ->
            {ok, RootDir} = file:get_cwd(),

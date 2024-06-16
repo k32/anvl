@@ -51,19 +51,22 @@
 
 -spec newer(file:filename_all(), file:filename_all()) -> boolean().
 newer(Src, Target) ->
-  case file:read_file_info(Src, [raw]) of
-    {ok, #file_info{mtime = SrcMtime}} ->
-      case file:read_file_info(Target, [raw]) of
-        {ok, #file_info{mtime = TargetMtime}} ->
-          SrcMtime >= TargetMtime;
-        {error, enoent} ->
-          true;
-        {error, Err} ->
-          error({target_file, Target, Err})
-      end;
-    {error, Reason} ->
-      error({no_src_file, Src, Reason})
-  end.
+  Changed =
+    case file:read_file_info(Src, [raw]) of
+      {ok, #file_info{mtime = SrcMtime}} ->
+        case file:read_file_info(Target, [raw]) of
+          {ok, #file_info{mtime = TargetMtime}} ->
+            SrcMtime >= TargetMtime;
+          {error, enoent} ->
+            true;
+          {error, Err} ->
+            error({target_file, Target, Err})
+        end;
+      {error, Reason} ->
+        error({no_src_file, Src, Reason})
+    end,
+  Changed andalso ?LOG_INFO("Source ~p is newer than ~p", [Src, Target]),
+  Changed.
 
 -spec template(string(), template_vars(), list) -> string();
               (string(), template_vars(), binary) -> binary();

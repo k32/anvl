@@ -25,7 +25,7 @@
 -export([defaults/0, sources_discovered/3, src_root/2, escript/3, app_compiled/3, module/2, app_path/2, app_spec/2]).
 
 %% behavior callbacks:
--export([model/0, conditions/1]).
+-export([model/0, init/0, conditions/1]).
 
 -include_lib("kernel/include/logger.hrl").
 -include("anvl_macros.hrl").
@@ -181,6 +181,9 @@ model() ->
                  Profile
              }}
        }}.
+
+init() ->
+  ok.
 
 conditions(ProjectRoot) ->
   get_compile_apps(ProjectRoot) ++ get_escripts(ProjectRoot).

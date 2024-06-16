@@ -39,6 +39,8 @@
 
 -callback conditions(file:filename_all()) -> [anvl_condition:t()].
 
+-callback init() -> ok.
+
 -define(conf_storage, ?lee_persistent_term_storage(anvl_conf_storage)).
 
 %%================================================================================
@@ -52,7 +54,7 @@ init() ->
       ConfStorage = lee_storage:new(lee_persistent_term_storage, anvl_conf_storage),
       case lee:init_config(Model, ConfStorage) of
         {ok, ?conf_storage, _Warnings} ->
-          ok;
+          lists:foreach(fun(Mod) -> Mod:init() end, plugins());
         {error, Errors, Warnings} ->
           logger:critical("Invalid configuration"),
           [logger:critical(E) || E <- Errors],
@@ -99,7 +101,8 @@ model() ->
 %%================================================================================
 
 plugins() ->
-  anvl_lib:pcfg(anvl_lib:root(), plugins, [], [], [module()]).
+  anvl_lib:pcfg(anvl_lib:root(), plugins, [],
+                [], [module()]).
 
 metamodel() ->
   [ lee:base_metamodel()

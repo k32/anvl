@@ -47,7 +47,7 @@ start_link() ->
 %%================================================================================
 
 init([]) ->
-  Children = [condition_server()],
+  Children = [resource_server(), condition_server()],
   SupFlags = #{ strategy      => one_for_one
               , intensity     => 0
               , period        => 10
@@ -57,8 +57,17 @@ init([]) ->
 
 -spec condition_server() -> supervisor:child_spec().
 condition_server() ->
-  #{ id          => worker
+  #{ id          => condition
    , start       => {anvl_condition, start_link, []}
+   , shutdown    => 5_000
+   , restart     => permanent
+   , type        => worker
+   }.
+
+-spec resource_server() -> supervisor:child_spec().
+resource_server() ->
+  #{ id          => resource
+   , start       => {anvl_resource, start_link, []}
    , shutdown    => 5_000
    , restart     => permanent
    , type        => worker
