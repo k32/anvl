@@ -93,7 +93,10 @@
 -callback erlc_escripts(profile()) -> escripts_ret().
 -type escripts_ret() :: #{escript_name() => escript_spec()}.
 
--optional_callbacks([erlc_compile_options_overrides/2, erlc_escripts/1, erlc_profiles/0]).
+-callback erlc_app_spec_hook(profile(), application_spec()) -> application_spec().
+-type application_spec() :: {application, proplists:proplist()}.
+
+-optional_callbacks([erlc_compile_options_overrides/2, erlc_escripts/1, erlc_profiles/0, erlc_app_spec_hook/2]).
 
 %%================================================================================
 %% API functions
@@ -214,7 +217,7 @@ app({ProjectRoot, Profile, App}) ->
   %% Create the context:
   %% 0. Add constants:
   Ctx0 = #{ app => App, profile => Profile, build_root => BuildRoot, build_dir => BuildDir, src_root => SrcRoot
-          , sources => SrcPatterns
+          , sources => SrcPatterns, project_root => ProjectRoot
           },
   %% 1. Enrich compile options with the paths to the include directories:
   IncludeDirs = [template(I, Ctx0, list) || I <- IncludePatterns],
@@ -413,14 +416,16 @@ copy_includes(#{build_dir := BuildDir, src_root := SrcRoot}) ->
               Includes).
 
 %% @private Render application specification:
-render_app_spec(AppSrcProperties, Sources, #{app := App, profile := Profile, build_dir := BuildDir}) ->
+render_app_spec(AppSrcProperties, Sources, Context) ->
+  #{app := App, profile := Profile, project_root := ProjectRoot, build_dir := BuildDir} = Context,
   AppFile = filename:join([BuildDir, "ebin", atom_to_list(App) ++ ".app"]),
   case file:consult(AppFile) of
     {ok, [OldContent]} -> ok;
     _ -> OldContent = []
   end,
   Modules = [module_of_erl(I) || I <- Sources],
-  NewContent = {application, App, [{modules, Modules} | AppSrcProperties]},
+  NewContent0 = {application, App, [{modules, Modules} | AppSrcProperties]},
+  NewContent = cfg_app_src_hook(ProjectRoot, Profile, NewContent0),
   {ok, FD} = file:open(AppFile, [write]),
   io:format(FD, "~p.~n", [NewContent]),
   file:close(FD),
@@ -496,3 +501,7 @@ cfg_compile_options_overrides(ProjectRoot, Profile, Defaults) ->
 cfg_escript_specs(ProjectRoot, Profile) ->
   anvl_lib:pcfg(ProjectRoot, erlc_escripts, [Profile], #{},
                 ?TYPE(escripts_ret())).
+
+cfg_app_src_hook(ProjectRoot, Profile, AppSpec) ->
+  anvl_lib:pcfg(ProjectRoot, erlc_app_spec_hook, [Profile, AppSpec], AppSpec,
+                ?TYPE({application, list()})).
