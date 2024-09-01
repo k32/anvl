@@ -30,6 +30,8 @@
 -include("anvl_macros.hrl").
 -include_lib("lee/include/lee.hrl").
 -include_lib("typerefl/include/types.hrl").
+-include("anvl_macros.hrl").
+-include("anvl_imports.hrl").
 
 %%================================================================================
 %% Type declarations
@@ -51,13 +53,14 @@
 %%================================================================================
 
 init() ->
-  RawModel = [Mod:model() || Mod <- [?MODULE | plugins()]],
+  Plugins = ensure_plugins(anvl_lib:root()),
+  RawModel = [Mod:model() || Mod <- [?MODULE | Plugins]],
   case lee_model:compile(metamodel(), RawModel) of
     {ok, Model} ->
       ConfStorage = lee_storage:new(lee_persistent_term_storage, anvl_conf_storage),
       case lee:init_config(Model, ConfStorage) of
         {ok, ?conf_storage, _Warnings} ->
-          lists:foreach(fun(Mod) -> Mod:init() end, plugins());
+	  ok;
         {error, Errors, Warnings} ->
           logger:critical("Invalid configuration"),
           [logger:critical(E) || E <- Errors],
@@ -71,7 +74,7 @@ init() ->
   end.
 
 conditions() ->
-  lists:flatmap(fun(Plugin) -> Plugin:conditions(anvl_lib:root()) end, plugins()).
+  lists:flatmap(fun(Plugin) -> Plugin:conditions(anvl_lib:root()) end, plugins(anvl_lib:root())).
 
 -spec conf(lee:key()) -> term().
 conf(Key) ->
@@ -103,8 +106,8 @@ model() ->
 %% Internal functions
 %%================================================================================
 
-plugins() ->
-  anvl_lib:pcfg(anvl_lib:root(), plugins, [],
+plugins(RootDir) ->
+  anvl_lib:pcfg(RootDir, plugins, [],
                 [], [module()]).
 
 metamodel() ->
@@ -119,3 +122,14 @@ metamodel() ->
 
 cli_args_getter() ->
   application:get_env(anvl, cli_args, []).
+
+ensure_plugins(ProjectDir) ->
+  Plugins = plugins(ProjectDir),
+  _ = precondition([{"anvl_plugin:loaded", fun plugin_loaded/1, {ProjectDir, Plugin}} || Plugin <- Plugins]),
+  Plugins.
+
+plugin_loaded({ProjectDir, Plugin}) ->
+    Plugin =:= anvl_erlc orelse 
+	precondition(anvl_erlc:app_compiled(ProjectDir, default, Plugin)),
+    Plugin:init(),
+    false.

@@ -27,7 +27,7 @@
 %%================================================================================
 
 plugins() ->
-  [anvl_erlc].
+  [anvl_erlc, anvl_lee_docgen].
 
 erlc_profiles() ->
   [default, stage2].
@@ -38,6 +38,8 @@ erlc_source_location(_Profile) ->
    , lee => {subdir, "vendor"}
    , snabbkaffe => {subdir, "vendor"}
    , dummy => "test/dummy"
+
+   , anvl_lee_docgen => {subdir, "plugins"}
    }.
 
 erlc_compile_options(_Profile, Defaults) ->

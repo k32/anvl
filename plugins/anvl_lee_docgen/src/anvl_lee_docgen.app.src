@@ -1,0 +1,6 @@
+%% -*- mode:erlang -*-
+{application, anvl_lee_docgen,
+ [ {description, "ANVL plugin for building lee documentation"}
+ , {vsn, "0.0.1"}
+ , {applications, [kernel, lee]}
+ ]}.
