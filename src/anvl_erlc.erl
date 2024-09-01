@@ -74,7 +74,7 @@
   -define(TYPE(T), typerefl:term()).
 -endif. %% !BOOTSTRAP
 
--reflect_type([profile/0, source_location_ret/0, compile_options/0, compile_options_overrides/0, escripts_ret/0]).
+-reflect_type([profile/0, source_location_ret/0, compile_options/0, compile_options_overrides/0, escripts_ret/0, context/0]).
 
 %%================================================================================
 %% Config behavior
@@ -188,17 +188,32 @@ init() ->
 conditions(ProjectRoot) ->
   get_compile_apps(ProjectRoot) ++ get_escripts(ProjectRoot).
 
+hooks() ->
+    #{ erlc_src_discover => 
+	   { #{app => ?TYPE(application()), spec => ?TYPE(term())}
+	   , [?TYPE(file:filename())]
+	   }
+     , erlc_pre_compile_app =>
+ 	   { ?TYPE(context())
+	   , ok
+	   }
+     }.
+
 %%================================================================================
 %% Condition implementations
 %%================================================================================
 
 discovered({ProjectRoot, Profile, App}) ->
-  %% TODO: locations can be specified by the dependencies too...
-  Dir = case maps:get(App, cfg_source_location(ProjectRoot, Profile)) of
-          Str when is_list(Str) ->
-            Str;
-          {subdir, SubDir} ->
-            filename:join(SubDir, App)
+  Spec = maps:get(App, cfg_source_location(ProjectRoot, Profile)),
+  IsLiteral = io_lib:char_list(Spec),
+  Dir = case Spec of
+	    _ when IsLiteral ->
+		Spec;
+	    {subdir, D} ->
+		filename:join(D, App);
+	    _ ->
+		[First|_] = anvl_hook:flatmap(erlc_src_discover,
+						     #{app => App, spec => Spec})
         end,
   anvl_condition:set_result({?MODULE, src_root, Profile, App}, Dir),
   false.
@@ -233,6 +248,7 @@ app({ProjectRoot, Profile, App}) ->
   ok = filelib:ensure_path(filename:join(BuildDir, "ebin")),
   ok = filelib:ensure_path(filename:join(BuildDir, "include")),
   ok = filelib:ensure_path(filename:join(BuildDir, "anvl_deps")),
+  ok = anvl_hook:foreach(erlc_pre_compile_app, Context),
   %% TODO: this is a hack, should be done by dependency manager:
   code:add_pathz(filename:join(BuildDir, "ebin")),
   %% Build BEAM files:

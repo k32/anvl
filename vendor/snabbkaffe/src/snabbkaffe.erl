@@ -1,4 +1,4 @@
-%% Copyright 2021-2022 snabbkaffe contributors
+%% Copyright 2021-2024 snabbkaffe contributors
 %% Copyright 2019-2020 Klarna Bank AB
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
@@ -92,7 +92,7 @@
 
 -type timed_event() ::
         #{ ?snk_kind := kind()
-         , ts   := timestamp()
+         , ?snk_meta := #{time := integer(), _ => _}
          , _ => _
          }.
 
@@ -101,12 +101,13 @@
 -type maybe_pair() :: {pair, timed_event(), timed_event()}
                     | {unmatched_cause | unmatched_effect, timed_event()}.
 
--type maybe(A) :: {just, A} | nothing.
+-type 'maybe'(A) :: {just, A} | nothing.
 
 -type run_config() ::
-        #{ bucket   => integer()
-         , timeout  => integer()
-         , timetrap => integer()
+        #{ bucket          => integer()
+         , timeout         => integer()
+         , timetrap        => integer()
+         , tidy_stacktrace => boolean()
          }.
 
 -type predicate() :: fun((event()) -> boolean()).
@@ -122,8 +123,8 @@
                            | [trace_spec(Result) | {string(), trace_spec(Result)}].
 
 -export_type([ kind/0, timestamp/0, event/0, timed_event/0, trace/0
-             , maybe_pair/0, maybe/1, metric/0, run_config/0, predicate/0
-             , predicate2/0, trace_spec/1, trace_specs/1
+             , maybe_pair/0, 'maybe'/1, metric/0, run_config/0, predicate/0
+             , predicate2/0, trace_spec/1, trace_specs/1, filter/0
              ]).
 
 %%====================================================================
@@ -147,10 +148,10 @@ tp(Location, Level, Kind, Data) ->
 -spec local_tp(term(), logger:level(), kind(), map(), map()) -> ok.
 local_tp(Location, Level, Kind, Data, Metadata) ->
   Event = Data #{?snk_kind => Kind},
-  EventAndMeta = Event #{ ?snk_meta => Metadata },
+  EventAndMeta = Event #{?snk_meta => Metadata},
   snabbkaffe_nemesis:maybe_delay(EventAndMeta),
   snabbkaffe_nemesis:maybe_crash(Location, EventAndMeta),
-  snabbkaffe_collector:tp(Level, Event, Metadata).
+  snabbkaffe_collector:tp(Level, Event, Metadata #{location => Location}).
 
 -spec remote_tp(term(), logger:level(), kind(), map(), map()) -> ok.
 remote_tp(Location, Level, Kind, Data, Meta) ->
@@ -209,7 +210,8 @@ wait_async_action(Action, Predicate, Timeout) ->
 %% <b>Note</b>: In the current implementation `Predicate' runs for
 %% every received event. It means this function should be lightweight
 -spec block_until(filter(), timeout(), timeout()) ->
-                     event() | timeout.
+                     {ok, event()} | timeout |
+                     {ok | timeout, [event()]}.
 block_until(Filter, Timeout, BackInTime) ->
   snabbkaffe_collector:block_until(Filter, Timeout, BackInTime).
 
@@ -325,10 +327,10 @@ run(Config, Run, Check) ->
   start_trace(),
   %% Wipe the trace buffer clean:
   _ = collect_trace(0),
-  snabbkaffe_collector:tp(debug, #{?snk_kind => '$trace_begin'}, #{}),
+  snabbkaffe_collector:tp(debug, snabbkaffe_collector:make_begin_trace(), #{}),
   case run_stage(Run, Config) of
     {ok, Result, Trace} ->
-      check_stage(Check, Result, Trace);
+      check_stage(Check, Result, Trace, Config);
     Err ->
       Err
   end.
@@ -663,15 +665,62 @@ dump_trace(Trace) ->
   filelib:ensure_dir(FullPath),
   {ok, Handle} = file:open(FullPath, [write]),
   try
-    lists:foreach(fun(I) -> io:format(Handle, "~0p.~n", [I]) end, Trace)
+    io:format(Handle, "~s~n", [format_trace(Trace)])
   after
     file:close(Handle)
   end,
   FullPath.
+
+format_trace(Trace) ->
+  [#{ ?snk_kind := '$trace_begin'
+    , begin_system_time := BeginTime
+    , ?snk_meta := #{time := BeginMonoTime}
+    }|_] = Trace,
+  lists:map(fun(E) -> format_event(BeginTime, BeginMonoTime, E) end, Trace).
+
+format_event(BeginTime, BeginMonoTime, #{?snk_kind := Kind0} = Event0) ->
+  Kind = case is_atom(Kind0) of
+           true -> atom_to_list(Kind0);
+           false -> Kind0
+         end,
+  MonoTime = event_monotonic_time(Event0),
+  Delta = MonoTime - BeginMonoTime,
+  Time = BeginTime + Delta,
+  TsStr = calendar:system_time_to_rfc3339(Time, [{unit, microsecond}]),
+  {LocStr, Event} = location_str(Event0),
+  Event1 = remove_meta_key(time, maps:without([?snk_kind, ts], Event)),
+  FmtEvent = io_lib:format("~s [~s] ~0p.~n", [TsStr, Kind, maps:without([?snk_kind, ts], Event1)]),
+  maybe_add_location(LocStr, FmtEvent).
+
+maybe_add_location("" = _LocStr, FormattedEvent) ->
+  FormattedEvent;
+maybe_add_location(LocStr, FormattedEvent) ->
+  io_lib:format("~s ~s", [LocStr, FormattedEvent]).
+
+location_str(Evt0 = #{?snk_meta := #{location := Fun}}) when is_function(Fun, 0) ->
+  Loc = try
+          {File, Line} = Fun(),
+          [File, $:|integer_to_list(Line)]
+        catch
+          _:_ ->
+            ""
+        end,
+  {Loc, remove_meta_key(location, Evt0)};
+location_str(Evt0) ->
+  {"", Evt0}.
+
+event_monotonic_time(#{?snk_meta := #{time := Time}}) -> Time.
+
+remove_meta_key(Key, #{?snk_meta := Meta} = Event) ->
+  Event#{?snk_meta => maps:remove(Key, Meta)};
+remove_meta_key(_Key, Event) ->
+  Event.
+
 -else.
 dump_trace(Trace) ->
-  lists:foreach(fun(I) -> io:format("~0p.~n", [I]) end, Trace).
+  lists:foreach(fun(Event) -> io:format("~0p.~n", [Event]) end, Trace).
 -endif. %% CONCUERROR
+
 
 %%====================================================================
 %% Internal functions
@@ -696,8 +745,9 @@ run_stage(Run, Config) ->
     ?SNK_CONCUERROR orelse push_stats(run_time, Bucket, RunTime),
     {ok, Result, Trace}
   catch
-    EC:Err ?BIND_STACKTRACE(Stack) ->
-      ?GET_STACKTRACE(Stack),
+    EC:Err ?BIND_STACKTRACE(Stack0) ->
+      ?GET_STACKTRACE(Stack0),
+      Stack = maybe_cleanup_stacktrace(Stack0, Config),
       Trace1 = snabbkaffe_collector:flush_trace(),
       Filename = dump_trace(Trace1),
       logger:critical("Run stage failed: ~p:~p~nStacktrace: ~p~n"
@@ -709,11 +759,12 @@ run_stage(Run, Config) ->
     cleanup()
   end.
 
--spec check_stage(trace_specs(Result), Result, trace()) -> boolean() | {error, _}.
-check_stage(Fun, Result, Trace) when is_function(Fun) ->
-  check_stage([{"check stage", Fun}], Result, Trace);
-check_stage(Specs, Result, Trace) ->
-  Failed = [Spec || Spec <- Specs, not run_trace_spec(Spec, Result, Trace)],
+-spec check_stage(trace_specs(Result), Result, trace(), run_config()) -> boolean() | {error, _}.
+check_stage(Fun, Result, Trace, Config) when is_function(Fun) ->
+  check_stage([{"check stage", Fun}], Result, Trace, Config);
+check_stage(Specs0, Result, Trace, Config) ->
+  Specs = [{"Deferred asserts", fun check_deferred/1} | Specs0],
+  Failed = [Spec || Spec <- Specs, not run_trace_spec(Spec, Result, Trace, Config)],
   case Failed of
     [] ->
       true;
@@ -723,8 +774,14 @@ check_stage(Specs, Result, Trace) ->
       {error, check_stage_failed}
   end.
 
+check_deferred(Trace) ->
+  case ?of_kind(?snk_deferred_assert, Trace) of
+    [] -> true;
+    _  -> false
+  end.
+
 %% @private
-run_trace_spec(Spec, Result, Trace) ->
+run_trace_spec(Spec, Result, Trace, Config) ->
   case Spec of
     {Name, Fun} -> ok;
     Fun         -> Name = io_lib:format("~p", [Fun])
@@ -743,8 +800,9 @@ run_trace_spec(Spec, Result, Trace) ->
       ok   -> true;
       _    -> logger:critical("~p failed: invalid return value ~p", [Name, Ret]), false
     end
-  catch EC:Error ?BIND_STACKTRACE(Stack) ->
-      ?GET_STACKTRACE(Stack),
+  catch EC:Error ?BIND_STACKTRACE(Stack0) ->
+      ?GET_STACKTRACE(Stack0),
+      Stack = maybe_cleanup_stacktrace(Stack0, Config),
       logger:critical("~p failed: ~p~n~p~nStacktrace: ~p~n",
                       [Name, EC, Error, Stack]),
       false
@@ -930,8 +988,8 @@ maybe_rpc(M, F, A) ->
   end.
 
 %% @private
--spec timetrap(map()) -> pid() | undefined.
-timetrap(#{timetrap := Timeout}) ->
+-spec timetrap(run_config()) -> pid() | undefined.
+timetrap(Config = #{timetrap := Timeout}) ->
   Parent = self(),
   spawn(
     fun() ->
@@ -939,13 +997,13 @@ timetrap(#{timetrap := Timeout}) ->
         erlang:send_after(Timeout, self(), timeout),
         receive
           timeout ->
-            Stack = process_info(Parent, current_stacktrace),
+            {current_stacktrace, Stack} = process_info(Parent, current_stacktrace),
             Trace = collect_trace(0),
             Filename1 = dump_trace(Trace),
             logger:critical("Run stage timed out.~n"
                             "Stacktrace: ~p~n"
                             "Trace dump: ~p~n",
-                            [Stack, Filename1]),
+                            [maybe_cleanup_stacktrace(Stack, Config), Filename1]),
             exit(Parent, timetrap);
           {'DOWN', MRef, _, _, _} ->
             ok
@@ -976,3 +1034,27 @@ truncate_list(0, _) ->
   ['...'];
 truncate_list(N, [A|L]) ->
   [A | truncate_list(N - 1, L)].
+
+%% Remove entries from the stacktrace that are likely irrelevant
+-spec maybe_cleanup_stacktrace(list(), run_config()) -> list().
+maybe_cleanup_stacktrace(Stack, #{tidy_stacktrace := false}) ->
+  Stack;
+maybe_cleanup_stacktrace(Stack, _Config) ->
+  lists:filter(fun(I) ->
+                   Module = element(1, I),
+                   Function = element(2, I),
+                   case Module of
+                     snabbkaffe           -> false;
+                     snabbkaffe_collector -> false;
+                     test_server          -> false;
+                     eunit_test           -> false;
+                     proper ->
+                       case Function of
+                         child      -> false;
+                         apply_args -> false;
+                         _          -> true
+                       end;
+                     _ -> true
+                   end
+               end,
+               Stack).

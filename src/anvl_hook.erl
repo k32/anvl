@@ -16,43 +16,46 @@
 %% You should have received a copy of the GNU General Public License
 %% along with this program.  If not, see <https://www.gnu.org/licenses/>.
 %%================================================================================
+-module(anvl_hook).
 
-%% @doc Config file used for the second stage of bootstrap
--module(anvl).
-
--behavior(anvl_erlc).
+-export([init/0, add/2, list/1, foreach/2, flatmap/2]).
 
 %%================================================================================
-%% behavior callbacks
+%% Type declarations
 %%================================================================================
 
-plugins() ->
-  [anvl_erlc].
+-type hookpoint() :: term().
 
-erlc_profiles() ->
-  [default, stage2].
+-type hook() :: fun((map()) -> term()).
 
-erlc_source_location(_Profile) ->
-  #{ anvl => "."
-   , typerefl => {subdir, "vendor"}
-   , lee => {subdir, "vendor"}
-   , snabbkaffe => {subdir, "vendor"}
-   , dummy => "test/dummy"
-   }.
-
-erlc_compile_options(_Profile, Defaults) ->
-  Defaults.
-
-erlc_compile_options_overrides(_Profile, Defaults) ->
-  #{ lee => Defaults#{dependencies => [snabbkaffe]}
-   }.
-
-erlc_escripts(_Profile) ->
-  #{anvl =>
-      #{ apps => [anvl, lee, typerefl]
-       , emu_args => "-escript main anvl_app"
-       }}.
+-define(hooks_tab, anvl_hooks_tab).
 
 %%================================================================================
-%% Internal functions
+%% API functions
 %%================================================================================
+
+init() ->
+    _ = ets:new(?hooks_tab, [public, duplicate_bag, named_table, {read_concurrency, true}]),
+    ok.
+
+-spec add(hookpoint(), hook()) -> ok.
+add(HookPoint, Fun) ->
+    ets:insert(?hooks_tab, {HookPoint, Fun}).
+
+-spec list(hookpoint()) -> [hook()].
+list(HookPoint) ->
+    MS = {{HookPoint, '$1'}, [], ['$1']},
+    ets:select(?hooks_tab, [MS]).
+
+-spec foreach(hookpoint(), term()) -> ok.
+foreach(HookPoint, Args) ->
+    lists:foreach( fun(Fun) -> Fun(Args) end
+		 , list(HookPoint)
+		 ).
+
+-spec flatmap(hookpoint(), term()) -> [term()].
+flatmap(Hookpoint, Args) ->
+    lists:flatmap( fun(Fun) -> Fun(Args) end
+		 , list(Hookpoint)
+		 ).
+

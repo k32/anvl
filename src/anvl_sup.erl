@@ -1,4 +1,3 @@
-
 %%================================================================================
 %% This file is part of anvl, a parallel general-purpose task
 %% execution tool.

@@ -69,6 +69,7 @@ bootstrap() ->
 %%================================================================================
 
 start(_StartType, _StartArgs) ->
+  anvl_hook:init(),
   anvl_sup:start_link().
 
 stop(_) ->

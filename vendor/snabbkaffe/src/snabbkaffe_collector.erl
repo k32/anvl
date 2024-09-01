@@ -1,5 +1,5 @@
-%% Copyright 2019-2020, 2022 Klarna Bank AB
-%% Copyright 2021 snabbkaffe contributors
+%% Copyright 2021-2024 snabbkaffe contributors
+%% Copyright 2019-2020 Klarna Bank AB
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -33,6 +33,7 @@
 
 %% Internal exports
 -export([ wait_for_silence/1
+        , make_begin_trace/0
         ]).
 
 %% gen_server callbacks
@@ -43,7 +44,7 @@
 -export([ do_forward_trace/1
         ]).
 
--export_type([async_action/0, subscription/0]).
+-export_type([async_action/0, subscription/0, datapoints/0]).
 
 -define(SERVER, ?MODULE).
 
@@ -81,7 +82,7 @@
 -spec tp(logger:level(), map(), logger:metadata()) -> ok.
 tp(Level, Event, Metadata0) ->
   Metadata = Metadata0 #{time => timestamp()},
-  logger:log(Level, Event, Metadata),
+  logger:log(Level, Event, Metadata0),
   EventAndMeta = Event #{?snk_meta => Metadata},
   %% Call or cast? This is a tricky question, since we need to
   %% preserve causality of trace events. Per documentation, Erlang
@@ -115,7 +116,7 @@ get_stats() ->
   gen_server:call(?SERVER, get_stats, infinity).
 
 %% NOTE: Concuerror only supports `Timeout=0'
--spec flush_trace() -> snabbkaffe:timed_trace().
+-spec flush_trace() -> snabbkaffe:trace().
 flush_trace() ->
   {ok, Trace} = gen_server:call(?SERVER, flush_trace, infinity),
   Trace.
@@ -185,16 +186,20 @@ wait_for_silence(SilenceInterval) when SilenceInterval > 0 ->
 get_last_event_ts() ->
   gen_server:call(?SERVER, get_last_event_ts, infinity).
 
+
+make_begin_trace() ->
+    #{ ?snk_kind         => '$trace_begin'
+     , begin_system_time => os:system_time(microsecond)
+     , ?snk_meta         => #{time => timestamp()}
+     }.
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
 
 init([]) ->
   persistent_term:put(?PT_TP_FUN, fun snabbkaffe:local_tp/5),
-  TS = timestamp(),
-  BeginTrace = #{ ts        => TS
-                , ?snk_kind => '$trace_begin'
-                },
+  #{?snk_meta := #{time := TS}} = BeginTrace = make_begin_trace(),
   {ok, #s{ trace         = [BeginTrace]
          , last_event_ts = TS
          }}.

@@ -41,7 +41,10 @@
 
 -callback init() -> ok.
 
+-callback hooks() -> #{anvl_hook:hookpoint() => {typerefl:type(), typerefl:type()}}.
+
 -define(conf_storage, ?lee_persistent_term_storage(anvl_conf_storage)).
+
 
 %%================================================================================
 %% API functions
