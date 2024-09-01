@@ -189,15 +189,15 @@ conditions(ProjectRoot) ->
   get_compile_apps(ProjectRoot) ++ get_escripts(ProjectRoot).
 
 hooks() ->
-    #{ erlc_src_discover => 
-	   { #{app => ?TYPE(application()), spec => ?TYPE(term())}
-	   , [?TYPE(file:filename())]
-	   }
-     , erlc_pre_compile_app =>
- 	   { ?TYPE(context())
-	   , ok
-	   }
-     }.
+  #{ erlc_src_discover =>
+       { #{what => ?TYPE(application()), spec => ?TYPE(term())}
+       , [?TYPE(file:filename())]
+       }
+   , erlc_pre_compile_app =>
+       { ?TYPE(context())
+       , ok
+       }
+   }.
 
 %%================================================================================
 %% Condition implementations
@@ -207,13 +207,17 @@ discovered({ProjectRoot, Profile, App}) ->
   Spec = maps:get(App, cfg_source_location(ProjectRoot, Profile)),
   IsLiteral = io_lib:char_list(Spec),
   Dir = case Spec of
-	    _ when IsLiteral ->
-		Spec;
-	    {subdir, D} ->
-		filename:join(D, App);
-	    _ ->
-		[First|_] = anvl_hook:flatmap(erlc_src_discover,
-						     #{app => App, spec => Spec})
+          _ when IsLiteral ->
+            Spec;
+          {subdir, D} ->
+            filename:join(D, App);
+          _ ->
+            case anvl_hook:first_match(src_discover, #{what => App, spec => Spec}) of
+              {ok, Result} ->
+                Result;
+              undefined ->
+                ?UNSAT("Failed to discover location of erlang application ~p", [App])
+            end
         end,
   anvl_condition:set_result({?MODULE, src_root, Profile, App}, Dir),
   false.
@@ -229,7 +233,7 @@ app({ProjectRoot, Profile, App}) ->
    } = maps:get(App, cfg_compile_options_overrides(ProjectRoot, Profile, ProfileOpts), ProfileOpts),
   AppSrcProperties = app_src(App, SrcRoot),
   Dependencies = non_otp_apps(Dependencies0 ++ proplists:get_value(applications, AppSrcProperties, [])),
-  BuildRoot = filename:join([?BUILD_ROOT, integer_to_list(erlang:phash2(COpts0))]),
+  BuildRoot = binary_to_list(filename:join([?BUILD_ROOT, <<"erlc">>, anvl_lib:hash(COpts0)])),
   %% Satisfy the dependencies:
   _ = precondition([app_compiled(ProjectRoot, Profile, Dep) || Dep <- Dependencies]),
   BuildDir = build_dir(BuildRoot, App),
@@ -250,7 +254,9 @@ app({ProjectRoot, Profile, App}) ->
   ok = filelib:ensure_path(filename:join(BuildDir, "anvl_deps")),
   ok = anvl_hook:foreach(erlc_pre_compile_app, Context),
   %% TODO: this is a hack, should be done by dependency manager:
-  code:add_pathz(filename:join(BuildDir, "ebin")),
+  EbinDir = filename:join(BuildDir, "ebin"),
+  true = code:add_patha(EbinDir),
+  ?LOG_INFO("Added ~p to the erlang load path (~s)", [App, code:lib_dir(App)]),
   %% Build BEAM files:
   precondition([beam(Src, CRef) || Src <- Sources]) or
     clean_orphans(Sources, Context) or

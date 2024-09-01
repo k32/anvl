@@ -18,7 +18,7 @@
 %%================================================================================
 -module(anvl_hook).
 
--export([init/0, add/2, list/1, foreach/2, flatmap/2]).
+-export([init/0, add/2, list/1, foreach/2, flatmap/2, first_match/2]).
 
 %%================================================================================
 %% Type declarations
@@ -35,27 +35,40 @@
 %%================================================================================
 
 init() ->
-    _ = ets:new(?hooks_tab, [public, duplicate_bag, named_table, {read_concurrency, true}]),
-    ok.
+  _ = ets:new(?hooks_tab, [public, bag, named_table, {read_concurrency, true}]),
+  ok.
 
 -spec add(hookpoint(), hook()) -> ok.
 add(HookPoint, Fun) ->
-    ets:insert(?hooks_tab, {HookPoint, Fun}).
+  ets:insert(?hooks_tab, {HookPoint, Fun}).
 
 -spec list(hookpoint()) -> [hook()].
 list(HookPoint) ->
-    MS = {{HookPoint, '$1'}, [], ['$1']},
-    ets:select(?hooks_tab, [MS]).
+  MS = {{HookPoint, '$1'}, [], ['$1']},
+  ets:select(?hooks_tab, [MS]).
 
 -spec foreach(hookpoint(), term()) -> ok.
 foreach(HookPoint, Args) ->
-    lists:foreach( fun(Fun) -> Fun(Args) end
-		 , list(HookPoint)
-		 ).
+  lists:foreach( fun(Fun) -> Fun(Args) end
+               , list(HookPoint)
+               ).
 
 -spec flatmap(hookpoint(), term()) -> [term()].
 flatmap(Hookpoint, Args) ->
-    lists:flatmap( fun(Fun) -> Fun(Args) end
-		 , list(Hookpoint)
-		 ).
+  lists:flatmap( fun(Fun) -> Fun(Args) end
+               , list(Hookpoint)
+               ).
 
+-spec first_match(hookpoint(), term()) -> {ok, term()} | undefined.
+first_match(Hookpoint, Args) ->
+  do_first_match(list(Hookpoint), Args).
+
+do_first_match([], _) ->
+  undefined;
+do_first_match([Hook | Rest], Args) ->
+  case Hook(Args) of
+    {true, Ret} ->
+      {ok, Ret};
+    false ->
+      do_first_match(Rest, Args)
+  end.

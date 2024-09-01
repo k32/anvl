@@ -1,7 +1,7 @@
 #!/bin/sh
 set -xe
 
-cd "$(dirname $0)"
+cd "$(dirname "$0")"
 
 case "${1:-}" in
     clean)

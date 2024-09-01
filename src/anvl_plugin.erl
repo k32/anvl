@@ -129,7 +129,7 @@ ensure_plugins(ProjectDir) ->
   Plugins.
 
 plugin_loaded({ProjectDir, Plugin}) ->
-    Plugin =:= anvl_erlc orelse 
+    Plugin =:= anvl_erlc orelse
 	precondition(anvl_erlc:app_compiled(ProjectDir, default, Plugin)),
     Plugin:init(),
     false.

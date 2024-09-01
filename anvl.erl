@@ -27,19 +27,24 @@
 %%================================================================================
 
 plugins() ->
-  [anvl_erlc, anvl_lee_docgen].
+  [anvl_erlc, anvl_git].
 
 erlc_profiles() ->
-  [default, stage2].
+  [default, stage2, test].
 
 erlc_source_location(_Profile) ->
   #{ anvl => "."
    , typerefl => {subdir, "vendor"}
    , lee => {subdir, "vendor"}
    , snabbkaffe => {subdir, "vendor"}
-   , dummy => "test/dummy"
 
-   , anvl_lee_docgen => {subdir, "plugins"}
+   , anvl_git => {subdir, "plugins"}
+
+   , dummy => "test/dummy"
+   , dummy_git => {git, #{ repo => "https://github.com/k32/anvl.git"
+                         , ref => "heads/master"
+                         , paths => ["test/dummy_git"]
+                         }}
    }.
 
 erlc_compile_options(_Profile, Defaults) ->
@@ -49,9 +54,14 @@ erlc_compile_options_overrides(_Profile, Defaults) ->
   #{ lee => Defaults#{dependencies => [snabbkaffe]}
    }.
 
+erlc_escripts(test) ->
+  #{anvl_test =>
+      #{ apps => [anvl, lee, typerefl, dummy_git]
+       , emu_args => "-escript main anvl_app"
+       }};
 erlc_escripts(_Profile) ->
   #{anvl =>
-      #{ apps => [anvl, lee, typerefl]
+      #{ apps => [anvl, lee, typerefl, anvl_git]
        , emu_args => "-escript main anvl_app"
        }}.
 

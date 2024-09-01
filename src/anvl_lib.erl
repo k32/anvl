@@ -20,7 +20,7 @@
 -module(anvl_lib).
 
 %% API:
--export([newer/2, template/3, patsubst1/3, patsubst/3]).
+-export([newer/2, template/3, patsubst1/3, patsubst/3, hash/1]).
 -export([exec/3]).
 
 %% internal exports:
@@ -65,7 +65,7 @@ newer(Src, Target) ->
       {error, Reason} ->
         error({no_src_file, Src, Reason})
     end,
-  Changed andalso ?LOG_INFO("Source ~p is newer than ~p", [Src, Target]),
+  Changed andalso ?LOG_DEBUG("Source ~p is newer than ~p", [Src, Target]),
   Changed.
 
 -spec template(string(), template_vars(), list) -> string();
@@ -107,11 +107,18 @@ exec(Cmd0, Args, Opts0) ->
     false ->
       Cmd = Cmd0
   end,
-  Opts = proplists:delete(search_path, Opts0),
+  CollectOutput = proplists:get_value(collect_output, Opts0, false),
+  Opts = proplists:delete(collect_output, proplists:delete(search_path, Opts0)),
   Port = erlang:open_port( {spawn_executable, Cmd}
-                         , [exit_status, stderr_to_stdout, binary, {line, 300}, {args, Args} | Opts]
+                         , [exit_status, binary, {line, 1024}, {args, Args} | Opts]
                          ),
-  collect_port_output(Port).
+  case CollectOutput of
+    true -> collect_port_output(Port);
+    false -> log_port_output(Port)
+  end.
+
+hash(Term) ->
+  binary:encode_hex(crypto:hash(sha256, term_to_iovec(Term)), lowercase).
 
 %%================================================================================
 %% Internal exports
@@ -166,13 +173,24 @@ template_normalize_substs(Iter, Acc0) ->
       template_normalize_substs(Next, Acc)
   end.
 
-collect_port_output(Port) ->
+log_port_output(Port) ->
   receive
     {Port, {exit_status, Status}} ->
       Status;
     {Port, {data, {_, Data}}} ->
       ?LOG_INFO(Data),
-      collect_port_output(Port)
+      log_port_output(Port)
+  end.
+
+collect_port_output(Port) ->
+  collect_port_output(Port, []).
+
+collect_port_output(Port, Acc) ->
+  receive
+    {Port, {exit_status, Status}} ->
+      {Status, lists:reverse(Acc)};
+    {Port, {data, {_, Data}}} ->
+      collect_port_output(Port, [Data | Acc])
   end.
 
 -record(conf_module_of_dir, {directory}).

@@ -28,7 +28,7 @@
           exit(unsat)
         end).
 
--define(BUILD_ROOT, "_anvl_build").
+-define(BUILD_ROOT, <<"_anvl_build">>).
 
 -define(CNAME(FUN), ?MODULE_STRING ":" FUN).
 
