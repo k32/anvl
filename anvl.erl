@@ -32,7 +32,7 @@ plugins() ->
 erlc_profiles() ->
   [default, stage2, test].
 
-erlc_source_location(_Profile) ->
+erlc_sources(_Profile) ->
   #{ anvl => "."
    , typerefl => {subdir, "vendor"}
    , lee => {subdir, "vendor"}
@@ -47,8 +47,8 @@ erlc_source_location(_Profile) ->
                          }}
    }.
 
-erlc_compile_options(_Profile, Defaults) ->
-  Defaults.
+%% erlc_compile_options(_Profile, Defaults) ->
+%%   Defaults.
 
 erlc_compile_options_overrides(_Profile, Defaults) ->
   #{ lee => Defaults#{dependencies => [snabbkaffe]}

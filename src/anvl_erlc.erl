@@ -82,7 +82,7 @@
 
 -callback erlc_profiles() -> [profile(), ...].
 
--callback erlc_source_location(profile()) -> source_location_ret().
+-callback erlc_sources(profile()) -> source_location_ret().
 -type source_location_ret() :: #{application() => string() | {atom(), term()}}.
 
 -callback erlc_compile_options(profile(), _Defaults :: compile_options()) -> compile_options().
@@ -96,7 +96,7 @@
 -callback erlc_app_spec_hook(profile(), application_spec()) -> application_spec().
 -type application_spec() :: {application, proplists:proplist()}.
 
--optional_callbacks([erlc_compile_options_overrides/2, erlc_escripts/1, erlc_profiles/0, erlc_app_spec_hook/2]).
+-optional_callbacks([erlc_compile_options/2, erlc_compile_options_overrides/2, erlc_escripts/1, erlc_profiles/0, erlc_app_spec_hook/2]).
 
 %%================================================================================
 %% API functions
@@ -113,7 +113,7 @@ defaults() ->
 sources_discovered(ProjectRoot, Profile, App) ->
   {?CNAME("discover"), fun discovered/1, {ProjectRoot, Profile, App}}.
 
--spec src_root(profile(), application()) -> file:filename_all().
+-spec src_root(profile(), application()) -> file:filename_all() | builtin.
 src_root(Profile, App) ->
   anvl_condition:get_result({?MODULE, src_root, Profile, App}).
 
@@ -204,64 +204,81 @@ hooks() ->
 %%================================================================================
 
 discovered({ProjectRoot, Profile, App}) ->
-  Spec = maps:get(App, cfg_source_location(ProjectRoot, Profile)),
-  IsLiteral = io_lib:char_list(Spec),
-  Dir = case Spec of
-          _ when IsLiteral ->
-            Spec;
-          {subdir, D} ->
-            filename:join(D, App);
-          _ ->
-            case anvl_hook:first_match(src_discover, #{what => App, spec => Spec}) of
-              {ok, Result} ->
-                Result;
-              undefined ->
-                ?UNSAT("Failed to discover location of erlang application ~p", [App])
-            end
-        end,
-  anvl_condition:set_result({?MODULE, src_root, Profile, App}, Dir),
+  SrcLocations = cfg_source_location(ProjectRoot, Profile),
+  case SrcLocations of
+    #{App := Spec} ->
+      IsLiteral = io_lib:char_list(Spec),
+      Dir = case Spec of
+              _ when IsLiteral ->
+                Spec;
+              {subdir, D} ->
+                filename:join(D, App);
+               _ ->
+                case anvl_hook:first_match(src_discover, #{what => App, spec => Spec}) of
+                  {ok, Result} ->
+                    Result;
+                  undefined ->
+                    ?UNSAT("Failed to discover location of erlang application ~p", [App])
+                end
+            end,
+      anvl_condition:set_result({?MODULE, src_root, Profile, App}, Dir);
+    _ ->
+      %% FIXME: search path instead.
+      case application:load(App) of
+        ok -> ok;
+        {error, {already_loaded, _}} -> ok;
+        Err ->
+          ?UNSAT("Failed to discover location of erlang application ~p (~p)", [App, Err])
+      end,
+      anvl_condition:set_result({?MODULE, src_root, Profile, App}, builtin)
+  end,
   false.
 
 app({ProjectRoot, Profile, App}) ->
   ProfileOpts = cfg_compile_options(ProjectRoot, Profile),
   _ = precondition(sources_discovered(ProjectRoot, Profile, App)),
-  SrcRoot = src_root(Profile, App),
-  #{ compile_options := COpts0
-   , includes := IncludePatterns
-   , sources := SrcPatterns
-   , dependencies := Dependencies0
-   } = maps:get(App, cfg_compile_options_overrides(ProjectRoot, Profile, ProfileOpts), ProfileOpts),
-  AppSrcProperties = app_src(App, SrcRoot),
-  Dependencies = non_otp_apps(Dependencies0 ++ proplists:get_value(applications, AppSrcProperties, [])),
-  BuildRoot = binary_to_list(filename:join([?BUILD_ROOT, <<"erlc">>, anvl_lib:hash(COpts0)])),
-  %% Satisfy the dependencies:
-  _ = precondition([app_compiled(ProjectRoot, Profile, Dep) || Dep <- Dependencies]),
-  BuildDir = build_dir(BuildRoot, App),
-  %% Create the context:
-  %% 0. Add constants:
-  Ctx0 = #{ app => App, profile => Profile, build_root => BuildRoot, build_dir => BuildDir, src_root => SrcRoot
-          , sources => SrcPatterns, project_root => ProjectRoot
-          },
-  %% 1. Enrich compile options with the paths to the include directories:
-  IncludeDirs = [template(I, Ctx0, list) || I <- IncludePatterns],
-  COpts = [{i, I} || I <- IncludeDirs] ++ COpts0,
-  Context = Ctx0 #{includes => IncludeDirs, compile_options => COpts},
-  %% 2. Get list of source files:
-  Sources = list_app_sources(Context),
-  CRef = anvl_condition:make_context(Context),
-  ok = filelib:ensure_path(filename:join(BuildDir, "ebin")),
-  ok = filelib:ensure_path(filename:join(BuildDir, "include")),
-  ok = filelib:ensure_path(filename:join(BuildDir, "anvl_deps")),
-  ok = anvl_hook:foreach(erlc_pre_compile_app, Context),
-  %% TODO: this is a hack, should be done by dependency manager:
-  EbinDir = filename:join(BuildDir, "ebin"),
-  true = code:add_patha(EbinDir),
-  ?LOG_INFO("Added ~p to the erlang load path (~s)", [App, code:lib_dir(App)]),
-  %% Build BEAM files:
-  precondition([beam(Src, CRef) || Src <- Sources]) or
-    clean_orphans(Sources, Context) or
-    copy_includes(Context) or
-    render_app_spec(AppSrcProperties, Sources, Context).
+  case src_root(Profile, App) of
+    builtin ->
+      ?LOG_NOTICE("Location of ~p was not specified explicitly, using ANVL builtin", [App]),
+      false;
+    SrcRoot ->
+      #{ compile_options := COpts0
+       , includes := IncludePatterns
+       , sources := SrcPatterns
+       , dependencies := Dependencies0
+       } = maps:get(App, cfg_compile_options_overrides(ProjectRoot, Profile, ProfileOpts), ProfileOpts),
+      AppSrcProperties = app_src(App, SrcRoot),
+      Dependencies = non_otp_apps(Dependencies0 ++ proplists:get_value(applications, AppSrcProperties, [])),
+      BuildRoot = binary_to_list(filename:join([?BUILD_ROOT, <<"erlc">>, anvl_lib:hash(COpts0)])),
+      %% Satisfy the dependencies:
+      _ = precondition([app_compiled(ProjectRoot, Profile, Dep) || Dep <- Dependencies]),
+      BuildDir = build_dir(BuildRoot, App),
+      %% Create the context:
+      %% 0. Add constants:
+      Ctx0 = #{ app => App, profile => Profile, build_root => BuildRoot, build_dir => BuildDir, src_root => SrcRoot
+              , sources => SrcPatterns, project_root => ProjectRoot
+              },
+      %% 1. Enrich compile options with the paths to the include directories:
+      IncludeDirs = [template(I, Ctx0, list) || I <- IncludePatterns],
+      COpts = [{i, I} || I <- IncludeDirs] ++ COpts0,
+      Context = Ctx0 #{includes => IncludeDirs, compile_options => COpts},
+      %% 2. Get list of source files:
+      Sources = list_app_sources(Context),
+      CRef = anvl_condition:make_context(Context),
+      ok = filelib:ensure_path(filename:join(BuildDir, "ebin")),
+      ok = filelib:ensure_path(filename:join(BuildDir, "include")),
+      ok = filelib:ensure_path(filename:join(BuildDir, "anvl_deps")),
+      ok = anvl_hook:foreach(erlc_pre_compile_app, Context),
+      %% TODO: this is a hack, should be done by dependency manager:
+      EbinDir = filename:join(BuildDir, "ebin"),
+      true = code:add_patha(EbinDir),
+      ?LOG_INFO("Added ~p to the erlang load path (~s)", [App, code:lib_dir(App)]),
+      %% Build BEAM files:
+      precondition([beam(Src, CRef) || Src <- Sources]) or
+        clean_orphans(Sources, Context) or
+        copy_includes(Context) or
+        render_app_spec(AppSrcProperties, Sources, Context)
+  end.
 
 escript({ProjectRoot, Profile, EscriptName}) ->
   case cfg_escript_specs(ProjectRoot, Profile) of
@@ -272,29 +289,28 @@ escript({ProjectRoot, Profile, EscriptName}) ->
       exit(unsat)
   end.
 
+app_file(Profile, App) ->
+  filename:join([app_path(Profile, App), "ebin", atom_to_list(App) ++ ".app"]).
+
 escript(ProjectRoot, Profile, EscriptName, Apps, EmuFlags) ->
   Filename = filename:join([?BUILD_ROOT, Profile, EscriptName]),
   ok = filelib:ensure_dir(Filename),
   ?LOG_NOTICE("Creating ~s", [Filename]),
   %% Satisfy dependencies:
-  _Changed0 = precondition([app_compiled(ProjectRoot, Profile, App) || App <- Apps]),
-  Paths = lists:flatmap(fun(App) ->
-                            Dir = filename:join(app_path(Profile, App), "ebin"),
-                            {application, App, Props} = app_spec(Profile, App),
-                            Modules = proplists:get_value(modules, Props),
-                            [ filename:join(Dir, atom_to_list(App) ++ ".app")
-                            | [filename:join(Dir, atom_to_list(Mod) ++ ".beam") || Mod <- Modules]
-                            ]
-                        end,
-                        Apps),
-  Files = lists:map(fun(Path) ->
-                        case file:read_file(Path) of
-                          {ok, Bin}    -> {filename:basename(Path), Bin};
-                          {error, Err} -> ?UNSAT("Failed to add ~s to escript: ~p", [Path, Err])
-                        end
-                    end,
-                    Paths),
-  Sections = [shebang, {emu_args, EmuFlags}, {archive, Files, []}],
+  _ = precondition([app_compiled(ProjectRoot, Profile, App) || App <- Apps]),
+  %% Hack:
+  ProfileDir = filename:dirname(app_path(Profile, hd(Apps))),
+  AppPattern = lists:flatten(["{", lists:join($,, Apps), "}"]),
+  Files = filelib:wildcard(AppPattern ++ "/{ebin,priv,include}/**", ProfileDir),
+  %% Create the escript:
+  ArchiveOpts = [ {cwd, ProfileDir}
+                , {compress, all}
+                , {uncompress, {add, [".beam", ".app"]}}
+                ],
+  Sections = [ shebang
+             , {emu_args, EmuFlags}
+             , {archive, Files, ArchiveOpts}
+             ],
   case escript:create(Filename, Sections) of
     ok           -> 0 = anvl_lib:exec("chmod", ["+x", Filename], []);
     {error, Err} -> ?UNSAT("Failed to create escript ~s~nError: ~p", [EscriptName, Err])
@@ -513,11 +529,11 @@ profiles(ProjectRoot) ->
                 ?TYPE(nonempty_list(profile()))).
 
 cfg_source_location(ProjectRoot, Profile) ->
-  anvl_lib:pcfg(ProjectRoot, erlc_source_location, [Profile],
+  anvl_lib:pcfg(ProjectRoot, erlc_sources, [Profile],
                ?TYPE(source_location_ret())).
 
 cfg_compile_options(ProjectRoot, Profile) ->
-  anvl_lib:pcfg(ProjectRoot, erlc_compile_options, [Profile, defaults()],
+  anvl_lib:pcfg(ProjectRoot, erlc_compile_options, [Profile, defaults()], defaults(),
                 ?TYPE(compile_options())).
 
 cfg_compile_options_overrides(ProjectRoot, Profile, Defaults) ->

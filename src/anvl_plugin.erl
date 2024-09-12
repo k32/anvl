@@ -60,7 +60,7 @@ init() ->
       ConfStorage = lee_storage:new(lee_persistent_term_storage, anvl_conf_storage),
       case lee:init_config(Model, ConfStorage) of
         {ok, ?conf_storage, _Warnings} ->
-	  ok;
+          ok;
         {error, Errors, Warnings} ->
           logger:critical("Invalid configuration"),
           [logger:critical(E) || E <- Errors],
