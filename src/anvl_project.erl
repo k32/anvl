@@ -22,7 +22,7 @@
 -export([root/0, conf/3]).
 
 %% Internal exports
--export([conf/5]).
+-export([conf/5, parse_transform/2]).
 
 -include("anvl_internals.hrl").
 
@@ -55,6 +55,16 @@ root() ->
 %% Internal functions
 %%================================================================================
 
+%% Simple parse transform that replaces (or adds) -module attribute
+parse_transform(Forms, Opts) ->
+  [{d, 'PROJECT', Module} | _] = Opts,
+  case Forms of
+    [File = {attribute, Loc, file, _}, {attribute, _, module, _} | Rest] ->
+      [File, {attribute, Loc, module, Module} | Rest];
+    [File = {attribute, Loc, file, _} | Rest] ->
+      [File, {attribute, Loc, module, Module} | Rest]
+  end.
+
 -record(conf_module_of_dir, {directory}).
 
 config_module(ProjectRoot) ->
@@ -65,13 +75,15 @@ config_module(ProjectRoot) ->
       begin
         ConfFile = filename:join(Root, "anvl.erl"),
         ProjectName = filename:basename(Root),
-        ModuleName = "anvl_config_" ++ ProjectName,
-        Options = [{d, 'PROJECT', ModuleName}, report, no_error_module_mismatch,
+        Module = list_to_atom("anvl_config_" ++ ProjectName),
+        Options = [{d, 'PROJECT', Module},
+                   {parse_transform, ?MODULE},
+                   report, no_error_module_mismatch,
                    nowarn_export_all, export_all, binary],
         case compile:file(ConfFile, Options) of
           {ok, Module, Binary} ->
             anvl_condition:set_result(#conf_module_of_dir{directory = Root}, Module),
-            {module, Module} = code:load_binary(Module, ProjectName, Binary),
+            {module, Module} = code:load_binary(Module, ConfFile, Binary),
             false;
           error ->
             ?UNSAT("Failed to compile anvl config file for ~s.", [Root])

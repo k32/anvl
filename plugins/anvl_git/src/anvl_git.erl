@@ -22,7 +22,7 @@
 -behavior(anvl_plugin).
 
 %% behavior callbacks:
--export([model/0, init/0]).
+-export([model/0, project_model/0, init/0]).
 
 -include_lib("typerefl/include/types.hrl").
 -include_lib("anvl/include/anvl_macros.hrl").
@@ -47,6 +47,9 @@ model() ->
              , type => string()
              }}
        }}.
+
+project_model() ->
+  #{}.
 
 src_prepared(#{what := What, spec := {git, Opts}}) ->
   case typerefl:typecheck(options(), Opts) of

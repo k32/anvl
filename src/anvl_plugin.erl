@@ -163,11 +163,13 @@ cli_args_getter() ->
 
 ensure_plugins(ProjectDir) ->
   Plugins = plugins(ProjectDir),
-  _ = precondition([{"anvl_plugin:loaded", fun plugin_loaded/1, {ProjectDir, Plugin}} || Plugin <- Plugins]),
+  _ = precondition([plugin_loaded(ProjectDir, Plugin) || Plugin <- Plugins]),
   Plugins.
 
-plugin_loaded({ProjectDir, Plugin}) ->
-    Plugin =:= anvl_erlc orelse
-	precondition(anvl_erlc:app_compiled(ProjectDir, default, Plugin)),
-    Plugin:init(),
-    false.
+?MEMO(plugin_loaded, ProjectDir, Plugin,
+      begin
+        Plugin =:= anvl_erlc orelse
+          precondition(anvl_erlc:app_compiled(ProjectDir, default, Plugin)),
+        Plugin:init(),
+        false
+      end).
