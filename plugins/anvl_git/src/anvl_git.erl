@@ -52,7 +52,7 @@ src_prepared(#{what := What, spec := {git, Opts}}) ->
   case typerefl:typecheck(options(), Opts) of
     ok ->
       #{repo := Repo} = Opts,
-      SrcRootDir = anvl_lib:root(),
+      SrcRootDir = anvl_project:root(),
       _ = precondition(locked(SrcRootDir, What, Opts)),
       Dir = archive_unpacked( What
                             , Repo
@@ -68,7 +68,7 @@ src_prepared(_) ->
   false.
 
 archive_unpacked(What, Repo, CommitHash, MirrorDir, Paths) ->
-  LocalDir = filename:join([anvl_lib:root(), ?BUILD_ROOT, "git", What, CommitHash]),
+  LocalDir = filename:join([anvl_project:root(), ?BUILD_ROOT, "git", What, CommitHash]),
   TmpFile = <<LocalDir/binary, ".tar">>,
   filelib:is_dir(LocalDir) orelse
     begin

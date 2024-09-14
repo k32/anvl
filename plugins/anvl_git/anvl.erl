@@ -1,6 +1,4 @@
 -module(anvl).
 
--behavior(anvl_erlc).
-
-plugins() ->
+plugins(_) ->
   [anvl_erlc].
