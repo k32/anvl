@@ -22,7 +22,7 @@
 -behavior(anvl_plugin).
 
 %% behavior callbacks:
--export([model/0, init/0, conditions/1]).
+-export([model/0, init/0]).
 
 -include_lib("typerefl/include/types.hrl").
 -include_lib("anvl/include/anvl_macros.hrl").
@@ -38,9 +38,6 @@
 
 init() ->
   anvl_hook:add(src_discover, fun src_prepared/1).
-
-conditions(_ProjectRoot) ->
-  [].
 
 model() ->
   #{git =>
@@ -99,20 +96,19 @@ mirror_has_commit(MirrorDir, Hash) ->
       false
   end.
 
-mirror_synced(Repo) ->
-  {?CNAME("mirror_synced"), fun do_sync_mirror/1, Repo}.
-
-do_sync_mirror(Repo) ->
-  ?LOG_NOTICE("Syncing mirror for repository ~p", [Repo]),
-  Dir = mirror_dir(Repo),
-  case filelib:is_dir(Dir) of
-    true ->
-      0 = anvl_lib:exec("git", ["remote", "update"], [{cd, Dir}]);
-    false ->
-      ok = filelib:ensure_dir(Dir),
-      0 = anvl_lib:exec("git", ["clone", "--mirror", Repo, Dir], [])
-  end,
-  false.
+?MEMO(mirror_synced, Repo,
+      begin
+        ?LOG_NOTICE("Syncing mirror for repository ~p", [Repo]),
+        Dir = mirror_dir(Repo),
+        case filelib:is_dir(Dir) of
+          true ->
+            0 = anvl_lib:exec("git", ["remote", "update"], [{cd, Dir}]);
+          false ->
+            ok = filelib:ensure_dir(Dir),
+            0 = anvl_lib:exec("git", ["clone", "--mirror", Repo, Dir], [])
+        end,
+        false
+      end).
 
 locked(SrcRootDir, What0, Opts = #{repo := Repo}) ->
   Fun = fun(What) ->

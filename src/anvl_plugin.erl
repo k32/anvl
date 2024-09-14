@@ -45,8 +45,9 @@
 
 -callback hooks() -> #{anvl_hook:hookpoint() => {typerefl:type(), typerefl:type()}}.
 
--define(conf_storage, ?lee_persistent_term_storage(anvl_conf_storage)).
+-optional_callbacks([conditions/1]).
 
+-define(conf_storage, ?lee_persistent_term_storage(anvl_conf_storage)).
 
 %%================================================================================
 %% API functions
@@ -74,7 +75,13 @@ init() ->
   end.
 
 conditions() ->
-  lists:flatmap(fun(Plugin) -> Plugin:conditions(anvl_lib:root()) end, plugins(anvl_lib:root())).
+  lists:flatmap(fun(Plugin) ->
+                    case erlang:function_exported(Plugin, conditions, 1) of
+                      true -> Plugin:conditions(anvl_lib:root());
+                      false -> []
+                    end
+                end,
+                plugins(anvl_lib:root())).
 
 -spec conf(lee:key()) -> term().
 conf(Key) ->
