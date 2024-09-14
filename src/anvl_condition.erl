@@ -28,7 +28,7 @@
 %% API:
 -export([stats/0, precondition/1, precondition/2, is_changed/1, with_resource/2]).
 -export([speculative/1, satisfies/1]).
--export([get_result/1, set_result/2]).
+-export([get_result/1, has_result/1, set_result/2]).
 -export([make_context/1, get_context/1]).
 
 %% behavior callbacks:
@@ -147,6 +147,14 @@ get_result(Key) ->
       Value;
     _ ->
       error({no_result, Key})
+  end.
+
+has_result(Key) ->
+  case ets:lookup(?results, Key) of
+    [_] ->
+      true;
+    [] ->
+      false
   end.
 
 -spec set_result(_Key, Value) -> Value.

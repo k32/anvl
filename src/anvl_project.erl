@@ -48,8 +48,9 @@ conf(ProjectRoot, Key, Args) ->
   end.
 
 root() ->
-  {ok, CWD} = file:get_cwd(),
-  CWD.
+  %% {ok, CWD} = file:get_cwd(),
+  %% CWD.
+  ".".
 
 %%================================================================================
 %% Internal functions
@@ -68,25 +69,33 @@ parse_transform(Forms, Opts) ->
 -record(conf_module_of_dir, {directory}).
 
 config_module(ProjectRoot) ->
-  anvl_condition:precondition([config_loaded(ProjectRoot)]),
+  anvl_condition:precondition(config_loaded(ProjectRoot)),
   anvl_condition:get_result(#conf_module_of_dir{directory = ProjectRoot}).
 
-?MEMO(config_loaded, Root,
+?MEMO(config_loaded, Dir,
       begin
-        ConfFile = filename:join(Root, "anvl.erl"),
-        ProjectName = filename:basename(Root),
-        Module = list_to_atom("anvl_config_" ++ ProjectName),
-        Options = [{d, 'PROJECT', Module},
-                   {parse_transform, ?MODULE},
-                   report, no_error_module_mismatch,
-                   nowarn_export_all, export_all, binary],
-        case compile:file(ConfFile, Options) of
-          {ok, Module, Binary} ->
-            anvl_condition:set_result(#conf_module_of_dir{directory = Root}, Module),
-            {module, Module} = code:load_binary(Module, ConfFile, Binary),
+        ConfFile = filename:join(Dir, "anvl.erl"),
+        case {filelib:is_file(ConfFile), Dir =:= root()} of
+          {true, _} ->
+            Module = list_to_atom("anvl_config_" ++ project_name(Dir)),
+            Options = [{d, 'PROJECT', Module},
+                       {parse_transform, ?MODULE},
+                       report, no_error_module_mismatch,
+                       nowarn_export_all, export_all, binary],
+            case compile:file(ConfFile, Options) of
+              {ok, Module, Binary} ->
+                anvl_condition:set_result(#conf_module_of_dir{directory = Dir}, Module),
+                {module, Module} = code:load_binary(Module, ConfFile, Binary),
+                false;
+              error ->
+                ?UNSAT("Failed to compile anvl config file for ~s.", [Dir])
+            end;
+          {false, false} ->
+            ?LOG_NOTICE("Directory ~s doesn't contain 'anvl.erl' file, using the top level project's config.", [Dir]),
+            anvl_condition:set_result(#conf_module_of_dir{directory = Dir}, config_module(root())),
             false;
-          error ->
-            ?UNSAT("Failed to compile anvl config file for ~s.", [Root])
+          {false, true} ->
+            ?UNSAT("'anvl.erl' file is not found in the current directory", [])
         end
       end).
 
@@ -98,7 +107,7 @@ conf(ProjectRoot, Function, Args, Default, ExpectedType) ->
     true ->
       conf(ProjectRoot, Function, Args, ExpectedType);
     false ->
-      Default
+      conf_override(ProjectRoot, Function, Args, Default)
   end.
 
 -spec conf(dir(), atom(), map(), typerefl:type()) -> _Result.
@@ -108,7 +117,7 @@ conf(ProjectRoot, Function, Args, ExpectedType) ->
     Val ->
       case typerefl:typecheck(ExpectedType, Val) of
         ok ->
-          Val;
+          conf_override(ProjectRoot, Function, Args, Val);
         {error, #{expected := Expected, got := Got}} ->
           ?LOG_CRITICAL("Invalid return value of ~p:~p:~nExpected type: ~s~nGot: ~p",
                         [Module, Function, Expected, Got]),
@@ -123,3 +132,19 @@ conf(ProjectRoot, Function, Args, ExpectedType) ->
                     [Module, Function, Args, EC, Err, Stack]),
       exit(unsat)
   end.
+
+conf_override(ProjectRoot, Function, Args, Result) ->
+  OverrideFun = list_to_atom(atom_to_list(Function) ++ "_override"),
+  Module = config_module(root()),
+  case lists:member({Function, 3}, Module:module_info(exports)) of
+    true ->
+      Module:OverrideFun( list_to_atom(project_name(ProjectRoot))
+                        , Args
+                        , Result
+                        );
+    false ->
+      Result
+  end.
+
+project_name(Dir) ->
+  filename:basename(Dir).

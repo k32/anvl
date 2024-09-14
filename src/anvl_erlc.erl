@@ -22,7 +22,7 @@
 -behavior(anvl_plugin).
 
 %% API:
--export([defaults/0, sources_discovered/3, src_root/2, escript/3, app_compiled/3, module/2, app_path/2, app_spec/2]).
+-export([defaults/0, sources_discovered/3, src_root/2, escript/3, app_compiled/2, module/2, app_path/2, app_spec/2]).
 
 %% behavior callbacks:
 -export([model/0, project_model/0, init/0, conditions/1]).
@@ -42,8 +42,7 @@
 -type application_spec() :: {application, [tuple()]}.
 
 -type compile_options() ::
-        #{ bdeps => [application()]
-         , includes => [anvl_lib:filename_pattern()]
+        #{ includes => [anvl_lib:filename_pattern()]
          , sources => [anvl_lib:filename_pattern()]
          , compile_options => list()
          }.
@@ -68,8 +67,6 @@
 
 -type source_location_ret() :: #{application() => string() | {atom(), term()}}.
 
--type compile_options_overrides() :: #{application() => compile_options()}.
-
 -type escripts_ret() :: #{escript_name() => escript_spec()}.
 
 -define(app_path(PROFILE, APP), {?MODULE, app_path, PROFILE, APP}).
@@ -82,7 +79,7 @@
   -define(TYPE(T), typerefl:term()).
 -endif. %% !BOOTSTRAP
 
--reflect_type([profile/0, source_location_ret/0, compile_options/0, compile_options_overrides/0, escripts_ret/0, context/0, application_spec/0]).
+-reflect_type([profile/0, source_location_ret/0, compile_options/0, escripts_ret/0, context/0, application_spec/0]).
 
 %%================================================================================
 %% API functions
@@ -92,67 +89,74 @@ defaults() ->
   #{ sources => ["${src_root}/src/*.erl", "${src_root}/src/*/*.erl"]
    , includes => ["${src_root}/include", "${src_root}/src"]
    , compile_options => []
-   , bdeps => []
    }.
 
 -spec sources_discovered(file:filename_all(), profile(), application()) -> anvl_condition:t().
 ?MEMO(sources_discovered, ProjectRoot, Profile, App,
       begin
-        case cfg_deps(ProjectRoot, Profile, App) of
-          undefined ->
-            %% FIXME: search path instead.
-            case application:load(App) of
-              ok -> ok;
-              {error, {already_loaded, _}} -> ok;
-              Err ->
-                ?UNSAT("Failed to discover location of erlang application ~p (~p)", [App, Err])
-            end,
-            anvl_condition:set_result({?MODULE, src_root, Profile, App}, builtin);
-          Spec ->
-            IsLiteral = io_lib:char_list(Spec),
-            Dir = case Spec of
-                    _ when IsLiteral ->
-                      Spec;
-                    {subdir, D} ->
-                      filename:join(D, App);
-                     _ ->
-                      case anvl_hook:first_match(src_discover, #{what => App, spec => Spec}) of
-                        {ok, Result} ->
-                          Result;
-                        undefined ->
-                          ?UNSAT("Failed to discover location of erlang application ~p", [App])
-                      end
-                  end,
-            anvl_condition:set_result({?MODULE, src_root, Profile, App}, Dir)
-        end,
+        ResultKey = {?MODULE, src_root, Profile, App},
+        anvl_condition:has_result(ResultKey) orelse
+          begin
+            ?LOG_INFO("discovering sources of ~p in profile ~p (root=~p)", [App, Profile, App]),
+            case cfg_deps(ProjectRoot, Profile, App) of
+              undefined ->
+                %% FIXME: search path instead.
+                case application:load(App) of
+                  ok -> ok;
+                  {error, {already_loaded, _}} -> ok;
+                  Err ->
+                    ?UNSAT("Failed to discover location of erlang application ~p (~p)", [App, Err])
+                end,
+                anvl_condition:set_result({?MODULE, src_root, Profile, App}, builtin);
+              Spec ->
+                IsLiteral = io_lib:char_list(Spec),
+                Dir = case Spec of
+                        _ when IsLiteral ->
+                          Spec;
+                        {subdir, D} ->
+                          filename:join(D, App);
+                        _ ->
+                          case anvl_hook:first_match(src_discover, #{what => App, spec => Spec}) of
+                            {ok, Result} ->
+                              Result;
+                            undefined ->
+                              ?UNSAT("Failed to discover location of erlang application ~p", [App])
+                          end
+                      end,
+                anvl_condition:set_result({?MODULE, src_root, Profile, App}, Dir)
+            end
+          end,
         false
       end).
 
 -spec src_root(profile(), application()) -> file:filename_all() | builtin.
 src_root(Profile, App) ->
+  precondition(sources_discovered(".", Profile, App)),
   anvl_condition:get_result({?MODULE, src_root, Profile, App}).
 
 %% @doc Condition: Erlang application has been compiled
--spec app_compiled(file:filename_all(), profile(), application()) -> anvl_condition:t().
-?MEMO(app_compiled, ProjectRoot, Profile, App,
+-spec app_compiled(profile(), application()) -> anvl_condition:t().
+?MEMO(app_compiled, Profile, App,
       begin
-        ProfileOpts = cfg_compile_options(ProjectRoot, Profile),
-        _ = precondition(sources_discovered(ProjectRoot, Profile, App)),
+        ?LOG_INFO("Compiling ~p", [App]),
         case src_root(Profile, App) of
           builtin ->
             ?LOG_NOTICE("Location of ~p was not specified explicitly, using ANVL builtin", [App]),
             false;
           SrcRoot ->
+            ProfileOpts = cfg_compile_options(SrcRoot, Profile),
+            _ = precondition(sources_discovered(SrcRoot, Profile, App)),
             #{ compile_options := COpts0
              , includes := IncludePatterns
              , sources := SrcPatterns
-             , bdeps := BDeps
-             } = maps:get(App, cfg_compile_options_overrides(ProjectRoot, Profile, ProfileOpts), ProfileOpts),
+             } = ProfileOpts,
+            BDeps = cfg_bdeps(SrcRoot, Profile, App),
+
             AppSrcProperties = app_src(App, SrcRoot),
             Dependencies = non_otp_apps(BDeps ++ proplists:get_value(applications, AppSrcProperties, [])),
             BuildRoot = binary_to_list(filename:join([?BUILD_ROOT, <<"erlc">>, anvl_lib:hash(COpts0)])),
             %% Satisfy the dependencies:
-            _ = precondition([app_compiled(ProjectRoot, Profile, Dep) || Dep <- Dependencies]),
+            _ = precondition([app_compiled(Profile, Dep) || Dep <- Dependencies]),
             BuildDir = build_dir(BuildRoot, App),
             %% Create the context:
             %% 0. Add constants:
@@ -162,7 +166,7 @@ src_root(Profile, App) ->
                     , build_dir => BuildDir
                     , src_root => SrcRoot
                     , sources => SrcPatterns
-                    , project_root => ProjectRoot
+                    , project_root => SrcRoot
                     },
             %% 1. Enrich compile options with the paths to the include directories:
             IncludeDirs = [template(I, Ctx0, list) || I <- IncludePatterns],
@@ -260,12 +264,25 @@ project_model() ->
                   #{ type => ?TYPE(profile())
                    }}
              },
+  App = #{ app =>
+             {[funarg],
+              #{ type => ?TYPE(application())
+               }}
+         },
   #{erlc =>
       #{ profiles =>
            {[pcfg],
             #{ type => ?TYPE(list(profile()))
              , function => erlc_profiles
              }}
+       , bdeps =>
+           {[pcfg],
+            #{ type => ?TYPE([application()])
+             , function => erlc_bdeps
+             , default => []
+             },
+            maps:merge(Profile, App)
+            }
        , compile_options =>
            {[pcfg],
             #{ type => ?TYPE(compile_options())
@@ -296,19 +313,6 @@ project_model() ->
                   #{ type => ?TYPE(application_spec())
                    }}
              }}
-         %% FIXME: implement generic override mechanism
-       , compile_options_overrides =>
-           {[pcfg],
-            #{ type => ?TYPE(compile_options_overrides())
-             , function => erlc_compile_options_overrides
-             , default => #{}
-             },
-            Profile
-            #{ defaults =>
-                 {[funarg],
-                  #{ type => ?TYPE(compile_options())
-                   }}
-             }}
        }}.
 
 init() ->
@@ -329,7 +333,7 @@ escript(ProjectRoot, Profile, EscriptName, Apps, EmuFlags) ->
   ok = filelib:ensure_dir(Filename),
   ?LOG_NOTICE("Creating ~s", [Filename]),
   %% Satisfy dependencies:
-  _ = precondition([app_compiled(ProjectRoot, Profile, App) || App <- Apps]),
+  _ = precondition([app_compiled(Profile, App) || App <- Apps]),
   %% Hack:
   ProfileDir = filename:dirname(app_path(Profile, hd(Apps))),
   AppPattern = lists:flatten(["{", lists:join($,, Apps), "}"]),
@@ -572,9 +576,6 @@ cfg_deps(ProjectRoot, Profile, App) ->
 cfg_compile_options(ProjectRoot, Profile) ->
   anvl_project:conf(ProjectRoot, [erlc, compile_options], #{profile => Profile}).
 
-cfg_compile_options_overrides(ProjectRoot, Profile, Defaults) ->
-  anvl_project:conf(ProjectRoot, [erlc, compile_options_overrides], #{profile => Profile, defaults => Defaults}).
-
 cfg_escript_specs(ProjectRoot, Profile) ->
   anvl_project:conf(ProjectRoot, [erlc, escripts], #{profile => Profile}).
 
@@ -582,6 +583,9 @@ cfg_app_src_hook(ProjectRoot, Profile, AppSpec) ->
   Args = #{profile => Profile, spec => AppSpec},
   anvl_project:conf(ProjectRoot, erlc_app_spec_hook, [Args], AppSpec,
                     ?TYPE(application_spec())).
+
+cfg_bdeps(ProjectRoot, Profile, App) ->
+  anvl_project:conf(ProjectRoot, [erlc, bdeps], #{profile => Profile, app => App}).
 
 -else.
 
@@ -593,12 +597,14 @@ cfg_deps(_ProjecRoot, _Profile, anvl) ->
 cfg_deps(_ProjecRoot, _Profile, _) ->
   {subdir, "vendor"}.
 
-cfg_compile_options(_, _) ->
-  defaults().
-
-cfg_compile_options_overrides(_, _, Defaults) ->
-  #{ lee => Defaults#{bdeps => [snabbkaffe]}
-   }.
+cfg_compile_options(ProjectRoot, _Profile) ->
+  case filename:basename(ProjectRoot) of
+    "lee" ->
+      defaults();
+    _Basename ->
+      ?LOG_WARNING("~p ~p", [?FUNCTION_NAME, ProjectRoot]),
+      defaults()
+  end.
 
 cfg_escript_specs(_, _) ->
   #{anvl =>
@@ -608,5 +614,10 @@ cfg_escript_specs(_, _) ->
 
 cfg_app_src_hook(_, _, AppSpec) ->
   AppSpec.
+
+cfg_bdeps(_, _, lee) ->
+  [snabbkaffe];
+cfg_bdeps(_, _, _) ->
+  [].
 
 -endif.

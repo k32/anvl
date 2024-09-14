@@ -30,9 +30,10 @@ erlc_deps(#{app := anvl_git}) ->
 erlc_deps(_) ->
   {subdir, "vendor"}.
 
-erlc_compile_options_overrides(#{defaults := Defaults}) ->
-  #{ lee => Defaults#{bdeps => [snabbkaffe]}
-   }.
+erlc_bdeps(#{app := lee}) ->
+  [snabbkaffe];
+erlc_bdeps(Args) ->
+  [].
 
 erlc_escripts(#{profile := test}) ->
   #{anvl_test =>
