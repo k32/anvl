@@ -249,7 +249,7 @@ condition_entrypoint(Condition, Parent) ->
           resolve_speculative({done, Changed}),
           inc_counter(?cnt_complete),
           Changed andalso inc_counter(?cnt_changed),
-          ?LOG_DEBUG("Changed ~p = ~p", [Condition, Changed]),
+          ?LOG_DEBUG("Satisfied ~p (changed = ~p)", [Condition, Changed]),
           exit(Changed)
       catch
         EC:Err:Stack ->

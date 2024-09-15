@@ -18,7 +18,7 @@
 %%================================================================================
 
 plugins(_) ->
-  [anvl_erlc].
+  [anvl_erlc, anvl_git].
 
 erlc_profiles(_) ->
   [default, stage2, test].

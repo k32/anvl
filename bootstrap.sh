@@ -21,4 +21,4 @@ erlc -D BOOTSTRAP -o "${STAGE1_DIR}/ebin" -I include vendor/typerefl/src/typeref
 erl -config bootstrap -noshell -pz "${STAGE1_DIR}/ebin" -run anvl_app bootstrap
 
 ## Stage 3:
-_anvl_build/stage2/anvl @escript
+_anvl_build/stage2/anvl --log-level notice @escript

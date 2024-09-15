@@ -19,11 +19,16 @@
 
 -module(anvl_plugin).
 
+-behavior(gen_server).
+
 %% API:
--export([init/0, conditions/0, conf/1, list_conf/1]).
+-export([conf/1, list_conf/1, bootstrap/0]).
+
+%% gen_server:
+-export([init/1, handle_call/3, handle_cast/2, terminate/2]).
 
 %% Internal exports
--export([model/0, project_model/0]).
+-export([model/0, project_model/0, start_link/0, loaded/1]).
 
 -export_type([]).
 
@@ -50,45 +55,13 @@
 %% API functions
 %%================================================================================
 
-init() ->
-  Plugins = ensure_plugins(anvl_project:root()),
-  %% Initialize project model:
-  RawProjectModel = [Mod:project_model() || Mod <- [?MODULE | Plugins]],
-  case lee_model:compile(project_metamodel(), RawProjectModel) of
-    {ok, ProjectModel} ->
-      persistent_term:put(?project_model, ProjectModel);
-    {error, Errors1} ->
-      logger:critical("Project configuration model is invalid! (Likely caused by a plugin)"),
-      [logger:critical(E) || E <- Errors1],
-      anvl_app:halt(1)
-  end,
-  RawModel = [Mod:model() || Mod <- [?MODULE | Plugins]],
-  case lee_model:compile(metamodel(), RawModel) of
-    {ok, Model} ->
-      ConfStorage = lee_storage:new(lee_persistent_term_storage, anvl_conf_storage),
-      case lee:init_config(Model, ConfStorage) of
-        {ok, ?conf_storage, _Warnings} ->
-          ok;
-        {error, Errors, Warnings} ->
-          logger:critical("Invalid configuration"),
-          [logger:critical(E) || E <- Errors],
-          [logger:warning(E) || E <- Warnings],
-          anvl_app:halt(1)
-      end;
-    {error, Errors} ->
-      logger:critical("Configuration model is invalid! (Likely caused by a plugin)"),
-      [logger:critical(E) || E <- Errors],
-      anvl_app:halt(1)
-  end.
-
-conditions() ->
-  lists:flatmap(fun(Plugin) ->
-                    case erlang:function_exported(Plugin, conditions, 1) of
-                      true -> Plugin:conditions(anvl_project:root());
-                      false -> []
-                    end
-                end,
-                plugins(anvl_project:root())).
+bootstrap() ->
+  ok = anvl_sup:init_plugins(),
+  ok = load_model(anvl_erlc),
+  %% FIXME: This is too early, CLI model for all plugins is not
+  %% available yet.
+  ok = gen_server:call(?MODULE, load_config),
+  ok.
 
 -spec conf(lee:key()) -> term().
 conf(Key) ->
@@ -125,22 +98,73 @@ project_model() ->
    }.
 
 %%================================================================================
-%% Internal exports
+%% gen_server callbacks:
 %%================================================================================
 
+start_link() ->
+  gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-%% override(ProjectRoot, Function, Args, Result, ExpectedType) ->
-%%   OverrideFun = list_to_atom(atom_to_list(Function) ++ "_override"),
-%%   case lists:member({OverrideFun, 3},
+-record(s,
+        { model
+        , project_model
+        , conf
+        }).
 
+init([]) ->
+  S = #s{ model = model()
+        , project_model = project_model()
+        },
+  lee_storage:new(lee_persistent_term_storage, anvl_conf_storage),
+  {ok, S}.
+
+handle_call(load_config, _From, S = #s{model = Model}) ->
+  case lee:init_config(Model, ?conf_storage) of
+    {ok, ?conf_storage, _Warnings} ->
+      {reply, ok, S};
+    {error, Errors, Warnings} ->
+      logger:critical("Invalid configuration"),
+      [logger:critical(E) || E <- Errors],
+      [logger:warning(E) || E <- Warnings],
+      anvl_app:halt(1)
+  end;
+handle_call({load_model, Plugin}, _From, S0) ->
+  ?LOG_WARNING("Loading model for ~p", [Plugin]),
+  S = do_load_model(Plugin, S0),
+  {reply, ok, S};
+handle_call(_Call, _From, S) ->
+  {reply, {error, unknown_call}, S}.
+
+handle_cast(_Cast, S) ->
+  {noreply, S}.
+
+terminate(_Reason, _S) ->
+  persistent_term:erase(?project_model),
+  ok.
 
 %%================================================================================
 %% Internal functions
 %%================================================================================
 
-plugins(RootDir) ->
-  anvl_project:conf(RootDir, plugins, [#{}],
-                    [], [module()]).
+load_model(Plugins) ->
+  gen_server:call(?MODULE, {load_model, Plugins}).
+
+do_load_model(Module, S0 = #s{model = M0, project_model = PM0}) ->
+  case lee_model:compile(project_metamodel(), [Module:project_model(), PM0]) of
+    {ok, ProjectModel} ->
+      persistent_term:put(?project_model, ProjectModel),
+      case lee_model:compile(metamodel(), [Module:model(), M0]) of
+        {ok, Model} ->
+          S0#s{model = Model, project_model = ProjectModel};
+        {error, Errors} ->
+          logger:critical("Configuration model is invalid! (Likely caused by a plugin)"),
+          [logger:critical(E) || E <- Errors],
+          anvl_app:halt(1)
+      end;
+    {error, Errors} ->
+      logger:critical("Project configuration model is invalid! (Likely caused by a plugin)"),
+      [logger:critical(E) || E <- Errors],
+      anvl_app:halt(1)
+  end.
 
 metamodel() ->
   [ lee:base_metamodel()
@@ -161,15 +185,13 @@ project_metamodel() ->
 cli_args_getter() ->
   application:get_env(anvl, cli_args, []).
 
-ensure_plugins(ProjectDir) ->
-  Plugins = plugins(ProjectDir),
-  _ = precondition([plugin_loaded(Plugin) || Plugin <- Plugins]),
-  Plugins.
-
-?MEMO(plugin_loaded, Plugin,
+?MEMO(loaded, Plugin,
       begin
         Plugin =:= anvl_erlc orelse
-          precondition(anvl_erlc:app_compiled(default, Plugin)),
+          begin
+            precondition(anvl_erlc:app_compiled(default, Plugin)),
+            load_model(Plugin)
+          end,
         Plugin:init(),
         false
       end).

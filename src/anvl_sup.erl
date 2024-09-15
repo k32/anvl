@@ -21,7 +21,7 @@
 -behavior(supervisor).
 
 %% API:
--export([start_link/0]).
+-export([start_link/0, init_plugins/0]).
 
 %% behavior callbacks:
 -export([init/1]).
@@ -40,6 +40,10 @@
 -spec start_link() -> supervisor:startlink_ret().
 start_link() ->
   supervisor:start_link({local, ?SUP}, ?MODULE, []).
+
+init_plugins() ->
+  {ok, _} = supervisor:start_child(?SUP, plugin_server()),
+  ok.
 
 %%================================================================================
 %% behavior callbacks
@@ -67,6 +71,15 @@ condition_server() ->
 resource_server() ->
   #{ id          => resource
    , start       => {anvl_resource, start_link, []}
+   , shutdown    => 5_000
+   , restart     => permanent
+   , type        => worker
+   }.
+
+-spec plugin_server() -> supervisor:child_spec().
+plugin_server() ->
+  #{ id          => plugins
+   , start       => {anvl_plugin, start_link, []}
    , shutdown    => 5_000
    , restart     => permanent
    , type        => worker

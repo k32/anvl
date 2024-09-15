@@ -19,7 +19,7 @@
 
 -module(anvl_project).
 
--export([root/0, conf/3]).
+-export([root/0, conf/3, conditions/0]).
 
 %% Internal exports
 -export([conf/5, parse_transform/2]).
@@ -33,7 +33,7 @@
 -type dir() :: file:filename_all().
 
 %%================================================================================
-%% Internal functions
+%% API
 %%================================================================================
 
 -spec conf(dir(), lee:model_key(), map()) -> _Result.
@@ -51,6 +51,15 @@ root() ->
   %% {ok, CWD} = file:get_cwd(),
   %% CWD.
   ".".
+
+conditions() ->
+  lists:flatmap(fun(Plugin) ->
+                    case erlang:function_exported(Plugin, conditions, 1) of
+                      true -> Plugin:conditions(anvl_project:root());
+                      false -> []
+                    end
+                end,
+                plugins(config_module(root()))).
 
 %%================================================================================
 %% Internal functions
@@ -91,7 +100,8 @@ config_module(ProjectRoot) ->
                 ?UNSAT("Failed to compile anvl config file for ~s.", [Dir])
             end;
           {false, false} ->
-            ?LOG_NOTICE("Directory ~s doesn't contain 'anvl.erl' file, using the top level project's config.", [Dir]),
+            ?LOG_NOTICE("Directory ~s doesn't contain 'anvl.erl' file.\n"
+                        "using the top level project's config.", [Dir]),
             anvl_condition:set_result(#conf_module_of_dir{directory = Dir}, config_module(root())),
             false;
           {false, true} ->
@@ -148,3 +158,11 @@ conf_override(ProjectRoot, Function, Args, Result) ->
 
 project_name(Dir) ->
   filename:basename(Dir).
+
+plugins(Module) ->
+  case erlang:function_exported(Module, plugins, 1) of
+    true ->
+      Module:plugins(#{});
+    false ->
+      []
+  end.

@@ -39,11 +39,11 @@
 %%================================================================================
 
 main(CLIArgs) ->
+  set_logger_conf(),
   application:set_env(anvl, cli_args, CLIArgs),
   {ok, _} = application:ensure_all_started(anvl),
-  set_logger_conf(),
-  anvl_plugin:init(),
-  exec_top(anvl_plugin:conditions()).
+  anvl_plugin:bootstrap(),
+  exec_top(anvl_project:conditions()).
 
 -spec halt(char()) -> no_return().
 halt(ExitCode) ->
