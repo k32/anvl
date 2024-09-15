@@ -32,16 +32,11 @@ erlc_deps(_) ->
 
 erlc_bdeps(#{app := lee}) ->
   [snabbkaffe];
-erlc_bdeps(Args) ->
+erlc_bdeps(_) ->
   [].
 
-erlc_escripts(#{profile := test}) ->
-  #{anvl_test =>
-      #{ apps => [anvl, lee, typerefl, anvl_git, dummy_git]
-       , emu_args => "-escript main anvl_app"
-       }};
 erlc_escripts(_) ->
   #{anvl =>
       #{ apps => [anvl, lee, typerefl, anvl_git]
-       , emu_args => "-escript main anvl_app"
+       , emu_args => "-escript main anvl_app +JPperf true"
        }}.

@@ -54,7 +54,7 @@ start_link() ->
 
 -spec declare(resource(), pos_integer()) -> ok.
 declare(Resource, Max) ->
-  case gen_server:call(#declare{name = Resource, max = Max}) of
+  case gen_server:call(?SERVER, #declare{name = Resource, max = Max}) of
     ok ->
       ok;
     {error, Err} ->
@@ -64,7 +64,7 @@ declare(Resource, Max) ->
 %% @private
 -spec grab(resource()) -> ok.
 grab(Resource) ->
-  case gen_server:call(#grab{name = Resource}) of
+  case gen_server:call(?SERVER, #grab{name = Resource}) of
     ok ->
       ok;
     {error, Err} ->
@@ -74,7 +74,7 @@ grab(Resource) ->
 %% @private
 -spec release(resource()) -> ok.
 release(Resource) ->
-  case gen_server:call(#release{name = Resource}) of
+  case gen_server:call(?SERVER, #release{name = Resource}) of
     ok ->
       ok;
     {error, Err} ->

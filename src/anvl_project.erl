@@ -93,15 +93,15 @@ config_module(ProjectRoot) ->
                        nowarn_export_all, export_all, binary],
             case compile:file(ConfFile, Options) of
               {ok, Module, Binary} ->
-                anvl_condition:set_result(#conf_module_of_dir{directory = Dir}, Module),
                 {module, Module} = code:load_binary(Module, ConfFile, Binary),
+                anvl_condition:set_result(#conf_module_of_dir{directory = Dir}, Module),
                 false;
               error ->
                 ?UNSAT("Failed to compile anvl config file for ~s.", [Dir])
             end;
           {false, false} ->
-            ?LOG_NOTICE("Directory ~s doesn't contain 'anvl.erl' file.\n"
-                        "using the top level project's config.", [Dir]),
+            ?LOG_INFO("Directory ~s doesn't contain 'anvl.erl' file. "
+                      "Using the top level project's config (\"umbrella\" mode).", [Dir]),
             anvl_condition:set_result(#conf_module_of_dir{directory = Dir}, config_module(root())),
             false;
           {false, true} ->

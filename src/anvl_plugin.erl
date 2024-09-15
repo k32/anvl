@@ -57,7 +57,7 @@
 
 bootstrap() ->
   ok = anvl_sup:init_plugins(),
-  ok = load_model(anvl_erlc),
+  precondition(loaded(anvl_erlc)),
   %% FIXME: This is too early, CLI model for all plugins is not
   %% available yet.
   ok = gen_server:call(?MODULE, load_config),
@@ -115,7 +115,7 @@ init([]) ->
         , project_model = project_model()
         },
   lee_storage:new(lee_persistent_term_storage, anvl_conf_storage),
-  {ok, S}.
+  {ok, do_load_model(anvl_erlc, S)}.
 
 handle_call(load_config, _From, S = #s{model = Model}) ->
   case lee:init_config(Model, ?conf_storage) of
@@ -128,9 +128,7 @@ handle_call(load_config, _From, S = #s{model = Model}) ->
       anvl_app:halt(1)
   end;
 handle_call({load_model, Plugin}, _From, S0) ->
-  ?LOG_WARNING("Loading model for ~p", [Plugin]),
-  S = do_load_model(Plugin, S0),
-  {reply, ok, S};
+  {reply, ok, do_load_model(Plugin, S0)};
 handle_call(_Call, _From, S) ->
   {reply, {error, unknown_call}, S}.
 
@@ -149,11 +147,14 @@ load_model(Plugins) ->
   gen_server:call(?MODULE, {load_model, Plugins}).
 
 do_load_model(Module, S0 = #s{model = M0, project_model = PM0}) ->
+  T0 = erlang:system_time(microsecond),
   case lee_model:compile(project_metamodel(), [Module:project_model(), PM0]) of
     {ok, ProjectModel} ->
       persistent_term:put(?project_model, ProjectModel),
       case lee_model:compile(metamodel(), [Module:model(), M0]) of
         {ok, Model} ->
+          T1 = erlang:system_time(microsecond),
+          ?LOG_DEBUG("Loading model for ~p took ~p us", [Module, T1 - T0]),
           S0#s{model = Model, project_model = ProjectModel};
         {error, Errors} ->
           logger:critical("Configuration model is invalid! (Likely caused by a plugin)"),
@@ -187,6 +188,7 @@ cli_args_getter() ->
 
 ?MEMO(loaded, Plugin,
       begin
+        ?LOG_NOTICE("Loading ~p", [Plugin]),
         Plugin =:= anvl_erlc orelse
           begin
             precondition(anvl_erlc:app_compiled(default, Plugin)),

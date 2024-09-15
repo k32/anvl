@@ -22,7 +22,7 @@
 -behavior(anvl_plugin).
 
 %% API:
--export([defaults/0, sources_discovered/3, src_root/2, escript/3, app_compiled/2, module/2, app_path/2, app_spec/2]).
+-export([sources_discovered/3, src_root/2, escript/3, app_compiled/2, module/2, app_path/2, app_spec/2]).
 
 %% behavior callbacks:
 -export([model/0, project_model/0, init/0, conditions/1]).
@@ -85,12 +85,6 @@
 %% API functions
 %%================================================================================
 
-defaults() ->
-  #{ sources => ["${src_root}/src/*.erl", "${src_root}/src/*/*.erl"]
-   , includes => ["${src_root}/include", "${src_root}/src"]
-   , compile_options => []
-   }.
-
 -spec sources_discovered(file:filename_all(), profile(), application()) -> anvl_condition:t().
 ?MEMO(sources_discovered, ProjectRoot, Profile, App,
       begin
@@ -144,12 +138,11 @@ src_root(Profile, App) ->
             ?LOG_NOTICE("Location of ~p was not specified explicitly, using ANVL builtin", [App]),
             false;
           SrcRoot ->
-            ProfileOpts = cfg_compile_options(SrcRoot, Profile),
+            ProfileOpts = cfg_compile_options(SrcRoot, Profile, App),
             _ = precondition(sources_discovered(SrcRoot, Profile, App)),
-            #{ compile_options := COpts0
-             , includes := IncludePatterns
-             , sources := SrcPatterns
-             } = ProfileOpts,
+            COpts0 = cfg_compile_options(SrcRoot, Profile, App),
+            IncludePatterns = cfg_include_dirs(SrcRoot, Profile, App),
+            SrcPatterns = cfg_sources(SrcRoot, Profile, App),
             BDeps = cfg_bdeps(SrcRoot, Profile, App),
 
             AppSrcProperties = app_src(App, SrcRoot),
@@ -283,11 +276,25 @@ project_model() ->
              },
             maps:merge(Profile, App)
             }
+       , includes =>
+           {[pcfg],
+            #{ type => ?TYPE([anvl_lib:filename_pattern()])
+             , function => erlc_include_dirs
+             , default => ["${src_root}/include", "${src_root}/src"]
+             },
+            maps:merge(Profile, App)}
+       , sources =>
+           {[pcfg],
+            #{ type => ?TYPE([anvl_lib:filename_pattern()])
+             , function => erlc_sources
+             , default => ["${src_root}/src/*.erl", "${src_root}/src/*/*.erl"]
+             },
+            maps:merge(Profile, App)}
        , compile_options =>
            {[pcfg],
-            #{ type => ?TYPE(compile_options())
+            #{ type => ?TYPE(list())
              , function => erlc_compile_options
-             , default => defaults()
+             , default => []
              },
             Profile}
        , deps =>
@@ -316,6 +323,7 @@ project_model() ->
        }}.
 
 init() ->
+  ok = anvl_resource:declare(erlc, 100),
   ok.
 
 conditions(ProjectRoot) ->
@@ -573,8 +581,14 @@ profiles(ProjectRoot) ->
 cfg_deps(ProjectRoot, Profile, App) ->
   anvl_project:conf(ProjectRoot, [erlc, deps], #{profile => Profile, app => App}).
 
-cfg_compile_options(ProjectRoot, Profile) ->
-  anvl_project:conf(ProjectRoot, [erlc, compile_options], #{profile => Profile}).
+cfg_include_dirs(ProjectRoot, Profile, App) ->
+  anvl_project:conf(ProjectRoot, [erlc, includes], #{profile => Profile, app => App}).
+
+cfg_sources(ProjectRoot, Profile, App) ->
+  anvl_project:conf(ProjectRoot, [erlc, sources], #{profile => Profile, app => App}).
+
+cfg_compile_options(ProjectRoot, Profile, App) ->
+  anvl_project:conf(ProjectRoot, [erlc, compile_options], #{profile => Profile, app => App}).
 
 cfg_escript_specs(ProjectRoot, Profile) ->
   anvl_project:conf(ProjectRoot, [erlc, escripts], #{profile => Profile}).
@@ -592,19 +606,19 @@ cfg_bdeps(ProjectRoot, Profile, App) ->
 profiles(_) ->
   [stage2].
 
-cfg_deps(_ProjecRoot, _Profile, anvl) ->
+cfg_deps(_ProjectRoot, _Profile, anvl) ->
   ".";
-cfg_deps(_ProjecRoot, _Profile, _) ->
+cfg_deps(_ProjectRoot, _Profile, _) ->
   {subdir, "vendor"}.
 
-cfg_compile_options(ProjectRoot, _Profile) ->
-  case filename:basename(ProjectRoot) of
-    "lee" ->
-      defaults();
-    _Basename ->
-      ?LOG_WARNING("~p ~p", [?FUNCTION_NAME, ProjectRoot]),
-      defaults()
-  end.
+cfg_compile_options(_ProjectRoot, _Profile, _App) ->
+  [].
+
+cfg_include_dirs(_, _, _) ->
+  ["${src_root}/include", "${src_root}/src"].
+
+cfg_sources(_, _, _) ->
+  ["${src_root}/src/*.erl", "${src_root}/src/*/*.erl"].
 
 cfg_escript_specs(_, _) ->
   #{anvl =>

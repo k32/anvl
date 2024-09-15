@@ -311,17 +311,13 @@ wait_result(Condition, MRef) ->
 
 exec({M, Fun, A}) when is_function(Fun, 1) ->
   logger:update_process_metadata(#{condition => M}),
-  case apply(Fun, [A]) of
+  case Fun(A) of
     Bool when is_boolean(Bool) ->
       Bool;
     Other ->
       ?LOG_CRITICAL("(Plugin error): condition returned non-boolean result ~p", [Other]),
       exit(unsat)
   end.
-
-%% exec({M, F, A}) ->
-%%   logger:update_process_metadata(#{condition => M}),
-%%   ensure_boolean(apply(M, F, [A])).
 
 -spec precondition_async1(t()) -> {done, boolean()} | {in_progress, t(), reference()}.
 precondition_async1(Condition) ->
