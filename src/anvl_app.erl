@@ -42,7 +42,7 @@ main(CLIArgs) ->
   set_logger_conf(),
   application:set_env(anvl, cli_args, CLIArgs),
   {ok, _} = application:ensure_all_started(anvl),
-  anvl_plugin:bootstrap(),
+  anvl_plugin:init(),
   exec_top(anvl_project:conditions()).
 
 -spec halt(char()) -> no_return().

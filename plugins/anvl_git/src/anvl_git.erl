@@ -37,7 +37,7 @@
 -reflect_type([options/0]).
 
 init() ->
-  anvl_hook:add(src_discover, fun src_prepared/1).
+  anvl_hook:add(locate, fun src_prepared/1).
 
 model() ->
   #{git =>

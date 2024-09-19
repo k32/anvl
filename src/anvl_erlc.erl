@@ -72,13 +72,6 @@
 -define(app_path(PROFILE, APP), {?MODULE, app_path, PROFILE, APP}).
 -define(app_spec(PROFILE, APP), {?MODULE, app_spec, PROFILE, APP}).
 
--ifndef(BOOTSTRAP).
-  -include_lib("typerefl/include/types.hrl").
-  -define(TYPE(T), T).
--else.
-  -define(TYPE(T), typerefl:term()).
--endif. %% !BOOTSTRAP
-
 -reflect_type([profile/0, source_location_ret/0, compile_options/0, escripts_ret/0, context/0, application_spec/0]).
 
 %%================================================================================
@@ -86,47 +79,13 @@
 %%================================================================================
 
 -spec sources_discovered(file:filename_all(), profile(), application()) -> anvl_condition:t().
-?MEMO(sources_discovered, ProjectRoot, Profile, App,
-      begin
-        ResultKey = {?MODULE, src_root, Profile, App},
-        anvl_condition:has_result(ResultKey) orelse
-          begin
-            ?LOG_INFO("discovering sources of ~p in profile ~p (root=~p)", [App, Profile, App]),
-            case cfg_deps(ProjectRoot, Profile, App) of
-              undefined ->
-                %% FIXME: search path instead.
-                case application:load(App) of
-                  ok -> ok;
-                  {error, {already_loaded, _}} -> ok;
-                  Err ->
-                    ?UNSAT("Failed to discover location of erlang application ~p (~p)", [App, Err])
-                end,
-                anvl_condition:set_result({?MODULE, src_root, Profile, App}, builtin);
-              Spec ->
-                IsLiteral = io_lib:char_list(Spec),
-                Dir = case Spec of
-                        _ when IsLiteral ->
-                          Spec;
-                        {subdir, D} ->
-                          filename:join(D, App);
-                        _ ->
-                          case anvl_hook:first_match(src_discover, #{what => App, spec => Spec}) of
-                            {ok, Result} ->
-                              Result;
-                            undefined ->
-                              ?UNSAT("Failed to discover location of erlang application ~p", [App])
-                          end
-                      end,
-                anvl_condition:set_result({?MODULE, src_root, Profile, App}, Dir)
-            end
-          end,
-        false
-      end).
+sources_discovered(ProjectDir, Profile, App) ->
+  anvl_locate:located(erlc_deps, ProjectDir, App, #{profile => Profile, app => App}).
 
 -spec src_root(profile(), application()) -> file:filename_all() | builtin.
 src_root(Profile, App) ->
-  precondition(sources_discovered(".", Profile, App)),
-  anvl_condition:get_result({?MODULE, src_root, Profile, App}).
+  _ = precondition(sources_discovered(anvl_project:root(), Profile, App)),
+  anvl_locate:dir(erlc_deps, App).
 
 %% @doc Condition: Erlang application has been compiled
 -spec app_compiled(profile(), application()) -> anvl_condition:t().
@@ -213,22 +172,28 @@ app_spec(Profile, App) ->
 %%================================================================================
 
 model() ->
-  %% Profiles = profiles(anvl_project:root()),
+  Profiles = profiles(anvl_project:root()),
   Profile = {[value, cli_param],
-             #{ type => ?TYPE(profile()) %% typerefl:union(Profiles)
-              , default => default
+             #{ type => typerefl:union(Profiles)
+              , default_ref => [anvl_erlc, profile]
               , cli_operand => "profile"
               , cli_short => $p
               }},
   #{anvl_erlc =>
-      #{ escript =>
+      #{ profile =>
+           {[value, cli_param],
+             #{ type => typerefl:union(Profiles)
+              , default => hd(Profiles)
+              , cli_operand => "erlc-profile"
+              }}
+       , escript =>
            {[map, cli_action],
             #{ key_elements => [[name]]
              , cli_operand => "escript"
              },
             #{ name =>
                  {[value, cli_positional],
-                  #{ type => ?TYPE(list(atom()))
+                  #{ type => ?BOOTSTRAP_TYPE(list(atom()))
                    , default => []
                    , cli_arg_position => rest
                    }}
@@ -242,7 +207,7 @@ model() ->
              },
             #{ apps =>
                  {[value, cli_positional],
-                  #{ type => ?TYPE(list(atom()))
+                  #{ type => ?BOOTSTRAP_TYPE(list(atom()))
                    , default => []
                    , cli_arg_position => rest
                    }}
@@ -254,23 +219,23 @@ model() ->
 project_model() ->
   Profile = #{ profile =>
                  {[funarg],
-                  #{ type => ?TYPE(profile())
+                  #{ type => ?BOOTSTRAP_TYPE(profile())
                    }}
              },
   App = #{ app =>
              {[funarg],
-              #{ type => ?TYPE(application())
+              #{ type => ?BOOTSTRAP_TYPE(application())
                }}
          },
   #{erlc =>
       #{ profiles =>
            {[pcfg],
-            #{ type => ?TYPE(list(profile()))
+            #{ type => ?BOOTSTRAP_TYPE(list(profile()))
              , function => erlc_profiles
              }}
        , bdeps =>
            {[pcfg],
-            #{ type => ?TYPE([application()])
+            #{ type => ?BOOTSTRAP_TYPE([application()])
              , function => erlc_bdeps
              , default => []
              },
@@ -278,46 +243,46 @@ project_model() ->
             }
        , includes =>
            {[pcfg],
-            #{ type => ?TYPE([anvl_lib:filename_pattern()])
+            #{ type => ?BOOTSTRAP_TYPE([anvl_lib:filename_pattern()])
              , function => erlc_include_dirs
              , default => ["${src_root}/include", "${src_root}/src"]
              },
             maps:merge(Profile, App)}
        , sources =>
            {[pcfg],
-            #{ type => ?TYPE([anvl_lib:filename_pattern()])
+            #{ type => ?BOOTSTRAP_TYPE([anvl_lib:filename_pattern()])
              , function => erlc_sources
              , default => ["${src_root}/src/*.erl", "${src_root}/src/*/*.erl"]
              },
             maps:merge(Profile, App)}
        , compile_options =>
            {[pcfg],
-            #{ type => ?TYPE(list())
+            #{ type => ?BOOTSTRAP_TYPE(list())
              , function => erlc_compile_options
              , default => []
              },
             Profile}
        , deps =>
            {[pcfg],
-            #{ type => ?TYPE(term())
+            #{ type => ?BOOTSTRAP_TYPE(anvl_locate:spec())
              , function => erlc_deps
              },
             Profile}
        , escripts =>
            {[pcfg],
-            #{ type => ?TYPE(escripts_ret())
+            #{ type => ?BOOTSTRAP_TYPE(escripts_ret())
              , function => erlc_escripts
              },
             Profile}
        , app_src_hook =>
            {[pcfg],
-            #{ type => ?TYPE(application_spec())
+            #{ type => ?BOOTSTRAP_TYPE(application_spec())
              , function => erlc_app_spec_hook
              },
             Profile
             #{ spec =>
                  {[funarg],
-                  #{ type => ?TYPE(application_spec())
+                  #{ type => ?BOOTSTRAP_TYPE(application_spec())
                    }}
              }}
        }}.
@@ -596,7 +561,7 @@ cfg_escript_specs(ProjectRoot, Profile) ->
 cfg_app_src_hook(ProjectRoot, Profile, AppSpec) ->
   Args = #{profile => Profile, spec => AppSpec},
   anvl_project:conf(ProjectRoot, erlc_app_spec_hook, [Args], AppSpec,
-                    ?TYPE(application_spec())).
+                    ?BOOTSTRAP_TYPE(application_spec())).
 
 cfg_bdeps(ProjectRoot, Profile, App) ->
   anvl_project:conf(ProjectRoot, [erlc, bdeps], #{profile => Profile, app => App}).

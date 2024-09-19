@@ -22,7 +22,7 @@
 -behavior(gen_server).
 
 %% API:
--export([conf/1, list_conf/1, bootstrap/0]).
+-export([conf/1, list_conf/1, init/0]).
 
 %% gen_server:
 -export([init/1, handle_call/3, handle_cast/2, terminate/2]).
@@ -55,9 +55,21 @@
 %% API functions
 %%================================================================================
 
-bootstrap() ->
+?MEMO(loaded, Plugin,
+      begin
+        ?LOG_NOTICE("Loading ~p", [Plugin]),
+        Plugin =:= anvl_erlc orelse Plugin =:= anvl_locate orelse
+          begin
+            precondition(anvl_erlc:app_compiled(default, Plugin)),
+            load_model(Plugin)
+          end,
+        Plugin:init(),
+        false
+      end).
+
+init() ->
   ok = anvl_sup:init_plugins(),
-  precondition(loaded(anvl_erlc)),
+  _ = precondition([loaded(anvl_locate), loaded(anvl_erlc)]),
   %% FIXME: This is too early, CLI model for all plugins is not
   %% available yet.
   ok = gen_server:call(?MODULE, load_config),
@@ -185,15 +197,3 @@ project_metamodel() ->
 
 cli_args_getter() ->
   application:get_env(anvl, cli_args, []).
-
-?MEMO(loaded, Plugin,
-      begin
-        ?LOG_NOTICE("Loading ~p", [Plugin]),
-        Plugin =:= anvl_erlc orelse
-          begin
-            precondition(anvl_erlc:app_compiled(default, Plugin)),
-            load_model(Plugin)
-          end,
-        Plugin:init(),
-        false
-      end).

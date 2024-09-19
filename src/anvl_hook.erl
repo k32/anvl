@@ -83,12 +83,13 @@ names(_Config) ->
 
 metaparams(hook) ->
   [ {mandatory, type, typerefl:term()}
-  , {mandatory, function, typerefl:atom()}
+  , {mandatory, name, typerefl:atom()}
   | lee_doc:documented()
   ];
 metaparams(pcfg) ->
   [ {optional, default, typerefl:term()}
-  | metaparams(hook)
+  , {mandatory, function, typerefl:atom()}
+  | lee_doc:documented()
   ];
 metaparams(funarg) ->
   %% funarg is used for documentation purposes only

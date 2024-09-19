@@ -61,7 +61,7 @@ compile(MetaModules0, Models0) ->
                            , meta_class_idx = mk_metatype_index(Model)
                            },
             case lee:meta_validate(Result) of
-                {[], _Warn, Patch} ->
+              {[], _Warn, Patch} ->
                     {ok, patch_meta(Result, Patch)};
                 {Errs, _Warns, _Patch} ->
                     {error, Errs}

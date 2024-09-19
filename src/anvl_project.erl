@@ -86,7 +86,7 @@ config_module(ProjectRoot) ->
         ConfFile = filename:join(Dir, "anvl.erl"),
         case {filelib:is_file(ConfFile), Dir =:= root()} of
           {true, _} ->
-            Module = list_to_atom("anvl_config_" ++ project_name(Dir)),
+            Module = list_to_atom("anvl_config##" ++ project_name(Dir)),
             Options = [{d, 'PROJECT', Module},
                        {parse_transform, ?MODULE},
                        report, no_error_module_mismatch,

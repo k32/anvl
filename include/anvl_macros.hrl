@@ -59,4 +59,11 @@ NAME(__A, __B, __C, __D) ->
 NAME(__A, __B, __C, __D, __E) ->
    ?MEMO_THUNK(?MODULE_STRING ":" ??NAME, fun({A, B, C, D, E}) -> BODY end, {__A, __B, __C, __D, __E})).
 
+-ifndef(BOOTSTRAP).
+  -include_lib("typerefl/include/types.hrl").
+  -define(BOOTSTRAP_TYPE(T), T).
+-else.
+  -define(BOOTSTRAP_TYPE(T), typerefl:term()).
+-endif.
+
 -endif.
