@@ -22,7 +22,7 @@
 -behavior(anvl_plugin).
 
 %% API:
--export([sources_discovered/3, src_root/2, escript/3, app_compiled/2, module/2, app_path/2, app_spec/2]).
+-export([sources_discovered/3, src_root/2, escript/3, app_compiled/2, module/2]).
 
 %% behavior callbacks:
 -export([model/0, project_model/0, init/0, conditions/1]).
@@ -39,7 +39,7 @@
 
 -type application() :: atom().
 
--type application_spec() :: {application, [tuple()]}.
+-type application_spec() :: {application, application(), [tuple()]}.
 
 -type compile_options() ::
         #{ includes => [anvl_lib:filename_pattern()]
@@ -69,8 +69,7 @@
 
 -type escripts_ret() :: #{escript_name() => escript_spec()}.
 
--define(app_path(PROFILE, APP), {?MODULE, app_path, PROFILE, APP}).
--define(app_spec(PROFILE, APP), {?MODULE, app_spec, PROFILE, APP}).
+-define(app_info(PROFILE, APP), {?MODULE, app_info, PROFILE, APP}).
 
 -reflect_type([profile/0, source_location_ret/0, compile_options/0, escripts_ret/0, context/0, application_spec/0]).
 
@@ -159,13 +158,13 @@ module(Profile, Module) ->
         end
       end).
 
--spec app_path(profile(), application()) -> file:filename_all().
-app_path(Profile, App) ->
-  anvl_condition:get_result(?app_path(Profile, App)).
-
--spec app_spec(profile(), application()) -> {application, application(), proplists:proplist()}.
-app_spec(Profile, App) ->
-  anvl_condition:get_result(?app_spec(Profile, App)).
+-spec app_info(profile(), application()) ->
+        #{ spec := application_spec()
+         , ebin_dir := file:filename_all()
+         , escript_files := [file:filename_all()]
+         }.
+app_info(Profile, App) ->
+  anvl_condition:get_result(?app_info(Profile, App)).
 
 %%================================================================================
 %% Behavior callbacks
@@ -232,6 +231,7 @@ project_model() ->
            {[pcfg],
             #{ type => ?BOOTSTRAP_TYPE(list(profile()))
              , function => erlc_profiles
+             , default => [default, test]
              }}
        , bdeps =>
            {[pcfg],
@@ -245,14 +245,14 @@ project_model() ->
            {[pcfg],
             #{ type => ?BOOTSTRAP_TYPE([anvl_lib:filename_pattern()])
              , function => erlc_include_dirs
-             , default => ["${src_root}/include", "${src_root}/src"]
+             , default => default_include_dirs()
              },
             maps:merge(Profile, App)}
        , sources =>
            {[pcfg],
             #{ type => ?BOOTSTRAP_TYPE([anvl_lib:filename_pattern()])
              , function => erlc_sources
-             , default => ["${src_root}/src/*.erl", "${src_root}/src/*/*.erl"]
+             , default => default_sources()
              },
             maps:merge(Profile, App)}
        , compile_options =>
@@ -285,6 +285,13 @@ project_model() ->
                   #{ type => ?BOOTSTRAP_TYPE(application_spec())
                    }}
              }}
+       , escript_files =>
+           {[pcfg],
+            #{ type => ?BOOTSTRAP_TYPE([string()])
+             , function => erlc_escript_files
+             , default => default_escript_files()
+             },
+            maps:merge(Profile, App)}
        }}.
 
 init() ->
@@ -299,7 +306,8 @@ conditions(ProjectRoot) ->
 %%================================================================================
 
 app_file(Profile, App) ->
-  filename:join([app_path(Profile, App), "ebin", atom_to_list(App) ++ ".app"]).
+  #{ebin_dir := Dir} = app_info(Profile, App),
+  filename:join([Dir, "ebin", atom_to_list(App) ++ ".app"]).
 
 escript(ProjectRoot, Profile, EscriptName, Apps, EmuFlags) ->
   Filename = filename:join([?BUILD_ROOT, Profile, EscriptName]),
@@ -307,13 +315,19 @@ escript(ProjectRoot, Profile, EscriptName, Apps, EmuFlags) ->
   ?LOG_NOTICE("Creating ~s", [Filename]),
   %% Satisfy dependencies:
   _ = precondition([app_compiled(Profile, App) || App <- Apps]),
-  %% Hack:
-  ProfileDir = filename:dirname(app_path(Profile, hd(Apps))),
-  AppPattern = lists:flatten(["{", lists:join($,, Apps), "}"]),
-  Files = filelib:wildcard(AppPattern ++ "/{ebin,priv,include}/**", ProfileDir),
+  %% Compose the list of files:
+  Files = lists:flatmap(
+            fun(App) ->
+                #{ebin_dir := Dir} = app_info(Profile, App),
+                [begin
+                   {ok, Content} = file:read_file(filename:join(Dir, RelPath)),
+                   {filename:join(App, RelPath), Content}
+                 end || Pattern <- cfg_escript_files(ProjectRoot, Profile, App),
+                        RelPath <- filelib:wildcard(Pattern, Dir)]
+            end,
+            Apps),
   %% Create the escript:
-  ArchiveOpts = [ {cwd, ProfileDir}
-                , {compress, all}
+  ArchiveOpts = [ {compress, all}
                 , {uncompress, {add, [".beam", ".app"]}}
                 ],
   Sections = [ shebang
@@ -485,8 +499,10 @@ render_app_spec(AppSrcProperties, Sources, Context) ->
   {ok, FD} = file:open(AppFile, [write]),
   io:format(FD, "~p.~n", [NewContent]),
   file:close(FD),
-  anvl_condition:set_result(?app_path(Profile, App), BuildDir),
-  anvl_condition:set_result(?app_spec(Profile, App), NewContent),
+  anvl_condition:set_result(?app_info(Profile, App),
+                            #{ ebin_dir => BuildDir
+                             , spec => NewContent
+                             }),
   OldContent =/= NewContent.
 
 app_src(App, SrcRoot) ->
@@ -566,6 +582,9 @@ cfg_app_src_hook(ProjectRoot, Profile, AppSpec) ->
 cfg_bdeps(ProjectRoot, Profile, App) ->
   anvl_project:conf(ProjectRoot, [erlc, bdeps], #{profile => Profile, app => App}).
 
+cfg_escript_files(ProjectRoot, Profile, App) ->
+  anvl_project:conf(ProjectRoot, [erlc, escript_files], #{profile => Profile, app => App}).
+
 -else.
 
 profiles(_) ->
@@ -580,10 +599,10 @@ cfg_compile_options(_ProjectRoot, _Profile, _App) ->
   [].
 
 cfg_include_dirs(_, _, _) ->
-  ["${src_root}/include", "${src_root}/src"].
+  default_include_dirs().
 
 cfg_sources(_, _, _) ->
-  ["${src_root}/src/*.erl", "${src_root}/src/*/*.erl"].
+  default_sources().
 
 cfg_escript_specs(_, _) ->
   #{anvl =>
@@ -596,7 +615,22 @@ cfg_app_src_hook(_, _, AppSpec) ->
 
 cfg_bdeps(_, _, lee) ->
   [snabbkaffe];
+
 cfg_bdeps(_, _, _) ->
   [].
 
+cfg_escript_files(_, _, _) ->
+  default_escript_files().
+
 -endif.
+
+default_escript_files() ->
+  [ "priv/**"
+  , "ebin/**"
+  ].
+
+default_sources() ->
+  ["${src_root}/src/*.erl", "${src_root}/src/*/*.erl"].
+
+default_include_dirs() ->
+  ["${src_root}/include", "${src_root}/src"].

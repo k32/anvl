@@ -122,5 +122,11 @@ project_model() ->
 %% Internal functions
 %%================================================================================
 
+try_builtin(erlc_deps, App) when App =:= anvl; App =:= lee; App =:= typerefl;
+                                 App =:= snabbkaffe; App =:= anvl_git ->
+  ?LOG_NOTICE("Using ANVL-builtin version of ~p", [App]),
+  {ok, Sections} = escript:extract(escript:script_name(), []),
+  io:format("Sections: ~P~n", [Sections, 10]),
+  undefined;
 try_builtin(_, _) ->
-  undefined.
+  false.
