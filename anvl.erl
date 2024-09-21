@@ -30,13 +30,22 @@ erlc_deps(#{app := anvl_git}) ->
 erlc_deps(_) ->
   {subdir, "vendor"}.
 
-erlc_bdeps(#{app := lee}) ->
-  [snabbkaffe];
-erlc_bdeps(_) ->
-  [].
-
 erlc_escripts(_) ->
   #{anvl =>
       #{ apps => [anvl, lee, typerefl, anvl_git]
        , emu_args => "-escript main anvl_app +JPperf true"
        }}.
+
+%% Package our own sources into the escript.
+%%
+%% This is needed to handle builtin dependencies and for
+%% cross-compilation, e.g. when we need to bootstrap anvl on different
+%% OTP release.
+erlc_escript_extra_files(#{escript := anvl}) ->
+  {0, Files} = anvl_lib:exec("git", ["ls-files"], [collect_output]),
+  [begin
+     {ok, Bin} = file:read_file(File),
+     {binary_to_list(filename:join("__self", File)), Bin}
+   end || File <- Files,
+          string:prefix(File, "test") =:= nomatch,
+          File =/= <<"anvl">>].

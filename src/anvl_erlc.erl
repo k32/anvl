@@ -67,11 +67,13 @@
 
 -type source_location_ret() :: #{application() => string() | {atom(), term()}}.
 
+-type archive_file() :: {file:filename_all(), binary()}.
+
 -type escripts_ret() :: #{escript_name() => escript_spec()}.
 
 -define(app_info(PROFILE, APP), {?MODULE, app_info, PROFILE, APP}).
 
--reflect_type([profile/0, source_location_ret/0, compile_options/0, escripts_ret/0, context/0, application_spec/0]).
+-reflect_type([profile/0, source_location_ret/0, compile_options/0, escripts_ret/0, context/0, application_spec/0, archive_file/0]).
 
 %%================================================================================
 %% API functions
@@ -286,6 +288,12 @@ project_model() ->
              , default => default_escript_files()
              },
             maps:merge(Profile, App)}
+       , escript_extra_files =>
+           {[pcfg],
+            #{ type => ?BOOTSTRAP_TYPE([archive_file()])
+             , function => erlc_escript_extra_files
+             , default => []
+             }}
        }}.
 
 init() ->
@@ -316,19 +324,20 @@ escript(ProjectRoot, Profile, EscriptName, Apps, EmuFlags) ->
                         RelPath <- filelib:wildcard(Pattern, Dir)]
             end,
             Apps),
+  ExtraFiles = cfg_escript_extra_files(ProjectRoot, Profile, EscriptName),
   %% Create the escript:
   ArchiveOpts = [ {compress, all}
                 , {uncompress, {add, [".beam", ".app"]}}
                 ],
   Sections = [ shebang
              , {emu_args, EmuFlags}
-             , {archive, Files, ArchiveOpts}
+             , {archive, ExtraFiles ++ Files, ArchiveOpts}
              ],
   case escript:create(Filename, Sections) of
     ok           -> 0 = anvl_lib:exec("chmod", ["+x", Filename], []);
     {error, Err} -> ?UNSAT("Failed to create escript ~s~nError: ~p", [EscriptName, Err])
   end,
-  %% TODO:
+  %% TODO: avoid recompiling escript unconditionally
   true.
 
 ?MEMO(beam, Src, CRef,
@@ -588,6 +597,9 @@ cfg_bdeps(ProjectRoot, Profile, App) ->
 cfg_escript_files(ProjectRoot, Profile, App) ->
   anvl_project:conf(ProjectRoot, [erlc, escript_files], #{profile => Profile, app => App}).
 
+cfg_escript_extra_files(ProjectRoot, Profile, Escript) ->
+  anvl_project:conf(ProjectRoot, [erlc, escript_extra_files], #{profile => Profile, escript => Escript}).
+
 -else.
 
 profiles(_) ->
@@ -618,6 +630,9 @@ cfg_bdeps(_, _, _) ->
 
 cfg_escript_files(_, _, _) ->
   default_escript_files().
+
+cfg_escript_extra_files(_, _, _) ->
+  [].
 
 -endif.
 

@@ -21,4 +21,5 @@ erlc -W0 -D BOOTSTRAP -o "${STAGE1_DIR}/ebin" -I include -I vendor vendor/typere
 erl -config bootstrap -noshell -pz "${STAGE1_DIR}/ebin" -run anvl_app bootstrap
 
 ## Stage 3:
+# Use anvl binary to recompile itself:
 _anvl_build/stage2/anvl --log-level notice @escript

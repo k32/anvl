@@ -30,6 +30,7 @@
 -export_type([]).
 
 -include_lib("kernel/include/logger.hrl").
+-include_lib("stdlib/include/zip.hrl").
 -include("anvl_macros.hrl").
 -include("anvl_imports.hrl").
 
@@ -119,8 +120,43 @@ project_model() ->
 builtin(#{what := App, kind := erlc_deps}) when App =:= anvl; App =:= lee; App =:= typerefl;
                                                 App =:= snabbkaffe; App =:= anvl_git ->
   ?LOG_NOTICE("Using ANVL-builtin version of ~p", [App]),
-  {ok, Sections} = escript:extract(escript:script_name(), []),
-  io:format("Sections: ~P~n", [Sections, 10]),
-  false;
+  Dir = filename:join([anvl_project:root(), ?BUILD_ROOT, self_hash()]),
+  _ = precondition(builtins_unpacked(Dir)),
+  AppSrcPattern = lists:flatten(io_lib:format("~s/**/~p.app.src", [Dir, App])),
+  [AppSrcFile] = filelib:wildcard(AppSrcPattern),
+  AppSrc = filename:split(AppSrcFile),
+  {AppDirComponents, _} = lists:split(length(AppSrc) - 2, AppSrc),
+  {true, filename:join(AppDirComponents)};
 builtin(_) ->
   false.
+
+
+?MEMO(builtins_unpacked, Dir,
+      begin
+        case filelib:is_file(filename:join([Dir, "__self", "src", "anvl.app.src"])) of
+          true ->
+            false;
+          false ->
+            extract_self(Dir),
+            true
+        end
+      end).
+
+extract_self(Dir) ->
+  ?LOG_NOTICE("Extracting ANVL sources to ~s", [Dir]),
+  {ok, Sections} = escript:extract(escript:script_name(), []),
+  Archive = proplists:get_value(archive, Sections),
+  {ok, [_|_]} = zip:extract(Archive,
+                            [ {cwd, Dir}
+                            , {file_filter, fun(#zip_file{name = Path}) ->
+                                                case Path of
+                                                  "__self" ++ _ -> true;
+                                                  _ -> false
+                                                end
+                                            end}
+                        ]),
+  ok.
+
+self_hash() ->
+  %% TODO: calculate hash of the escript
+  "FIXME-anvl-hash".
