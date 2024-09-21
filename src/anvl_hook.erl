@@ -20,7 +20,7 @@
 
 %-behavior(lee_metatype).
 
--export([init/0, add/2, list/1, foreach/2, flatmap/2, first_match/2]).
+-export([init/0, add/2, add/3, list/1, foreach/2, flatmap/2, first_match/2]).
 
 
 -ifndef(BOOTSTRAP).
@@ -49,12 +49,17 @@ init() ->
 
 -spec add(hookpoint(), hook()) -> ok.
 add(HookPoint, Fun) ->
-  ets:insert(?hooks_tab, {HookPoint, Fun}).
+  add(HookPoint, 0, Fun).
+
+-spec add(hookpoint(), integer(), hook()) -> ok.
+add(HookPoint, Priority, Fun) ->
+  ets:insert(?hooks_tab, {HookPoint, Priority, Fun}).
 
 -spec list(hookpoint()) -> [hook()].
 list(HookPoint) ->
-  MS = {{HookPoint, '$1'}, [], ['$1']},
-  ets:select(?hooks_tab, [MS]).
+  MS = {{HookPoint, '$1', '$2'}, [], [{{'$1', '$2'}}]},
+  {_, L} = lists:unzip(lists:sort(ets:select(?hooks_tab, [MS]))),
+  L.
 
 -spec foreach(hookpoint(), term()) -> ok.
 foreach(HookPoint, Args) ->

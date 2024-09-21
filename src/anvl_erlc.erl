@@ -91,55 +91,49 @@ src_root(Profile, App) ->
 ?MEMO(app_compiled, Profile, App,
       begin
         ?LOG_INFO("Compiling ~p", [App]),
-        case src_root(Profile, App) of
-          builtin ->
-            ?LOG_NOTICE("Location of ~p was not specified explicitly, using ANVL builtin", [App]),
-            false;
-          SrcRoot ->
-            ProfileOpts = cfg_compile_options(SrcRoot, Profile, App),
-            _ = precondition(sources_discovered(SrcRoot, Profile, App)),
-            COpts0 = cfg_compile_options(SrcRoot, Profile, App),
-            IncludePatterns = cfg_include_dirs(SrcRoot, Profile, App),
-            SrcPatterns = cfg_sources(SrcRoot, Profile, App),
-            BDeps = cfg_bdeps(SrcRoot, Profile, App),
+        SrcRoot = src_root(Profile, App),
+        _ = precondition(sources_discovered(SrcRoot, Profile, App)),
+        COpts0 = cfg_compile_options(SrcRoot, Profile, App),
+        IncludePatterns = cfg_include_dirs(SrcRoot, Profile, App),
+        SrcPatterns = cfg_sources(SrcRoot, Profile, App),
+        BDeps = cfg_bdeps(SrcRoot, Profile, App),
 
-            AppSrcProperties = app_src(App, SrcRoot),
-            Dependencies = non_otp_apps(BDeps ++ proplists:get_value(applications, AppSrcProperties, [])),
-            BuildRoot = binary_to_list(filename:join([?BUILD_ROOT, <<"erlc">>, anvl_lib:hash(COpts0)])),
-            %% Satisfy the dependencies:
-            _ = precondition([app_compiled(Profile, Dep) || Dep <- Dependencies]),
-            BuildDir = build_dir(BuildRoot, App),
-            %% Create the context:
-            %% 0. Add constants:
-            Ctx0 = #{ app => App
-                    , profile => Profile
-                    , build_root => BuildRoot
-                    , build_dir => BuildDir
-                    , src_root => SrcRoot
-                    , sources => SrcPatterns
-                    , project_root => SrcRoot
-                    },
-            %% 1. Enrich compile options with the paths to the include directories:
-            IncludeDirs = [template(I, Ctx0, list) || I <- IncludePatterns],
-            COpts = [{i, I} || I <- IncludeDirs] ++ COpts0,
-            Context = Ctx0 #{includes => IncludeDirs, compile_options => COpts},
-            %% 2. Get list of source files:
-            Sources = list_app_sources(Context),
-            CRef = anvl_condition:make_context(Context),
-            ok = filelib:ensure_path(filename:join(BuildDir, "ebin")),
-            ok = filelib:ensure_path(filename:join(BuildDir, "include")),
-            ok = filelib:ensure_path(filename:join(BuildDir, "anvl_deps")),
-            ok = anvl_hook:foreach(erlc_pre_compile_app, Context),
-            %% TODO: this is a hack, should be done by dependency manager:
-            EbinDir = filename:join(BuildDir, "ebin"),
-            true = code:add_patha(EbinDir),
-            ?LOG_INFO("Added ~p to the erlang load path (~s)", [App, code:lib_dir(App)]),
-            %% Build BEAM files:
-            precondition([beam(Src, CRef) || Src <- Sources]) or
-              clean_orphans(Sources, Context) or
-              copy_includes(Context) or
-              render_app_spec(AppSrcProperties, Sources, Context)
-        end
+        AppSrcProperties = app_src(App, SrcRoot),
+        Dependencies = non_otp_apps(BDeps ++ proplists:get_value(applications, AppSrcProperties, [])),
+        BuildRoot = binary_to_list(filename:join([?BUILD_ROOT, <<"erlc">>, anvl_lib:hash(COpts0)])),
+        %% Satisfy the dependencies:
+        _ = precondition([app_compiled(Profile, Dep) || Dep <- Dependencies]),
+        BuildDir = build_dir(BuildRoot, App),
+        %% Create the context:
+        %% 0. Add constants:
+        Ctx0 = #{ app => App
+                , profile => Profile
+                , build_root => BuildRoot
+                , build_dir => BuildDir
+                , src_root => SrcRoot
+                , sources => SrcPatterns
+                , project_root => SrcRoot
+                },
+        %% 1. Enrich compile options with the paths to the include directories:
+        IncludeDirs = [template(I, Ctx0, list) || I <- IncludePatterns],
+        COpts = [{i, I} || I <- IncludeDirs] ++ COpts0,
+        Context = Ctx0 #{includes => IncludeDirs, compile_options => COpts},
+        %% 2. Get list of source files:
+        Sources = list_app_sources(Context),
+        CRef = anvl_condition:make_context(Context),
+        ok = filelib:ensure_path(filename:join(BuildDir, "ebin")),
+        ok = filelib:ensure_path(filename:join(BuildDir, "include")),
+        ok = filelib:ensure_path(filename:join(BuildDir, "anvl_deps")),
+        ok = anvl_hook:foreach(erlc_pre_compile_app, Context),
+        %% TODO: this is a hack, should be done by dependency manager:
+        EbinDir = filename:join(BuildDir, "ebin"),
+        true = code:add_patha(EbinDir),
+        ?LOG_INFO("Added ~p to the erlang load path (~s)", [App, code:lib_dir(App)]),
+        %% Build BEAM files:
+        precondition([beam(Src, CRef) || Src <- Sources]) or
+          clean_orphans(Sources, Context) or
+          copy_includes(Context) or
+          render_app_spec(AppSrcProperties, Sources, Context)
       end).
 
 %% @doc Speculative condition: a particular module has been compiled.
@@ -305,10 +299,6 @@ conditions(ProjectRoot) ->
 %% Condition implementations
 %%================================================================================
 
-app_file(Profile, App) ->
-  #{ebin_dir := Dir} = app_info(Profile, App),
-  filename:join([Dir, "ebin", atom_to_list(App) ++ ".app"]).
-
 escript(ProjectRoot, Profile, EscriptName, Apps, EmuFlags) ->
   Filename = filename:join([?BUILD_ROOT, Profile, EscriptName]),
   ok = filelib:ensure_dir(Filename),
@@ -371,31 +361,45 @@ escript(ProjectRoot, Profile, EscriptName, Apps, EmuFlags) ->
         lists:foldl(fun({file, Dep}, Acc) ->
                         Acc or newer(Dep, Beam);
                        ({parse_transform, ParseTransMod}, Acc) ->
-                        Acc or parse_transform(Profile, ParseTransMod, CRef)
+                        Acc or module_loaded(Profile, ParseTransMod, CRef);
+                       ({behavior, Behavior}, Acc) ->
+                        Acc or module_loaded(Profile, Behavior, CRef)
                     end,
                     false,
                     Dependencies)
       end).
 
-parse_transform(Profile, Module, CRef) ->
+module_loaded(Profile, Module, CRef) ->
   %% The logic is the following:
   %%
   %% 1. If the parse transform module has been already compiled for
   %% this profile, just return whether it has changed.
   %%
-  %% 2 Otherwise, we assume that it is defined in the same
+  %% 2. Check if the module is already available in the code path
+  %% (handle situations when modules are defined outside of project,
+  %% typically it's the case for OTP apps)
+  %%
+  %% 3. Otherwise, we assume that it is defined in the same
   %% application, and make it a precondition `beam/1'.
   %%
-  %% 3. If it doesn't work, we fail: it means the source dependency is
-  %% missing from the config, and user must fix it.
+  %% 4. If none of the above works, we fail: it means the source
+  %% dependency is missing from the config, and user must fix it. This
+  %% failure may happen nondeterministically, but it's not our fault.
   case anvl_condition:is_changed(module(Profile, Module)) of
     Changed when is_boolean(Changed) ->
       Changed;
     undefined ->
-      precondition(local_parse_transform(Module, CRef))
+      case code:which(Module) of
+        L when is_list(L) ->
+          false;
+        _ ->
+          precondition(local_module_loaded(Module, CRef))
+      end
   end.
 
-?MEMO(local_parse_transform, Module, CRef,
+%% @private Precondition: module defined in the same application is
+%% compiled and loaded
+?MEMO(local_module_loaded, Module, CRef,
       begin
         Ctx = #{src_root := SrcRoot} = anvl_condition:get_context(CRef),
         case lists:search(fun(Src) ->
@@ -403,7 +407,7 @@ parse_transform(Profile, Module, CRef) ->
                           end,
                           list_app_sources(Ctx)) of
           {value, Src} ->
-            anvl_condition:set_result({?MODULE, parse_transform, Module}, precondition(beam(Src, CRef)));
+            anvl_condition:set_result({?MODULE, module_loaded, Module}, precondition(beam(Src, CRef)));
           false ->
             ?UNSAT("Parse transform ~p is not found in ~s, or in any of the application dependencies", [Module, SrcRoot])
         end
@@ -412,10 +416,10 @@ parse_transform(Profile, Module, CRef) ->
 %% @private Precondition: .dep file for the module is up to date
 ?MEMO(depfile, Src, DepFile, CRef,
       begin
-        #{includes := IncludeDirs, compile_options := COpts} = anvl_condition:get_context(CRef),
         newer(Src, DepFile) andalso
           begin
             ?LOG_INFO("Updating dependencies for ~s", [Src]),
+            #{includes := IncludeDirs, compile_options := COpts} = anvl_condition:get_context(CRef),
             PredefMacros = lists:filtermap(fun({d, D})    -> {true, D};
                                               ({d, D, V}) -> {true, {D, V}};
                                               (_)         -> false
@@ -444,7 +448,7 @@ get_escripts(ProjectRoot) ->
                 end,
                 Keys).
 
-get_compile_apps(ProjectRoot) ->
+get_compile_apps(_ProjectRoot) ->
   Keys = anvl_plugin:list_conf([anvl_erlc, compile, {}]),
   lists:flatmap(fun(Key) ->
                     Profile = anvl_plugin:conf(Key ++ [profile]),
@@ -534,6 +538,8 @@ process_attributes(OrigFile, EPP, Acc) ->
       process_attributes(OrigFile, EPP, [{file, File} | Acc]);
     {ok, {attribute, _, compile, {parse_transform, ParseTransform}}} ->
       process_attributes(OrigFile, EPP, [{parse_transform, ParseTransform} | Acc]);
+    {ok, {attribute, _, behavior, Behavior}} ->
+      process_attributes(OrigFile, EPP, [{behavior, Behavior} | Acc]);
     {error, Err} ->
       ?UNSAT("Failed to derive dependencies~n~s:~s", [OrigFile, epp:format_error(Err)]);
     _ ->
@@ -558,9 +564,6 @@ non_otp_apps(Apps) ->
 
 profiles(ProjectRoot) ->
   anvl_project:conf(ProjectRoot, [erlc, profiles], #{}).
-
-cfg_deps(ProjectRoot, Profile, App) ->
-  anvl_project:conf(ProjectRoot, [erlc, deps], #{profile => Profile, app => App}).
 
 cfg_include_dirs(ProjectRoot, Profile, App) ->
   anvl_project:conf(ProjectRoot, [erlc, includes], #{profile => Profile, app => App}).
@@ -590,11 +593,6 @@ cfg_escript_files(ProjectRoot, Profile, App) ->
 profiles(_) ->
   [stage2].
 
-cfg_deps(_ProjectRoot, _Profile, anvl) ->
-  ".";
-cfg_deps(_ProjectRoot, _Profile, _) ->
-  {subdir, "vendor"}.
-
 cfg_compile_options(_ProjectRoot, _Profile, _App) ->
   [].
 
@@ -615,7 +613,6 @@ cfg_app_src_hook(_, _, AppSpec) ->
 
 cfg_bdeps(_, _, lee) ->
   [snabbkaffe];
-
 cfg_bdeps(_, _, _) ->
   [].
 

@@ -40,20 +40,19 @@
 -type spec_getter_fun() :: atom().
 -type kind() :: atom().
 -type what() :: atom().
--type args() :: term().
 -type spec() :: file:filename_all() | {subdir, file:filename_all()} | {atom(), term()}.
 
 -type hook_ret() :: {true, file:filename_all()} | false.
 
 -reflect_type([kind/0, what/0, spec/0, hook_ret/0]).
 
--record(?MODULE, {kind, what}).
+-record(?MODULE, {kind :: kind(), what :: what()}).
 
 %%================================================================================
 %% API functions
 %%================================================================================
 
-%%-spec located(kind(), spec_getter_fun(), file:filename(), what(), args()) -> anvl_condition:t().
+-spec located(spec_getter_fun(), file:filename(), what(), _Args) -> anvl_condition:t().
 ?MEMO(located, Getter, ProjectDir, What, Args,
       anvl_condition:has_result(#?MODULE{kind = Getter, what = What}) orelse
       begin
@@ -70,12 +69,7 @@
                     {ok, Result} ->
                       Result;
                     undefined ->
-                      case try_builtin(Getter, What) of
-                        {ok, Result} ->
-                          Result;
-                        undefined ->
-                          ?UNSAT("Failed to locate ~p (~p)", [What, Args])
-                      end
+                      ?UNSAT("Failed to locate ~p (~p)", [What, Args])
                   end
               end,
         anvl_condition:set_result(#?MODULE{kind = Getter, what = What}, Dir),
@@ -91,7 +85,7 @@ dir(Getter, What) ->
 %%================================================================================
 
 init() ->
-  ok.
+  anvl_hook:add(locate, 9999, fun builtin/1).
 
 model() ->
   #{}.
@@ -122,11 +116,11 @@ project_model() ->
 %% Internal functions
 %%================================================================================
 
-try_builtin(erlc_deps, App) when App =:= anvl; App =:= lee; App =:= typerefl;
-                                 App =:= snabbkaffe; App =:= anvl_git ->
+builtin(#{what := App, kind := erlc_deps}) when App =:= anvl; App =:= lee; App =:= typerefl;
+                                                App =:= snabbkaffe; App =:= anvl_git ->
   ?LOG_NOTICE("Using ANVL-builtin version of ~p", [App]),
   {ok, Sections} = escript:extract(escript:script_name(), []),
   io:format("Sections: ~P~n", [Sections, 10]),
-  undefined;
-try_builtin(_, _) ->
+  false;
+builtin(_) ->
   false.
