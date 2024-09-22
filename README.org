@@ -1,0 +1,122 @@
+#+TITLE: ANVL
+
+A parallel, general-purpose, non-opinionated task execution tool scriptable in Erlang.
+ANVL aims to be a full replacement for tools like =make= and =ansible=, while being much simpler and more flexible.
+
+* Overview
+
+A build system is a program that solves the following problems:
+
+- Build targets that have not been built yet
+- Re-build targets that are out-of-date
+- Do not rebuild targets that are up to date
+- Build targets that depend on each other in sequence
+- Build independent targets in parallel
+
+Typical build systems solve this problem by introducing concepts of source, target and rule.
+Source and target are usually file names, and rule is a subroutine that takes source file and produces the target file.
+Most build systems have a standard way of checking whether the target has to be rebuilt, based on comparison of file =mtime='s, hashes etc.
+Dependencies between the targets are encoded in the build recipe as a graph.
+This way of doing things works very well as long as build system only works with files, but falls short when it's no longer the case.
+
+ANVL solves the same problem using a different abstraction called /condition/.
+This abstraction is not tied to the file system or anything concrete, but it can be used to implement the equivalent logic, and more.
+
+Additionally, tools like =make= mix several concepts together:
+
+- Dependency resolution
+- Checking for updates
+- Resource management (=-j= flag)
+
+In contrast, ANVL presents these as independent, composable library primitives.
+
+** What is condition?
+
+Understanding the ANVL approach to scheduling tasks may be a bit tricky.
+We'll give a formal description first, and then illustrate it with concrete examples.
+
+ANVL /condition/ is an Erlang function that, in a very abstract sense, ensures that state of the system satisfies certain expectations.
+Conditions have the following properties:
+
+- Condition can check whether the system already satisfies the expectations.
+  In this case it returns boolean value =false=, meaning it didn't produce any side-effects that changed the system.
+- Otherwise, it can run a subroutine that transfers the system into the expected state.
+  If it succeeds, it returns boolean value =true=.
+  Otherwise it throws an exception.
+- Condition can depend on preconditions
+- Conditions are memoized: ANVL guarantees that body of the condition function is executed only once for each unique set of arguments.
+
+*** Example 1: building C code
+
+Let's first demonstrate that ANVL's rather abstract approach is sufficient to replace a traditional build system.
+We'll define a build rule for turning a =.c= file into =.o= file by running =gcc=.
+
+#+begin_src erlang
+%% anvl macros and imports are contained in this header:
+-include_lib("anvl/include/anvl.hrl").
+
+%% Use ?MEMO macro (short for "memoize") to define a condition that
+%% takes names of soource file (`Src') and object file (`Obj') as
+%% arguments:
+?MEMO(obj, Src, Obj,
+      begin
+        newer(Src, Obj) andalso
+          case exec("gcc", ["-o", Obj, Src]) of
+            0 -> true;
+            _ -> ?UNSAT("Compilation of ~s failed", [Src])
+          end
+      end).
+#+end_src
+
+This definition can be translated from Erlang to English like this:
+condition =obj(Src, Obj)= is satisfied when the object file is newer than the source file or after compiling the source file with GCC.
+Return =true= if object files was changed or =false= otherwise.
+Throw an exception if GCC exits with non-zero code.
+
+This simple example demonstrates separation of concepts:
+=anvl= don't assume anything about the nature of conditions, it only concerns with whether they have produced side effects.
+
+While this looks verbose at first, it opens up some possibilities.
+First of all, a full-fledged programming language gives access to proper data structures and algorithms, and allows to encapsulate build rules into reusable modules with well-defined interfaces.
+But more importantly, it allows to manage system beyond reading and writing files.
+
+*** Example 2: preconditions
+
+In this example we'll demonstrate how conditions can be composed.
+We'll link object files created at previous step to create an executable named "build/foo".
+
+#+begin_src erlang
+?MEMO(executable_built,
+      begin
+        Executable = "build/foo",
+        %% Find all c files in "src" directory:
+        Sources = filelib:wildcard("src/*.c"),
+        %% Derive names of object files using pattern substitution:
+        SourcesAndObjs = patsubst("build/${basename}.o", Sources),
+        %% Precondition: all source files are compiled:
+        precondition([obj(Src, Obj) || {Src, Obj} <- SourcesAndObjs]) or
+          (not filelib:is_file(Executable)) andalso
+          %% Run linker if any of the preconditions produced side effects or if the executable doesn't exist:
+          begin
+            {_, Objs} = lists:unzip(SourcesAndObjs),
+            case exec("gcc", ["-o", Executable | Objs]) of
+              0 -> true;
+              _ -> ?UNSAT("Linking failed")
+            end
+          end
+      end).
+#+end_src
+
+
+* TODO Invocation
+
+* TODO Configuration
+
+* TODO Writing conditions
+
+* TODO Plugins
+
+** Builtin Plugins
+
+ANVL contains builtin rules for cloning Git repositories and building Erlang applications and releases.
+These two features are necessary for building other plugins.

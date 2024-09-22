@@ -20,8 +20,9 @@
 -module(anvl_lib).
 
 %% API:
--export([newer/2, template/3, patsubst1/3, patsubst/3, hash/1]).
--export([exec/3]).
+-export([template/3, patsubst1/3, patsubst1/2, patsubst/3, patsubst/2]).
+-export([newer/2, hash/1]).
+-export([exec/2, exec/3]).
 
 -export_type([template_vars/0]).
 
@@ -78,6 +79,10 @@ template(Pattern, Substitutions0, iolist) ->
         end,
   re:replace(Pattern, "\\$\\{([^}]*)\\}", Fun, [global, {return, iodata}]).
 
+-spec patsubst1(filename_pattern(), file:filename_all()) -> file:filename_all().
+patsubst1(Pattern, Src) ->
+  patsubst1(Pattern, Src, #{}).
+
 -spec patsubst1(filename_pattern(), file:filename_all(), template_vars()) -> file:filename_all().
 patsubst1(Pattern, Src, TVars0) ->
   Ext = filename:extension(Src),
@@ -87,9 +92,17 @@ patsubst1(Pattern, Src, TVars0) ->
                  },
   template(Pattern, TVars, binary).
 
+-spec patsubst(filename_pattern(), [file:filename_all()]) -> [{file:filename_all(), file:filename_all()}].
+patsubst(Pattern, Filenames) ->
+  patsubst(Pattern, Filenames, #{}).
+
 -spec patsubst(filename_pattern(), [file:filename_all()], template_vars()) -> [{file:filename_all(), file:filename_all()}].
 patsubst(Pattern, Filenames, TVars) ->
   [{Src, patsubst1(Pattern, Src, TVars)} || Src <- Filenames].
+
+-spec exec(string(), [string()]) -> integer().
+exec(Cmd, Args) ->
+  exec(Cmd, Args, []).
 
 -spec exec(string(), [string()], list()) -> integer().
 exec(Cmd0, Args, Opts0) ->

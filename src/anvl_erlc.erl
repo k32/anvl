@@ -333,7 +333,7 @@ escript(ProjectRoot, Profile, EscriptName, Apps, EmuFlags) ->
              , {archive, ExtraFiles ++ Files, ArchiveOpts}
              ],
   case escript:create(Filename, Sections) of
-    ok           -> 0 = anvl_lib:exec("chmod", ["+x", Filename], []);
+    ok           -> 0 = anvl_lib:exec("chmod", ["+x", Filename]);
     {error, Err} -> ?UNSAT("Failed to create escript ~s~nError: ~p", [EscriptName, Err])
   end,
   %% TODO: avoid recompiling escript unconditionally

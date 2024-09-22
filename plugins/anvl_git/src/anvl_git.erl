@@ -107,7 +107,7 @@ mirror_has_commit(MirrorDir, Hash) ->
             0 = anvl_lib:exec("git", ["remote", "update"], [{cd, Dir}]);
           false ->
             ok = filelib:ensure_dir(Dir),
-            0 = anvl_lib:exec("git", ["clone", "--mirror", Repo, Dir], [])
+            0 = anvl_lib:exec("git", ["clone", "--mirror", Repo, Dir])
         end,
         false
       end).
