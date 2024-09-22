@@ -21,13 +21,16 @@ plugins(_) ->
   [anvl_erlc, anvl_git].
 
 conditions(_) ->
-  [escript].
+  [escript, perf].
 
 escript() ->
   anvl_condition:precondition(anvl_erlc:escript(".", default, anvl)).
 
+perf() ->
+  anvl_condition:precondition(anvl_erlc:escript(".", perf, anvl)).
+
 erlc_profiles(_) ->
-  [default, stage2, test].
+  [default, stage2, test, perf].
 
 erlc_deps(#{app := anvl}) ->
   ".";
@@ -36,10 +39,14 @@ erlc_deps(#{app := anvl_git}) ->
 erlc_deps(_) ->
   {subdir, "vendor"}.
 
+erlc_escripts(perf) ->
+  maps:update_with(emu_args,
+                   fun(Str) -> Str ++ " +JPperf true" end,
+                   erlc_escripts(default));
 erlc_escripts(_) ->
   #{anvl =>
       #{ apps => [anvl, lee, typerefl, anvl_git]
-       , emu_args => "-escript main anvl_app +JPperf true"
+       , emu_args => "-escript main anvl_app"
        }}.
 
 %% Package our own sources into the escript.

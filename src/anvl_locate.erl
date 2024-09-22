@@ -22,7 +22,7 @@
 -behavior(anvl_plugin).
 
 %% API:
--export([located/4, dir/2]).
+-export([located/4, dir/3]).
 
 %% behavior callbacks:
 -export([model/0, project_model/0, init/0]).
@@ -46,7 +46,7 @@
 
 -reflect_type([kind/0, what/0, spec/0, hook_ret/0]).
 
--record(?MODULE, {kind :: kind(), what :: what()}).
+-record(?MODULE, {kind :: kind(), what :: what(), args}).
 
 %%================================================================================
 %% API functions
@@ -54,7 +54,7 @@
 
 -spec located(spec_getter_fun(), file:filename(), what(), _Args) -> anvl_condition:t().
 ?MEMO(located, Getter, ProjectDir, What, Args,
-      anvl_condition:has_result(#?MODULE{kind = Getter, what = What}) orelse
+      anvl_condition:has_result(#?MODULE{kind = Getter, what = What, args = Args}) orelse
       begin
         Spec = anvl_project:conf(ProjectDir, Getter, Args, undefined,
                                  ?BOOTSTRAP_TYPE(spec())),
@@ -72,13 +72,13 @@
                       ?UNSAT("Failed to locate ~p (~p)", [What, Args])
                   end
               end,
-        anvl_condition:set_result(#?MODULE{kind = Getter, what = What}, Dir),
+        anvl_condition:set_result(#?MODULE{kind = Getter, what = What, args = Args}, Dir),
         false
       end).
 
--spec dir(spec_getter_fun(), what()) -> file:filename().
-dir(Getter, What) ->
-  anvl_condition:get_result(#?MODULE{kind = Getter, what = What}).
+-spec dir(spec_getter_fun(), what(), _Args) -> file:filename().
+dir(Getter, What, Args) ->
+  anvl_condition:get_result(#?MODULE{kind = Getter, what = What, args = Args}).
 
 %%================================================================================
 %% behavior callbacks

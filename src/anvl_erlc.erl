@@ -85,7 +85,7 @@ sources_discovered(ProjectDir, Profile, App) ->
 -spec src_root(profile(), application()) -> file:filename_all() | builtin.
 src_root(Profile, App) ->
   _ = precondition(sources_discovered(anvl_project:root(), Profile, App)),
-  anvl_locate:dir(erlc_deps, App).
+  anvl_locate:dir(erlc_deps, App, #{profile => Profile, app => App}).
 
 %% @doc Condition: Erlang application has been compiled
 -spec app_compiled(profile(), application()) -> anvl_condition:t().
