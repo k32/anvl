@@ -54,15 +54,14 @@ root() ->
   ".".
 
 conditions() ->
-  custom_conditions()
-  %% Ad-hoc conditions:
-  ++ lists:flatmap(fun(Plugin) ->
-                       case erlang:function_exported(Plugin, conditions, 1) of
-                         true -> Plugin:conditions(anvl_project:root());
-                         false -> []
-                       end
-                   end,
-                   plugins(config_module(root()))).
+  AdHoc = lists:flatmap(fun(Plugin) ->
+                            case erlang:function_exported(Plugin, conditions, 1) of
+                              true -> Plugin:conditions(anvl_project:root());
+                              false -> []
+                            end
+                        end,
+                        plugins(config_module(root()))),
+  custom_conditions(AdHoc) ++ AdHoc.
 
 %%================================================================================
 %% Internal functions
@@ -170,11 +169,12 @@ plugins(Module) ->
       []
   end.
 
-custom_conditions() ->
+custom_conditions(AdHoc) ->
   Invoked = anvl_plugin:conf([custom_conditions]),
   Defined = conf(root(), [custom_conditions], #{}),
   Funs = case {Invoked, Defined} of
-           {[], All} ->
+           {[], All} when AdHoc =:= [] ->
+             ?LOG_NOTICE("No explicit condition was given. Running all custom conditions."),
              All;
            _ ->
              case Invoked -- Defined of
