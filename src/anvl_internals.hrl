@@ -17,7 +17,6 @@
 -define(ANVL_INTERNALS_HRL, true).
 
 -include_lib("lee/include/lee.hrl").
--include("anvl_macros.hrl").
 
 -define(conf_storage, ?lee_persistent_term_storage(anvl_conf_storage)).
 

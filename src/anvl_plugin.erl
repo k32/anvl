@@ -35,7 +35,7 @@
 -include_lib("lee/include/lee.hrl").
 -include_lib("typerefl/include/types.hrl").
 -include("anvl_internals.hrl").
--include("anvl_imports.hrl").
+-include("anvl.hrl").
 
 %%================================================================================
 %% Type declarations

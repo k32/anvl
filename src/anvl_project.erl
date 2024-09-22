@@ -24,6 +24,7 @@
 %% Internal exports
 -export([conf/5, parse_transform/2]).
 
+-include("anvl.hrl").
 -include("anvl_internals.hrl").
 
 %%================================================================================

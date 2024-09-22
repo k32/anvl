@@ -25,8 +25,7 @@
 -export([model/0, project_model/0, init/0]).
 
 -include_lib("typerefl/include/types.hrl").
--include_lib("anvl/include/anvl_macros.hrl").
--include_lib("anvl/include/anvl_imports.hrl").
+-include_lib("anvl/include/anvl.hrl").
 
 -type options() :: #{ repo := string() | binary()
                     , ref := string()

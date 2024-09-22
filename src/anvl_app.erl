@@ -31,8 +31,7 @@
 -export([bootstrap/0]).
 
 -include_lib("kernel/include/logger.hrl").
--include("anvl_imports.hrl").
--include("anvl_macros.hrl").
+-include("anvl.hrl").
 
 %%================================================================================
 %% API

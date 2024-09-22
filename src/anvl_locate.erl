@@ -31,8 +31,7 @@
 
 -include_lib("kernel/include/logger.hrl").
 -include_lib("stdlib/include/zip.hrl").
--include("anvl_macros.hrl").
--include("anvl_imports.hrl").
+-include("anvl.hrl").
 
 %%================================================================================
 %% Type declarations

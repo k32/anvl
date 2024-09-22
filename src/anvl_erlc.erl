@@ -28,8 +28,7 @@
 -export([model/0, project_model/0, init/0, conditions/1]).
 
 -include_lib("kernel/include/logger.hrl").
--include("anvl_macros.hrl").
--include("anvl_imports.hrl").
+-include("anvl.hrl").
 
 %%================================================================================
 %% Type declarations
