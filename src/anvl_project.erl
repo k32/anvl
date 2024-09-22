@@ -54,13 +54,15 @@ root() ->
   ".".
 
 conditions() ->
-  lists:flatmap(fun(Plugin) ->
-                    case erlang:function_exported(Plugin, conditions, 1) of
-                      true -> Plugin:conditions(anvl_project:root());
-                      false -> []
-                    end
-                end,
-                plugins(config_module(root()))).
+  custom_conditions()
+  %% Ad-hoc conditions:
+  ++ lists:flatmap(fun(Plugin) ->
+                       case erlang:function_exported(Plugin, conditions, 1) of
+                         true -> Plugin:conditions(anvl_project:root());
+                         false -> []
+                       end
+                   end,
+                   plugins(config_module(root()))).
 
 %%================================================================================
 %% Internal functions
@@ -166,4 +168,29 @@ plugins(Module) ->
       Module:plugins(#{});
     false ->
       []
+  end.
+
+custom_conditions() ->
+  Invoked = anvl_plugin:conf([custom_conditions]),
+  Defined = conf(root(), [custom_conditions], #{}),
+  Funs = case {Invoked, Defined} of
+           {[], All} ->
+             All;
+           _ ->
+             case Invoked -- Defined of
+               [] ->
+                 ok;
+               Missing ->
+                 ?LOG_CRITICAL("Condition(s) ~p are not declared in anvl.erl", [Missing]),
+                 anvl_app:halt(1)
+             end,
+             Invoked
+         end,
+  Mod = config_module(root()),
+  case [Fun || Fun <- Funs, not erlang:function_exported(Mod, Fun, 1)] of
+    [] ->
+      [?MEMO_THUNK("toplevel", fun Mod:Fun/1, []) || Fun <- Funs];
+    Undefined ->
+      ?LOG_CRITICAL("Condition(s) are declared, but undefined: ~p", [Undefined]),
+      anvl_app:halt(1)
   end.

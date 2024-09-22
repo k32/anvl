@@ -20,6 +20,12 @@
 plugins(_) ->
   [anvl_erlc, anvl_git].
 
+conditions(_) ->
+  [escript].
+
+escript(_) ->
+  anvl_condition:precondition(anvl_erlc:escript(".", default, anvl)).
+
 erlc_profiles(_) ->
   [default, stage2, test].
 

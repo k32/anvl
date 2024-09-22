@@ -23,4 +23,4 @@ erl -config bootstrap -noshell -pz "${STAGE1_DIR}/ebin" -run anvl_app bootstrap
 
 ## Stage 3:
 # Use stage 2 ANVL escript to recompile itself:
-_anvl_build/stage2/anvl --log-level notice @escript
+_anvl_build/stage2/anvl

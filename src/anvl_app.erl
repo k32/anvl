@@ -42,7 +42,13 @@ main(CLIArgs) ->
   application:set_env(anvl, cli_args, CLIArgs),
   {ok, _} = application:ensure_all_started(anvl),
   anvl_plugin:init(),
-  exec_top(anvl_project:conditions()).
+  case anvl_project:conditions() of
+    [] ->
+      ?LOG_CRITICAL("No default condition is specified in anvl.erl. Nothing to do"),
+      ?MODULE:halt(1);
+    Toplevel ->
+      exec_top(Toplevel)
+  end.
 
 -spec halt(char()) -> no_return().
 halt(ExitCode) ->

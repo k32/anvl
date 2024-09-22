@@ -99,6 +99,11 @@ model() ->
               , logger_handler => default
               }}
         }
+   , custom_conditions =>
+       {[value, cli_positional],
+        #{ type             => typerefl:list(atom())
+         , cli_arg_position => rest
+         }}
    }.
 
 project_model() ->
@@ -107,7 +112,13 @@ project_model() ->
         #{ type => [module()]
          , function => plugins
          }}
-   }.
+    , custom_conditions =>
+        {[pcfg],
+         #{ type => [atom()]
+          , function => conditions
+          , default => []
+          }}
+    }.
 
 %%================================================================================
 %% gen_server callbacks:
