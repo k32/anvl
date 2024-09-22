@@ -187,9 +187,9 @@ custom_conditions() ->
              Invoked
          end,
   Mod = config_module(root()),
-  case [Fun || Fun <- Funs, not erlang:function_exported(Mod, Fun, 1)] of
+  case [Fun || Fun <- Funs, not erlang:function_exported(Mod, Fun, 0)] of
     [] ->
-      [?MEMO_THUNK("toplevel", fun Mod:Fun/1, []) || Fun <- Funs];
+      [?MEMO_THUNK("toplevel", fun Mod:Fun/0, []) || Fun <- Funs];
     Undefined ->
       ?LOG_CRITICAL("Condition(s) are declared, but undefined: ~p", [Undefined]),
       anvl_app:halt(1)

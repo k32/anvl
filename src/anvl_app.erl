@@ -62,12 +62,7 @@ halt(ExitCode) ->
 bootstrap() ->
   {ok, _} = ?MODULE:start(normal, []),
   ?LOG_NOTICE("Bootstrap: Stage 2"),
-  Do = fun(_) ->
-           {ok, RootDir} = file:get_cwd(),
-           Profile = stage2,
-           precondition(anvl_erlc:escript(RootDir, Profile, anvl))
-       end,
-  exec_top([{"stage2", Do, []}]).
+  exec_top(anvl_erlc:escript(anvl_project:root(), stage2, anvl)).
 
 %%================================================================================
 %% behavior callbacks
@@ -85,6 +80,7 @@ stop(_) ->
 %%================================================================================
 
 exec_top(Preconditions) ->
+  ?LOG_DEBUG("Top level preconditions: ~p", [Preconditions]),
   T0 = os:system_time(microsecond),
   ExitCode =
     try
@@ -92,8 +88,9 @@ exec_top(Preconditions) ->
       0
     catch
       _:_ ->
-        [?LOG_DEBUG("Condition state: ~p", [S]) || S <- ets:tab2list(anvl_condition)],
         1
+    after
+        [?LOG_DEBUG("Condition state: ~p", [S]) || S <- ets:tab2list(anvl_condition)]
     end,
   Dt = (os:system_time(microsecond) - T0) / 1000,
   #{complete := Complete, changed := Changed, failed := Failed} = anvl_condition:stats(),

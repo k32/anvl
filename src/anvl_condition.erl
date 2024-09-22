@@ -40,12 +40,17 @@
 -export_type([t/0, cref/0]).
 
 -include_lib("kernel/include/logger.hrl").
+-include("anvl_defs.hrl").
 
 %%================================================================================
 %% Type declarations
 %%================================================================================
 
--type t() :: {_Descr :: atom() | string(), fun((Arg) -> boolean()), Arg}.
+-type t() :: #anvl_memo_thunk{
+                descr :: _,
+                func :: function(),
+                args :: list()
+               }.
 
 -opaque cref() :: term().
 
@@ -96,7 +101,7 @@ stats() ->
    }.
 
 -spec precondition([t()] | t()) -> boolean().
-precondition(Tup) when is_tuple(Tup) ->
+precondition(Tup) when is_record(Tup, anvl_memo_thunk) ->
   precondition([Tup]);
 precondition(L) when is_list(L) ->
   precondition(L, 100).
@@ -133,7 +138,7 @@ speculative(Cond) ->
                unsat        -> unsat(C)
              end
          end,
-  {speculative, Body, Cond}.
+  #anvl_memo_thunk{descr = speculative, func = Body, args = [Cond]}.
 
 %%% Return values:
 
@@ -309,13 +314,19 @@ wait_result(Condition, MRef) ->
       end
   end.
 
-exec({M, Fun, A}) when is_function(Fun, 1) ->
-  logger:update_process_metadata(#{condition => M}),
-  case Fun(A) of
-    Bool when is_boolean(Bool) ->
-      Bool;
-    Other ->
-      ?LOG_CRITICAL("(Plugin error): condition returned non-boolean result ~p", [Other]),
+exec(#anvl_memo_thunk{descr = Descr, func = Fun, args = A}) ->
+  case is_function(Fun, length(A)) of
+    true ->
+      logger:update_process_metadata(#{condition => Descr}),
+      case apply(Fun, A) of
+        Bool when is_boolean(Bool) ->
+          Bool;
+        Other ->
+          ?LOG_CRITICAL("(Plugin error): condition ~s returned non-boolean result ~p", [Descr, Other]),
+          exit(unsat)
+      end;
+    false ->
+      ?LOG_CRITICAL("(Plugin error): condition ~s is of wrong type", [Descr]),
       exit(unsat)
   end.
 
@@ -365,5 +376,5 @@ resolve_speculative(Result) ->
 inc_counter(Idx) ->
   counters:add(persistent_term:get(?counters), Idx, 1).
 
-key({_Descr, Fun, Arg}) ->
-  {Fun, Arg}.
+key(#anvl_memo_thunk{func = Fun, args = Args}) ->
+  {Fun, Args}.

@@ -23,7 +23,7 @@ plugins(_) ->
 conditions(_) ->
   [escript].
 
-escript(_) ->
+escript() ->
   anvl_condition:precondition(anvl_erlc:escript(".", default, anvl)).
 
 erlc_profiles(_) ->
