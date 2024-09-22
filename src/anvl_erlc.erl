@@ -66,7 +66,7 @@
 
 -type source_location_ret() :: #{application() => string() | {atom(), term()}}.
 
--type archive_file() :: {file:filename_all(), binary()}.
+-type archive_file() :: {file:filename_all(), file:filename_all()}.
 
 -type escripts_ret() :: #{escript_name() => escript_spec()}.
 
@@ -308,36 +308,44 @@ conditions(ProjectRoot) ->
 
 escript(ProjectRoot, Profile, EscriptName, Apps, EmuFlags) ->
   Filename = filename:join([?BUILD_ROOT, Profile, EscriptName]),
-  ok = filelib:ensure_dir(Filename),
-  ?LOG_NOTICE("Creating ~s", [Filename]),
   %% Satisfy dependencies:
-  _ = precondition([app_compiled(Profile, App) || App <- Apps]),
+  ChangedP = precondition([app_compiled(Profile, App) || App <- Apps]),
   %% Compose the list of files:
-  Files = lists:flatmap(
-            fun(App) ->
-                #{ebin_dir := Dir} = app_info(Profile, App),
-                [begin
-                   {ok, Content} = file:read_file(filename:join(Dir, RelPath)),
-                   {filename:join(App, RelPath), Content}
-                 end || Pattern <- cfg_escript_files(ProjectRoot, Profile, App),
-                        RelPath <- filelib:wildcard(Pattern, Dir)]
-            end,
-            Apps),
+  AppFiles = lists:flatmap(
+               fun(App) ->
+                   #{ebin_dir := EbinDir} = app_info(Profile, App),
+                   [{ filename:join(EbinDir, RelPath)
+                    , filename:join(App, RelPath)
+                    } || Pattern <- cfg_escript_files(ProjectRoot, Profile, App),
+                         RelPath <- filelib:wildcard(Pattern, EbinDir)]
+               end,
+               Apps),
   ExtraFiles = cfg_escript_extra_files(ProjectRoot, Profile, EscriptName),
+  Files = ExtraFiles ++ AppFiles,
+  {Sources, _} = lists:unzip(Files),
   %% Create the escript:
-  ArchiveOpts = [ {compress, all}
-                , {uncompress, {add, [".beam", ".app"]}}
-                ],
-  Sections = [ shebang
-             , {emu_args, EmuFlags}
-             , {archive, ExtraFiles ++ Files, ArchiveOpts}
-             ],
-  case escript:create(Filename, Sections) of
-    ok           -> 0 = anvl_lib:exec("chmod", ["+x", Filename]);
-    {error, Err} -> ?UNSAT("Failed to create escript ~s~nError: ~p", [EscriptName, Err])
-  end,
-  %% TODO: avoid recompiling escript unconditionally
-  true.
+  ChangedP or newer(Sources, Filename) andalso
+    begin
+      ?LOG_NOTICE("Creating ~s", [Filename]),
+      ok = filelib:ensure_dir(Filename),
+      Bins = lists:map(fun({SrcFile, ArchiveFile}) ->
+                           {ok, Bin} = file:read_file(SrcFile),
+                           {ensure_string(ArchiveFile), Bin}
+                       end,
+                       Files),
+      ArchiveOpts = [ {compress, all}
+                    , {uncompress, {add, [".beam", ".app"]}}
+                    ],
+      Sections = [ shebang
+                 , {emu_args, EmuFlags}
+                 , {archive, Bins, ArchiveOpts}
+                 ],
+      case escript:create(Filename, Sections) of
+        ok           -> 0 = anvl_lib:exec("chmod", ["+x", Filename]);
+        {error, Err} -> ?UNSAT("Failed to create escript ~s~nError: ~p", [EscriptName, Err])
+      end,
+      true
+    end.
 
 ?MEMO(beam, Src, CRef,
       begin
@@ -501,21 +509,22 @@ copy_includes(#{build_dir := BuildDir, src_root := SrcRoot}) ->
 render_app_spec(AppSrcProperties, Sources, Context) ->
   #{app := App, profile := Profile, project_root := ProjectRoot, build_dir := BuildDir} = Context,
   AppFile = filename:join([BuildDir, "ebin", atom_to_list(App) ++ ".app"]),
-  case file:consult(AppFile) of
-    {ok, [OldContent]} -> ok;
-    _ -> OldContent = []
-  end,
   Modules = [module_of_erl(I) || I <- Sources],
   NewContent0 = {application, App, [{modules, Modules} | AppSrcProperties]},
   NewContent = cfg_app_src_hook(ProjectRoot, Profile, NewContent0),
-  {ok, FD} = file:open(AppFile, [write]),
-  io:format(FD, "~p.~n", [NewContent]),
-  file:close(FD),
   anvl_condition:set_result(?app_info(Profile, App),
                             #{ ebin_dir => BuildDir
                              , spec => NewContent
                              }),
-  OldContent =/= NewContent.
+  case file:consult(AppFile) of
+    {ok, [OldContent]} when OldContent =:= NewContent ->
+      false;
+    _ ->
+      {ok, FD} = file:open(AppFile, [write]),
+      io:format(FD, "~p.~n", [NewContent]),
+      file:close(FD),
+      true
+  end.
 
 app_src(App, SrcRoot) ->
   File = filename:join([SrcRoot, "src", atom_to_list(App) ++ ".app.src"]),
@@ -563,6 +572,11 @@ list_app_sources(Ctx = #{sources := SrcPatterns}) ->
 non_otp_apps(Apps) ->
   %% FIXME: hack
   Apps -- [kernel, compiler, mnesia, stdlib, xmerl].
+
+ensure_string(Bin) when is_binary(Bin) ->
+  binary_to_list(Bin);
+ensure_string(L) when is_list(L) ->
+  L.
 
 %%================================================================================
 %% Configuration:

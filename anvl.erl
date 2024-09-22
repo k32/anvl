@@ -56,9 +56,8 @@ erlc_escripts(_) ->
 %% OTP release.
 erlc_escript_extra_files(#{escript := anvl}) ->
   {0, Files} = anvl_lib:exec("git", ["ls-files"], [collect_output]),
-  [begin
-     {ok, Bin} = file:read_file(File),
-     {binary_to_list(filename:join("__self", File)), Bin}
-   end || File <- Files,
-          string:prefix(File, "test") =:= nomatch,
-          File =/= <<"anvl">>].
+  [{ File
+   , filename:join("__self", File)
+   } || File <- Files,
+        string:prefix(File, "test") =:= nomatch,
+        File =/= <<"anvl">>].

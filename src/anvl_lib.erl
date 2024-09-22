@@ -65,7 +65,7 @@ newer(Src, Target) ->
       {error, Reason} ->
         error({no_src_file, Src, Reason})
     end,
-  Changed andalso ?LOG_DEBUG("Source ~p is newer than ~p", [Src, Target]),
+  Changed andalso ?LOG_INFO("Source ~p is newer than ~p", [Src, Target]),
   Changed.
 
 -spec template(string(), template_vars(), list) -> string();
