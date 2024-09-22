@@ -88,7 +88,7 @@ config_module(ProjectRoot) ->
         ConfFile = filename:join(Dir, "anvl.erl"),
         case {filelib:is_file(ConfFile), Dir =:= root()} of
           {true, _} ->
-            Module = list_to_atom("anvl_config##" ++ project_name(Dir)),
+            Module = anvl_config_module(Dir),
             Options = [{d, 'PROJECT', Module},
                        {parse_transform, ?MODULE},
                        report, no_error_module_mismatch,
@@ -150,7 +150,7 @@ conf_override(ProjectRoot, Function, Args, Result) ->
   Module = config_module(root()),
   case lists:member({Function, 3}, Module:module_info(exports)) of
     true ->
-      Module:OverrideFun( list_to_atom(project_name(ProjectRoot))
+      Module:OverrideFun( ProjectRoot
                         , Args
                         , Result
                         );
@@ -158,8 +158,8 @@ conf_override(ProjectRoot, Function, Args, Result) ->
       Result
   end.
 
-project_name(Dir) ->
-  filename:basename(Dir).
+anvl_config_module(Dir) ->
+  list_to_atom("anvl_config##" ++ Dir).
 
 plugins(Module) ->
   case erlang:function_exported(Module, plugins, 1) of
