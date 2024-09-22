@@ -309,6 +309,8 @@ wait_result(Condition, MRef) ->
       case Reason of
         Changed when is_boolean(Changed) ->
           Changed;
+        noproc ->
+          is_changed(Condition);
         failed ->
           unsat(Condition)
       end
