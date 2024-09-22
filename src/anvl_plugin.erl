@@ -28,7 +28,7 @@
 -export([init/1, handle_call/3, handle_cast/2, terminate/2]).
 
 %% Internal exports
--export([model/0, project_model/0, start_link/0, loaded/1]).
+-export([model/0, project_model/0, start_link/0, initialized/1]).
 
 -export_type([]).
 
@@ -58,21 +58,33 @@
 ?MEMO(loaded, Plugin,
       begin
         ?LOG_NOTICE("Loading ~p", [Plugin]),
-        Plugin =:= anvl_erlc orelse Plugin =:= anvl_locate orelse
-          begin
-            precondition(anvl_erlc:app_compiled(default, Plugin)),
-            load_model(Plugin)
-          end,
+        %% Don't recompile builtin plugins:
+        Ret = (Plugin =/= anvl_erlc) and (Plugin =/= anvl_locate) and (Plugin =/= anvl_git) andalso
+          precondition(anvl_erlc:app_compiled(default, Plugin)),
+        load_model(Plugin),
+        Ret
+      end).
+
+?MEMO(initialized, Plugin,
+      begin
+        ?LOG_INFO("Initialyzing ~p", [Plugin]),
+        Ret = precondition(loaded(Plugin)),
         Plugin:init(),
-        false
+        Ret
       end).
 
 init() ->
   ok = anvl_sup:init_plugins(),
-  _ = precondition([loaded(anvl_locate), loaded(anvl_erlc)]),
-  %% FIXME: This is too early, CLI model for all plugins is not
-  %% available yet.
+  BuiltinPlugins = [anvl_locate, anvl_erlc, anvl_git],
+  %% Load builtin plugins:
+  _ = precondition([loaded(P) || P <- BuiltinPlugins]),
+  %% Load custom plugins:
+  Plugins = anvl_project:conf(anvl_project:root(), [plugins], #{}),
+  _ = precondition([loaded(P) || P <- Plugins]),
+  %% Read the configuration:
   ok = gen_server:call(?MODULE, load_config),
+  %% Init all:
+  precondition([initialized(P) || P <- BuiltinPlugins ++ Plugins]),
   ok.
 
 -spec conf(lee:key()) -> term().
@@ -128,19 +140,18 @@ start_link() ->
   gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 -record(s,
-        { model
-        , project_model
+        { model = []
+        , project_model = []
+        , m
         , conf
         }).
 
 init([]) ->
-  S = #s{ model = model()
-        , project_model = project_model()
-        },
+  S = #s{},
   lee_storage:new(lee_persistent_term_storage, anvl_conf_storage),
-  {ok, do_load_model(anvl_erlc, S)}.
+  {ok, do_load_model(?MODULE, S)}.
 
-handle_call(load_config, _From, S = #s{model = Model}) ->
+handle_call(load_config, _From, S = #s{m = Model}) ->
   case lee:init_config(Model, ?conf_storage) of
     {ok, ?conf_storage, _Warnings} ->
       {reply, ok, S};
@@ -169,16 +180,18 @@ terminate(_Reason, _S) ->
 load_model(Plugins) ->
   gen_server:call(?MODULE, {load_model, Plugins}).
 
-do_load_model(Module, S0 = #s{model = M0, project_model = PM0}) ->
+do_load_model(Module, S = #s{model = M0, project_model = PM0}) ->
   T0 = erlang:system_time(microsecond),
-  case lee_model:compile(project_metamodel(), [Module:project_model(), PM0]) of
+  PM = [Module:project_model() | PM0],
+  case lee_model:compile(project_metamodel(), PM) of
     {ok, ProjectModel} ->
       persistent_term:put(?project_model, ProjectModel),
-      case lee_model:compile(metamodel(), [Module:model(), M0]) of
+      M = [Module:model() | M0],
+      case lee_model:compile(metamodel(), M) of
         {ok, Model} ->
           T1 = erlang:system_time(microsecond),
-          ?LOG_DEBUG("Loading model for ~p took ~p us", [Module, T1 - T0]),
-          S0#s{model = Model, project_model = ProjectModel};
+          ?LOG_NOTICE("Loading model for ~p took ~p ms", [Module, (T1 - T0)/1000]),
+          S#s{m = Model, project_model = PM, model = M};
         {error, Errors} ->
           logger:critical("Configuration model is invalid! (Likely caused by a plugin)"),
           [logger:critical(E) || E <- Errors],

@@ -94,7 +94,7 @@ project_model() ->
   #{locate =>
       #{ hook =>
            {[pcfg],
-            #{ name => 'locate'
+            #{ function => 'locate'
              , type => ?BOOTSTRAP_TYPE(hook_ret())
              },
             #{ kind =>

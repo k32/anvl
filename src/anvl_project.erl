@@ -19,7 +19,7 @@
 
 -module(anvl_project).
 
--export([root/0, conf/3, conditions/0]).
+-export([root/0, conf/3, conditions/0, plugins/1]).
 
 %% Internal exports
 -export([conf/5, parse_transform/2]).
@@ -49,9 +49,8 @@ conf(ProjectRoot, Key, Args) ->
   end.
 
 root() ->
-  %% {ok, CWD} = file:get_cwd(),
-  %% CWD.
-  ".".
+  {ok, CWD} = file:get_cwd(),
+  CWD.
 
 conditions() ->
   AdHoc = lists:flatmap(fun(Plugin) ->
@@ -97,6 +96,17 @@ config_module(ProjectRoot) ->
               {ok, Module, Binary} ->
                 {module, Module} = code:load_binary(Module, ConfFile, Binary),
                 anvl_condition:set_result(#conf_module_of_dir{directory = Dir}, Module),
+                case root() of
+                  Dir ->
+                    %% Plugins for the root project are initialized at
+                    %% startup:
+                    ok;
+                  _ ->
+                    %% Initialize plugins for the child project:
+                    precondition(
+                      lists:map(fun anvl_plugin:initialized/1,
+                                plugins(Module)))
+                end,
                 false;
               error ->
                 ?UNSAT("Failed to compile anvl config file for ~s.", [Dir])

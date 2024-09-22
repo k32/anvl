@@ -296,7 +296,7 @@ project_model() ->
        }}.
 
 init() ->
-  ok = anvl_resource:declare(erlc, 100),
+  %% ok = anvl_resource:declare(erlc, 100),
   ok.
 
 conditions(ProjectRoot) ->
@@ -329,8 +329,13 @@ escript(ProjectRoot, Profile, EscriptName, Apps, EmuFlags) ->
       ?LOG_NOTICE("Creating ~s", [Filename]),
       ok = filelib:ensure_dir(Filename),
       Bins = lists:map(fun({SrcFile, ArchiveFile}) ->
-                           {ok, Bin} = file:read_file(SrcFile),
-                           {ensure_string(ArchiveFile), Bin}
+                           case file:read_file(SrcFile) of
+                             {ok, Bin}  ->
+                               {ensure_string(ArchiveFile), Bin};
+                             Error ->
+                               ?UNSAT("Cannot read file ~s (-> ~s) required by escript ~p (~p)",
+                                      [SrcFile, ArchiveFile, EscriptName, Error])
+                           end
                        end,
                        Files),
       ArchiveOpts = [ {compress, all}
@@ -570,8 +575,14 @@ list_app_sources(Ctx = #{sources := SrcPatterns}) ->
                 SrcPatterns).
 
 non_otp_apps(Apps) ->
-  %% FIXME: hack
-  Apps -- [kernel, compiler, mnesia, stdlib, xmerl].
+  %% FIXME: find a nicer way to get this list
+  Apps -- [compiler, erts, kernel, sasl, stdlib,
+           mnesia, odbc,
+           os_mon, snmp,
+           asn1, crypto, diameter, eldap, erl_interface, ftp, inets, jinterface, megaco, public_key, ssh, ssl, tftp, wx, xmerl,
+           debugger, dialyzer, et, observer, parsetools, reltool, runtime_tools, syntax_tools, tools,
+           common_test, eunit,
+           edoc, erl_docgen].
 
 ensure_string(Bin) when is_binary(Bin) ->
   binary_to_list(Bin);

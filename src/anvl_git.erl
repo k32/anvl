@@ -25,7 +25,7 @@
 -export([model/0, project_model/0, init/0]).
 
 -include_lib("typerefl/include/types.hrl").
--include_lib("anvl/include/anvl.hrl").
+-include("anvl.hrl").
 
 -type options() :: #{ repo := string() | binary()
                     , ref := string()
@@ -36,7 +36,8 @@
 -reflect_type([options/0]).
 
 init() ->
-  anvl_hook:add(locate, fun src_prepared/1).
+  ok = anvl_resource:declare(git, anvl_plugin:conf([git, max_jobs])),
+  ok = anvl_hook:add(locate, fun src_prepared/1).
 
 model() ->
   #{git =>
@@ -44,6 +45,12 @@ model() ->
            {[value, os_env],
             #{ default => filename:join(filename:basedir(user_cache, "anvl"), "gitmirror")
              , type => string()
+             }}
+       , max_jobs =>
+           {[value, cli_param, os_env],
+            #{ type => non_neg_integer()
+             , default => 3
+             , cli_operand => "j-git"
              }}
        }}.
 
@@ -59,7 +66,6 @@ src_prepared(#{what := What, spec := {git, Opts}}) ->
       Dir = archive_unpacked( What
                             , Repo
                             , locked_commit(SrcRootDir, What)
-                            , mirror_dir(Repo)
                             , maps:get(paths, Opts, [])
                             ),
       {true, Dir};
@@ -69,11 +75,12 @@ src_prepared(#{what := What, spec := {git, Opts}}) ->
 src_prepared(_) ->
   false.
 
-archive_unpacked(What, Repo, CommitHash, MirrorDir, Paths) ->
+archive_unpacked(What, Repo, CommitHash, Paths) ->
   LocalDir = filename:join([anvl_project:root(), ?BUILD_ROOT, "git", What, CommitHash]),
   TmpFile = <<LocalDir/binary, ".tar">>,
   filelib:is_dir(LocalDir) orelse
     begin
+      MirrorDir = mirror_dir(Repo),
       %% 1. Sync the mirror if necessary:
       mirror_has_commit(MirrorDir, CommitHash) orelse
         precondition(mirror_synced(Repo)),
@@ -88,7 +95,7 @@ archive_unpacked(What, Repo, CommitHash, MirrorDir, Paths) ->
   LocalDir.
 
 mirror_has_commit(MirrorDir, Hash) ->
-  case filelib:is_dir(MirrorDir) of
+  case is_git_repo(MirrorDir) of
     true ->
       case anvl_lib:exec("git", ["cat-file", "-e", <<Hash/binary, "^{commit}">>], [{cd, MirrorDir}]) of
         0 -> true;
@@ -98,11 +105,15 @@ mirror_has_commit(MirrorDir, Hash) ->
       false
   end.
 
+is_git_repo(Dir) ->
+  filelib:is_dir(Dir) andalso
+    anvl_lib:exec("git", ["rev-parse", "--is-inside-work-tree"], [{cd, Dir}]) =:= 0.
+
 ?MEMO(mirror_synced, Repo,
       begin
-        ?LOG_NOTICE("Syncing mirror for repository ~p", [Repo]),
         Dir = mirror_dir(Repo),
-        case filelib:is_dir(Dir) of
+        ?LOG_NOTICE("Syncing mirror for repository ~s~nMirror dir: ~s", [Repo, Dir]),
+        case is_git_repo(Dir) of
           true ->
             0 = anvl_lib:exec("git", ["remote", "update"], [{cd, Dir}]);
           false ->

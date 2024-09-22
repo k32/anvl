@@ -34,8 +34,6 @@ erlc_profiles(_) ->
 
 erlc_deps(#{app := anvl}) ->
   ".";
-erlc_deps(#{app := anvl_git}) ->
-  {subdir, "plugins"};
 erlc_deps(_) ->
   {subdir, "vendor"}.
 
@@ -45,7 +43,7 @@ erlc_escripts(perf) ->
                    erlc_escripts(default));
 erlc_escripts(_) ->
   #{anvl =>
-      #{ apps => [anvl, lee, typerefl, anvl_git]
+      #{ apps => [anvl, lee, typerefl]
        , emu_args => "-escript main anvl_app"
        }}.
 

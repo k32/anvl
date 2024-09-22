@@ -100,7 +100,7 @@ handle_call(#declare{name = Name, max = Max}, _From, S) ->
     _ when not is_atom(Name); not is_integer(Max); Max =< 0 ->
       {reply, {error, badarg}, S};
     #{Name := _} ->
-      {reply, {error, already_exists}, S};
+      {reply, {error, already_exists, Name}, S};
     _ ->
       Res = #res{ max = Max
                 , current = 0
