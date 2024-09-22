@@ -46,7 +46,10 @@
 %% API functions
 %%================================================================================
 
--spec newer(file:filename_all(), file:filename_all()) -> boolean().
+-spec newer(file:filename_all() | [file:filename_all()], file:filename_all()) -> boolean().
+newer([Src1|_] = Sources, Target) when is_binary(Src1); is_list(Src1) ->
+  lists:any(fun(Src) -> newer(Src, Target) end,
+            Sources);
 newer(Src, Target) ->
   Changed =
     case file:read_file_info(Src, [raw]) of

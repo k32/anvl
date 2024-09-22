@@ -1,7 +1,7 @@
 #+TITLE: ANVL
 
-A parallel, general-purpose, non-opinionated task execution tool scriptable in Erlang.
-ANVL aims to be a full replacement for tools like =make= and =ansible=, while being much simpler and more flexible.
+ANVL is an alternative to tools like =make= and =ansible=.
+It's parallel, general-purpose, non-opinionated task execution tool scriptable in Erlang, that aims to be simple and flexible.
 
 * Overview
 
@@ -77,13 +77,13 @@ This simple example demonstrates separation of concepts:
 =anvl= don't assume anything about the nature of conditions, it only concerns with whether they have produced side effects.
 
 While this looks verbose at first, it opens up some possibilities.
-First of all, a full-fledged programming language gives access to proper data structures and algorithms, and allows to encapsulate build rules into reusable modules with well-defined interfaces.
-But more importantly, it allows to manage system beyond reading and writing files.
+First of all, using a full-fledged programming language to define conditions gives access to proper data structures and algorithms, and allows to encapsulate build rules into reusable modules with well-defined interfaces.
+But more importantly, it allows to manage systems in ways that go beyond simply reading and writing files.
 
 *** Example 2: preconditions
 
 In this example we'll demonstrate how conditions can be composed.
-We'll link object files created at previous step to create an executable named "build/foo".
+We'll link object files created in the previous example to create an executable "build/foo".
 
 #+begin_src erlang
 ?MEMO(executable_built,
@@ -93,16 +93,16 @@ We'll link object files created at previous step to create an executable named "
         Sources = filelib:wildcard("src/*.c"),
         %% Derive names of object files using pattern substitution:
         SourcesAndObjs = patsubst("build/${basename}.o", Sources),
+        {_, Objs} = lists:unzip(SourcesAndObjs),
         %% Precondition: all source files are compiled:
         precondition([obj(Src, Obj) || {Src, Obj} <- SourcesAndObjs]) or
-          (not filelib:is_file(Executable)) andalso
-          %% Run linker if any of the preconditions produced side effects or if the executable doesn't exist:
-          begin
-            {_, Objs} = lists:unzip(SourcesAndObjs),
-            case exec("gcc", ["-o", Executable | Objs]) of
-              0 -> true;
-              _ -> ?UNSAT("Linking failed")
-            end
+          %% Also check if any of the object files is newer than the target:
+          newer(Objs, Executable) andalso
+          %% Run linker if any of the preconditions produced side
+          %% effects or they are newer than the executable:
+          case exec("gcc", ["-o", Executable | Objs]) of
+            0 -> true;
+            _ -> ?UNSAT("Linking failed")
           end
       end).
 #+end_src
