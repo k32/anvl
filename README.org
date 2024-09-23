@@ -1,13 +1,13 @@
 #+TITLE: ANVL
 
 ANVL is an alternative to tools like =make= and =ansible=.
-It's parallel, general-purpose, non-opinionated task execution tool scriptable in Erlang, that aims to be simple and flexible.
+It's a general-purpose parallel task execution tool scriptable in Erlang, that aims to be simple and flexible.
 
 * Overview
 
-A build system is a program that solves the following problems:
+A build system is a program that automatically solves the following problems:
 
-- Build targets that have not been built yet
+- Build targets that have not been built
 - Re-build targets that are out-of-date
 - Do not rebuild targets that are up to date
 - Build targets that depend on each other in sequence
@@ -38,17 +38,17 @@ We'll give a formal description first, and then illustrate it with concrete exam
 ANVL /condition/ is an Erlang function that, in a very abstract sense, ensures that state of the system satisfies certain expectations.
 Conditions have the following properties:
 
-- Condition can check whether the system already satisfies the expectations.
-  In this case it returns boolean value =false=, meaning it didn't produce any side-effects that changed the system.
-- Otherwise, it can run a subroutine that transfers the system into the expected state.
-  If it succeeds, it returns boolean value =true=.
-  Otherwise it throws an exception.
+- Condition returns a boolean indicating whether it produced side effects that changed the system or not.
+  - Condition returns =false= if the system state already satisfies the expectations.
+    =false= means the system was not changed.
+  - Otherwise, it can run a subroutine that transfers the system into the expected state.
+    If it succeeds, condition returns boolean value =true=.
 - Condition can depend on preconditions
-- Conditions are memoized: ANVL guarantees that body of the condition function is executed only once for each unique set of arguments.
+- Conditions are memoized: ANVL guarantees that body of the condition is executed only once for each unique set of arguments.
 
 *** Example 1: building C code
 
-Let's first demonstrate that ANVL's rather abstract approach is sufficient to replace a traditional build system.
+Let's demonstrate that ANVL's rather abstract approach is sufficient to replace a traditional build system.
 We'll define a build rule for turning a =.c= file into =.o= file by running =gcc=.
 
 #+begin_src erlang
@@ -56,7 +56,7 @@ We'll define a build rule for turning a =.c= file into =.o= file by running =gcc
 -include_lib("anvl/include/anvl.hrl").
 
 %% Use ?MEMO macro (short for "memoize") to define a condition that
-%% takes names of soource file (`Src') and object file (`Obj') as
+%% takes names of source file (`Src') and object file (`Obj') as
 %% arguments:
 ?MEMO(obj, Src, Obj,
       begin
@@ -75,10 +75,6 @@ Throw an exception if GCC exits with non-zero code.
 
 This simple example demonstrates separation of concepts:
 =anvl= don't assume anything about the nature of conditions, it only concerns with whether they have produced side effects.
-
-While this looks verbose at first, it opens up some possibilities.
-First of all, using a full-fledged programming language to define conditions gives access to proper data structures and algorithms, and allows to encapsulate build rules into reusable modules with well-defined interfaces.
-But more importantly, it allows to manage systems in ways that go beyond simply reading and writing files.
 
 *** Example 2: preconditions
 
@@ -107,6 +103,9 @@ We'll link object files created in the previous example to create an executable 
       end).
 #+end_src
 
+While this looks verbose at first, it opens up some possibilities.
+First of all, using a full-fledged programming language to define conditions gives access to proper data structures and algorithms, and allows to encapsulate build rules into reusable modules with well-defined interfaces.
+But more importantly, it allows to manage systems in ways that go beyond simply reading and writing files.
 
 * TODO Invocation
 
