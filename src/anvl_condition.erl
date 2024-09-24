@@ -59,6 +59,7 @@
 -record(done,
         { id :: t()
         , changed :: boolean()
+        , stats :: proplists:proplist()
         }).
 
 -record(failed,
@@ -74,6 +75,7 @@
 -define(SERVER, ?MODULE).
 
 -define(tab, ?MODULE).
+-define(stats_tab, anvl_condition_stats).
 -define(results, anvl_result_tab).
 -define(resolve_conditions, anvl_condition_resolve_targets).
 -define(counters, anvl_condition_counters).
@@ -81,6 +83,7 @@
 -define(cnt_complete, 2).
 -define(cnt_changed, 3).
 -define(cnt_failed, 4).
+-define(gauge_waited, anvl_condition_gauge_waited).
 -define(anvl_reslock, anvl_resouce_lock).
 
 %%================================================================================
@@ -98,6 +101,8 @@ stats() ->
    , complete => counters:get(CRef, ?cnt_complete)
    , changed => counters:get(CRef, ?cnt_changed)
    , failed => counters:get(CRef, ?cnt_failed)
+   , top_time => stats_top(work_time, 10)
+   , top_reductions => stats_top(reductions, 10)
    }.
 
 -spec precondition([t()] | t()) -> boolean().
@@ -117,7 +122,20 @@ is_changed(Cond) ->
 
 -spec precondition([t()], pos_integer() | infinity) -> boolean().
 precondition(L, ChunkSize) when ChunkSize > 0 ->
-  precondition1(L, false, ChunkSize).
+  case erlang:get(?anvl_reslock) of
+    undefined -> ok;
+    Resource  -> error(#{ msg => "Condition cannot invoke preconditions while holding a resource lock"
+                        , resource => Resource
+                        })
+  end,
+  T0 = erlang:system_time(microsecond),
+  Result = precondition1(L, false, ChunkSize),
+  T1 = erlang:system_time(microsecond),
+  case get(?gauge_waited) of
+    undefined  -> put(?gauge_waited, T1 - T0);
+    TimeWaited -> put(?gauge_waited, TimeWaited + T1 - T0)
+  end,
+  Result.
 
 %%%% Speculative targets:
 
@@ -218,6 +236,7 @@ init([]) ->
   process_flag(trap_exit, true),
   ets:new(?tab, [set, named_table, public, {write_concurrency, true}, {read_concurrency, true}, {keypos, 2}]),
   ets:new(?results, [set, named_table, public, {write_concurrency, true}, {read_concurrency, true}, {keypos, 1}]),
+  ets:new(?stats_tab, [set, named_table, public, {write_concurrency, true}, {read_concurrency, false}, {keypos, 1}]),
   persistent_term:put(?counters, counters:new(4, [])),
   S = #s{},
   {ok, S}.
@@ -240,6 +259,7 @@ terminate(_Reason, _S) ->
 
 condition_entrypoint(Condition, Parent) ->
   process_flag(trap_exit, true),
+  T0 = erlang:system_time(microsecond),
   case ets:insert_new(?tab, #in_progress{id = key(Condition), pid = self()}) of
     false ->
       %% Race condition: the same task was spawned by other actor; retry
@@ -250,11 +270,15 @@ condition_entrypoint(Condition, Parent) ->
       inc_counter(?cnt_started),
       try exec(Condition) of
         Changed ->
-          ets:insert(?tab, #done{id = key(Condition), changed = Changed}),
+          ets:insert(?tab,
+                     #done{ id = key(Condition)
+                          , changed = Changed
+                          }),
           resolve_speculative({done, Changed}),
           inc_counter(?cnt_complete),
           Changed andalso inc_counter(?cnt_changed),
           ?LOG_DEBUG("Satisfied ~p (changed = ~p)", [Condition, Changed]),
+          report_stats(Condition, T0),
           exit(Changed)
       catch
         EC:Err:Stack ->
@@ -267,6 +291,7 @@ condition_entrypoint(Condition, Parent) ->
           inc_counter(?cnt_failed),
           ets:insert(?tab, #failed{id = Condition, error = {EC, Err, Stack}}),
           resolve_speculative(unsat),
+          report_stats(Condition, T0),
           exit(failed)
       end
   end.
@@ -278,10 +303,6 @@ condition_entrypoint(Condition, Parent) ->
 precondition1([], Result, _ChunkSize) ->
   Result;
 precondition1(L, Result0, ChunkSize) ->
-  case erlang:get(?anvl_reslock) of
-    undefined -> ok;
-    Resource  -> error(#{msg => "Condition cannot invoke preconditions while holding a resource lock", resource => Resource})
-  end,
   {Result1, WaitL, Rest} = precondition2(L, Result0, [], 0, ChunkSize),
   Result = lists:foldl(fun({Task, MRef}, Acc) ->
                            Acc or wait_result(Task, MRef)
@@ -380,3 +401,37 @@ inc_counter(Idx) ->
 
 key(#anvl_memo_thunk{func = Fun, args = Args}) ->
   {Fun, Args}.
+
+report_stats(Condition, T0) ->
+  T1 = erlang:system_time(microsecond),
+  case get(?gauge_waited) of
+    undefined -> WaitTime = 0;
+    WaitTime  -> ok
+  end,
+  WorkTime = (T1 - T0) - WaitTime,
+  Stats = [ {work_time, WorkTime}
+          , erlang:process_info(self(), reductions)
+          ],
+  ets:insert(?stats_tab, {Condition, Stats}),
+  ok.
+
+stats_top(Key, MaxItems) ->
+  {_, Top} =
+    ets:foldl(
+      fun
+        ({Cond, Stats}, {N, Set0}) ->
+          Val = proplists:get_value(Key, Stats),
+          { N + 1
+          , case Set0 of
+              _ when N < MaxItems ->
+                ordsets:add_element({Val, Cond}, Set0);
+              [{MinVal, _} | Set1] when Val > MinVal ->
+                ordsets:add_element({Val, Cond}, Set1);
+              _ ->
+                Set0
+            end
+          }
+      end,
+      {0, ordsets:new()},
+      ?stats_tab),
+  lists:reverse([{K, V} || {V, K} <- Top]).

@@ -93,8 +93,12 @@ exec_top(Preconditions) ->
         [?LOG_DEBUG("Condition state: ~p", [S]) || S <- ets:tab2list(anvl_condition)]
     end,
   Dt = (os:system_time(microsecond) - T0) / 1000,
-  #{complete := Complete, changed := Changed, failed := Failed} = anvl_condition:stats(),
-  ?LOG_NOTICE("~p satisfied ~p failed ~p changed. Net time: ~pms", [Complete, Failed, Changed, Dt]),
+  #{complete := Complete, changed := Changed, failed := Failed, top_time := TopTime} = anvl_condition:stats(),
+  TopFormat = [io_lib:format("~s ~p -> ~p ms~n", [D, A, V / 1000])
+               || {#anvl_memo_thunk{descr = D, args = A}, V} <- TopTime],
+  ?LOG_NOTICE("~p satisfied ~p failed ~p changed. Net time: ~pms~n~n"
+              "         Longest running jobs:~n~s", [Complete, Failed, Changed, Dt,
+                                            TopFormat]),
   ?MODULE:halt(ExitCode).
 
 set_logger_conf() ->
