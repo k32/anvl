@@ -149,7 +149,7 @@ start_link() ->
 init([]) ->
   S = #s{},
   lee_storage:new(lee_persistent_term_storage, anvl_conf_storage),
-  {ok, do_load_model(?MODULE, S)}.
+  do_load_model(?MODULE, S).
 
 handle_call(load_config, _From, S = #s{m = Model}) ->
   case lee:init_config(Model, ?conf_storage) of
@@ -162,7 +162,13 @@ handle_call(load_config, _From, S = #s{m = Model}) ->
       anvl_app:halt(1)
   end;
 handle_call({load_model, Plugin}, _From, S0) ->
-  {reply, ok, do_load_model(Plugin, S0)};
+  try do_load_model(Plugin, S0) of
+    {ok, S} ->
+      {reply, ok, S}
+  catch
+    EC:Err:Stack ->
+      {reply, {EC, Err, Stack}, S0}
+  end;
 handle_call(_Call, _From, S) ->
   {reply, {error, unknown_call}, S}.
 
@@ -178,7 +184,12 @@ terminate(_Reason, _S) ->
 %%================================================================================
 
 load_model(Plugins) ->
-  gen_server:call(?MODULE, {load_model, Plugins}).
+  case gen_server:call(?MODULE, {load_model, Plugins}) of
+    ok ->
+      ok;
+    {EC, Err, Stack} ->
+      erlang:raise(EC, Err, Stack)
+  end.
 
 do_load_model(Module, S = #s{model = M0, project_model = PM0}) ->
   T0 = erlang:system_time(microsecond),
@@ -191,16 +202,16 @@ do_load_model(Module, S = #s{model = M0, project_model = PM0}) ->
         {ok, Model} ->
           T1 = erlang:system_time(microsecond),
           ?LOG_NOTICE("Loading model for ~p took ~p ms", [Module, (T1 - T0)/1000]),
-          S#s{m = Model, project_model = PM, model = M};
+          {ok, S#s{m = Model, project_model = PM, model = M}};
         {error, Errors} ->
           logger:critical("Configuration model is invalid! (Likely caused by a plugin)"),
           [logger:critical(E) || E <- Errors],
-          anvl_app:halt(1)
+          error(badmodel)
       end;
     {error, Errors} ->
       logger:critical("Project configuration model is invalid! (Likely caused by a plugin)"),
       [logger:critical(E) || E <- Errors],
-      anvl_app:halt(1)
+      error(badmodel)
   end.
 
 metamodel() ->
