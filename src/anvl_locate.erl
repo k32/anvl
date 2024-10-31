@@ -40,7 +40,7 @@
 -type spec_getter_fun() :: atom().
 -type kind() :: atom().
 -type what() :: atom().
--type spec() :: file:filename_all() | {subdir, file:filename_all()} | {atom(), term()}.
+-type spec() :: file:filename_all() | {subdir, file:filename_all()} | {atom(), term()} | undefined.
 
 -type hook_ret() :: {true, file:filename_all()} | false.
 
@@ -129,7 +129,6 @@ builtin(#{what := App, kind := erlc_deps}) when App =:= anvl; App =:= lee; App =
 builtin(_) ->
   false.
 
-
 ?MEMO(builtins_unpacked, Dir,
       begin
         case filelib:is_file(filename:join([Dir, "__self", "src", "anvl.app.src"])) of
@@ -153,7 +152,7 @@ extract_self(Dir) ->
                                                   _ -> false
                                                 end
                                             end}
-                        ]),
+                            ]),
   ok.
 
 self_hash() ->

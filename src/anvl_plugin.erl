@@ -22,13 +22,13 @@
 -behavior(gen_server).
 
 %% API:
--export([conf/1, list_conf/1, init/0]).
+-export([conf/1, list_conf/1, init/0, loaded/1]).
 
 %% gen_server:
 -export([init/1, handle_call/3, handle_cast/2, terminate/2]).
 
 %% Internal exports
--export([model/0, project_model/0, start_link/0, initialized/1]).
+-export([model/0, project_model/0, start_link/0]).
 
 -export_type([]).
 
@@ -62,13 +62,6 @@
         Ret = (Plugin =/= anvl_erlc) and (Plugin =/= anvl_locate) and (Plugin =/= anvl_git) andalso
           precondition(anvl_erlc:app_compiled(default, Plugin)),
         load_model(Plugin),
-        Ret
-      end).
-
-?MEMO(initialized, Plugin,
-      begin
-        ?LOG_INFO("Initialyzing ~p", [Plugin]),
-        Ret = precondition(loaded(Plugin)),
         Plugin:init(),
         Ret
       end).
@@ -84,7 +77,7 @@ init() ->
   %% Read the configuration:
   ok = gen_server:call(?MODULE, load_config),
   %% Init all:
-  precondition([initialized(P) || P <- BuiltinPlugins ++ Plugins]),
+  precondition([loaded(P) || P <- Plugins]),
   ok.
 
 -spec conf(lee:key()) -> term().
@@ -222,6 +215,7 @@ metamodel() ->
                         #{ cli_opts => fun cli_args_getter/0
                          , priority => 10
                          })
+  , lee_metatype:create(anvl_resource)
   ].
 
 project_metamodel() ->

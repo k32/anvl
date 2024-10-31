@@ -104,7 +104,7 @@ config_module(ProjectRoot) ->
                   _ ->
                     %% Initialize plugins for the child project:
                     precondition(
-                      lists:map(fun anvl_plugin:initialized/1,
+                      lists:map(fun anvl_plugin:loaded/1,
                                 plugins(Module)))
                 end,
                 false;

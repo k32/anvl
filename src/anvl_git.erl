@@ -36,7 +36,7 @@
 -reflect_type([options/0]).
 
 init() ->
-  ok = anvl_resource:declare(git, anvl_plugin:conf([git, max_jobs])),
+  ok = anvl_resource:declare(git, 1),
   ok = anvl_hook:add(locate, fun src_prepared/1).
 
 model() ->
@@ -47,10 +47,11 @@ model() ->
              , type => string()
              }}
        , max_jobs =>
-           {[value, cli_param, os_env],
+           {[value, cli_param, os_env, anvl_resource],
             #{ type => non_neg_integer()
              , default => 3
              , cli_operand => "j-git"
+             , anvl_resource => git
              }}
        }}.
 

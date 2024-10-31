@@ -97,8 +97,8 @@ exec_top(Preconditions) ->
   TopFormat = [io_lib:format("~s ~p -> ~p ms~n", [D, A, V / 1000])
                || {#anvl_memo_thunk{descr = D, args = A}, V} <- TopTime],
   ?LOG_NOTICE("~p satisfied ~p failed ~p changed. Net time: ~pms~n~n"
-              "         Longest running jobs:~n~s", [Complete, Failed, Changed, Dt,
-                                            TopFormat]),
+              "         Top longest running jobs:~n~s",
+              [Complete, Failed, Changed, Dt, TopFormat]),
   ?MODULE:halt(ExitCode).
 
 set_logger_conf() ->
