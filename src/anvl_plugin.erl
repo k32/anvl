@@ -57,13 +57,16 @@
 
 ?MEMO(loaded, Plugin,
       begin
-        ?LOG_NOTICE("Loading ~p", [Plugin]),
-        %% Don't recompile builtin plugins:
-        Ret = (Plugin =/= anvl_erlc) and (Plugin =/= anvl_locate) and (Plugin =/= anvl_git) andalso
-          precondition(anvl_erlc:app_compiled(default, Plugin)),
+        ?LOG_INFO("Loading ~p", [Plugin]),
+        Changed = if Plugin =:= anvl_erlc; Plugin =:= anvl_locate; Plugin =:= anvl_git ->
+                      %% Don't recompile builtin plugins:
+                      false;
+                     true ->
+                      precondition(anvl_erlc:app_compiled(default, Plugin))
+                  end,
         load_model(Plugin),
         Plugin:init(),
-        Ret
+        Changed
       end).
 
 init() ->
@@ -74,11 +77,8 @@ init() ->
   %% Load custom plugins:
   Plugins = anvl_project:conf(anvl_project:root(), [plugins], #{}),
   _ = precondition([loaded(P) || P <- Plugins]),
-  %% Read the configuration:
-  ok = gen_server:call(?MODULE, load_config),
-  %% Init all:
-  precondition([loaded(P) || P <- Plugins]),
-  ok.
+  %% Load global configuration:
+  ok = gen_server:call(?MODULE, load_config).
 
 -spec conf(lee:key()) -> term().
 conf(Key) ->
@@ -194,7 +194,7 @@ do_load_model(Module, S = #s{model = M0, project_model = PM0}) ->
       case lee_model:compile(metamodel(), M) of
         {ok, Model} ->
           T1 = erlang:system_time(microsecond),
-          ?LOG_NOTICE("Loading model for ~p took ~p ms", [Module, (T1 - T0)/1000]),
+          ?LOG_DEBUG("Loading model for ~p took ~p ms", [Module, (T1 - T0)/1000]),
           {ok, S#s{m = Model, project_model = PM, model = M}};
         {error, Errors} ->
           logger:critical("Configuration model is invalid! (Likely caused by a plugin)"),
