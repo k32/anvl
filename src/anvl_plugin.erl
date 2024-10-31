@@ -49,7 +49,7 @@
 
 -callback init() -> ok.
 
--optional_callbacks([conditions/1]).
+-optional_callbacks([conditions/1, model/0, project_model/0]).
 
 %%================================================================================
 %% API functions
@@ -184,27 +184,45 @@ load_model(Plugins) ->
       erlang:raise(EC, Err, Stack)
   end.
 
-do_load_model(Module, S = #s{model = M0, project_model = PM0}) ->
+do_load_model(Module, S0) ->
   T0 = erlang:system_time(microsecond),
-  PM = [Module:project_model() | PM0],
-  case lee_model:compile(project_metamodel(), PM) of
-    {ok, ProjectModel} ->
-      persistent_term:put(?project_model, ProjectModel),
+  S1 = load_project_model(Module, S0),
+  S = load_configuration_model(Module, S1),
+  T1 = erlang:system_time(microsecond),
+  ?LOG_DEBUG("Loading model for ~p took ~p ms", [Module, (T1 - T0)/1000]),
+  {ok, S}.
+
+load_project_model(Module, S = #s{project_model = PM0}) ->
+  case function_exported(Module, project_model, 0) of
+    true ->
+      PM = [Module:project_model() | PM0],
+      case lee_model:compile(project_metamodel(), PM) of
+        {ok, ProjectModel} ->
+          persistent_term:put(?project_model, ProjectModel),
+          S#s{project_model = PM};
+        {error, Errors} ->
+          logger:critical("Project model is invalid! (Likely caused by a plugin)"),
+          [logger:critical(E) || E <- Errors],
+          error(badmodel)
+      end;
+    false ->
+      S
+  end.
+
+load_configuration_model(Module, S = #s{model = M0}) ->
+  case function_exported(Module, model, 0) of
+    true ->
       M = [Module:model() | M0],
       case lee_model:compile(metamodel(), M) of
         {ok, Model} ->
-          T1 = erlang:system_time(microsecond),
-          ?LOG_DEBUG("Loading model for ~p took ~p ms", [Module, (T1 - T0)/1000]),
-          {ok, S#s{m = Model, project_model = PM, model = M}};
+          S#s{m = Model, model = M};
         {error, Errors} ->
           logger:critical("Configuration model is invalid! (Likely caused by a plugin)"),
           [logger:critical(E) || E <- Errors],
           error(badmodel)
       end;
-    {error, Errors} ->
-      logger:critical("Project configuration model is invalid! (Likely caused by a plugin)"),
-      [logger:critical(E) || E <- Errors],
-      error(badmodel)
+    false ->
+      S
   end.
 
 metamodel() ->
@@ -226,3 +244,7 @@ project_metamodel() ->
 
 cli_args_getter() ->
   application:get_env(anvl, cli_args, []).
+
+function_exported(Module, Fun, Arity) ->
+  %% This will trigger code loading:
+  lists:member({Fun, Arity}, Module:module_info(exports)).
