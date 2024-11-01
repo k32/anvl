@@ -55,6 +55,8 @@
 %% API functions
 %%================================================================================
 
+%% @doc Condition: `Plugin' has been loaded.
+-spec loaded(atom()) -> anvl_condition:t().
 ?MEMO(loaded, Plugin,
       begin
         ?LOG_INFO("Loading ~p", [Plugin]),
@@ -69,6 +71,7 @@
         Changed
       end).
 
+%% @hidden
 init() ->
   ok = anvl_sup:init_plugins(),
   BuiltinPlugins = [anvl_locate, anvl_erlc, anvl_git],
@@ -80,14 +83,17 @@ init() ->
   %% Load global configuration:
   ok = gen_server:call(?MODULE, load_config).
 
+%% @doc Get global configuration for a key
 -spec conf(lee:key()) -> term().
 conf(Key) ->
   lee:get(?conf_storage, Key).
 
+%% @doc List global configuration for a key
 -spec list_conf(lee:model_key()) -> term().
 list_conf(Key) ->
   lee:list(?conf_storage, Key).
 
+%% @hidden
 model() ->
   #{ log =>
        #{ global_level =>
@@ -111,6 +117,7 @@ model() ->
          }}
    }.
 
+%% @hidden
 project_model() ->
    #{ plugins =>
        {[pcfg],
@@ -129,6 +136,7 @@ project_model() ->
 %% gen_server callbacks:
 %%================================================================================
 
+%% @hidden
 start_link() ->
   gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
@@ -139,11 +147,13 @@ start_link() ->
         , conf
         }).
 
+%% @hidden
 init([]) ->
   S = #s{},
   lee_storage:new(lee_persistent_term_storage, anvl_conf_storage),
   do_load_model(?MODULE, S).
 
+%% @hidden
 handle_call(load_config, _From, S = #s{m = Model}) ->
   case lee:init_config(Model, ?conf_storage) of
     {ok, ?conf_storage, _Warnings} ->
@@ -165,9 +175,11 @@ handle_call({load_model, Plugin}, _From, S0) ->
 handle_call(_Call, _From, S) ->
   {reply, {error, unknown_call}, S}.
 
+%% @hidden
 handle_cast(_Cast, S) ->
   {noreply, S}.
 
+%% @hidden
 terminate(_Reason, _S) ->
   persistent_term:erase(?project_model),
   ok.

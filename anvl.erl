@@ -21,13 +21,16 @@ plugins(_) ->
   [anvl_erlc, anvl_git].
 
 conditions(_) ->
-  [escript, perf].
+  [escript, perf, docs].
 
 escript() ->
   anvl_condition:precondition(anvl_erlc:escript(".", default, anvl)).
 
 perf() ->
   anvl_condition:precondition(anvl_erlc:escript(".", perf, anvl)).
+
+docs() ->
+  anvl_condition:precondition(anvl_erlc:edoc(".", default, anvl)).
 
 erlc_profiles(_) ->
   [default, stage2, test, perf].

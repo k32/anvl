@@ -16,18 +16,31 @@
 %% You should have received a copy of the GNU General Public License
 %% along with this program.  If not, see <https://www.gnu.org/licenses/>.
 %%================================================================================
+
+%% @doc Resource is a mechanism for limiting paralellism of certain
+%% operations.
+%%
+%% This feature has a limited use in ANVL, since normally Erlang VM
+%% does a great job managing millions of parallel processes.
+%% Therefore, unlike, say, `make' ANVL doesn't have a global ``-j''
+%% flag.
+%%
+%% Nonetheless, parallelism of certain operations (invoking external
+%% processes, downloading files from the net) should be globally
+%% limited. ANVL allows to create a "resource" for each type of such
+%% operation.
 -module(anvl_resource).
 
 -behavior(gen_server).
 
 %% API:
--export([start_link/0, grab/1, release/1, declare/2, set_max/2]).
+-export([with/2, grab/1, release/1, declare/2, set_max/2]).
 
 %% behavior callbacks:
 -export([init/1, handle_call/3, handle_cast/2]).
 
 %% internal exports:
--export([]).
+-export([start_link/0]).
 
 -export_type([]).
 
@@ -37,6 +50,8 @@
 -include_lib("typerefl/include/types.hrl").
 -include_lib("lee/include/lee.hrl").
 -endif.
+
+-include("anvl_internals.hrl").
 
 %%================================================================================
 %% Type declarations
@@ -59,6 +74,31 @@
 start_link() ->
   gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
+%% @doc Declare a new resource type. This function should be called by
+%% the plugin in its `init/0' callback.
+%%
+%% In order to make the resource capacity configurable by the user, it
+%% should be also declared in the plugin's configuration model as a
+%% value of `non_neg_integer()' type and with `anvl_resource'
+%% metatype. For example:
+%%
+%% ```
+%% project_model() ->
+%%  #{git =>
+%%     #{max_jobs =>
+%%        {[value, cli_param, anvl_resource],
+%%            #{ type => non_neg_integer()
+%%             , default => 5
+%%             , cli_operand => "j-git"
+%%             , anvl_resource => git
+%%             }},
+%%      ...
+%% '''
+%%
+%% Then the user can adjust the capacity via CLI: `anvl -j-git 10 ...'
+%%
+%% @param Resource name of the resource
+%% @param Max initial resource capacity
 -spec declare(resource(), pos_integer()) -> ok.
 declare(Resource, Max) ->
   case gen_server:call(?SERVER, #declare{name = Resource, max = Max, new = true}) of
@@ -68,6 +108,7 @@ declare(Resource, Max) ->
       error(#{msg => "Failed to declare resource", reason => Err, resource => Resource})
   end.
 
+%% @hidden Update resource capacity. Called by `post_patch'.
 -spec set_max(resource(), pos_integer()) -> ok.
 set_max(Resource, Max) ->
   gen_server:call(?SERVER, #declare{name = Resource, max = Max, new = false}).
@@ -92,6 +133,34 @@ release(Resource) ->
       error(#{msg => "Failed to release resource", reason => Err, resource => Resource})
   end.
 
+%% @doc Run an operation with aquired resource semaphore.
+%%
+%% Warning: don't abuse this API. It is only useful for calling
+%% external commands, like calling `gcc' or `git'.
+%%
+%% There are some limitations to avoid deadlocks:
+%%
+%% <li>Condition can hold at most one resource at any given time</li>
+%% <li>While condition holds a resource, it cannot invoke
+%% preconditions</li>
+-spec with(resource(), fun(() -> A)) -> A.
+with(undefined, _Fun) ->
+  error(badarg);
+with(Resource, Fun) ->
+  case erlang:get(?anvl_reslock) of
+    undefined ->
+      try
+        erlang:put(?anvl_reslock, Resource),
+        anvl_resource:grab(Resource),
+        Fun()
+      after
+        anvl_resource:release(Resource),
+        erlang:erase(?anvl_reslock)
+      end;
+    OldResource ->
+      error(#{msg => "Condition can hold at most one resource", new_resource => Resource, held_resource => OldResource})
+  end.
+
 %%================================================================================
 %% Plugin behavior callbacks
 %%================================================================================
@@ -102,10 +171,12 @@ release(Resource) ->
         , queue :: queue:queue()
         }).
 
+%% @hidden
 init(_) ->
   process_flag(trap_exit, true),
   {ok, #{}}.
 
+%% @hidden
 handle_call(#declare{name = Name, max = Max, new = New}, _From, S) ->
   case S of
     _ when not is_atom(Name); not is_integer(Max); Max =< 0 ->
@@ -145,6 +216,7 @@ handle_call(#release{name = Name}, _From, S) ->
 handle_call(_Call, _From, S) ->
   {reply, {error, unknown_call}, S}.
 
+%% @hidden
 handle_cast(_Cast, S) ->
   {noreply, S}.
 
@@ -154,13 +226,16 @@ handle_cast(_Cast, S) ->
 
 -ifndef(BOOTSTRAP).
 
+%% @hidden
 names(_Config) ->
   [anvl_resource].
 
+%% @hidden
 metaparams(anvl_resource) ->
   [ {mandatory, anvl_resource, atom()}
   ].
 
+%% @hidden
 post_patch(anvl_resource, Model, Data, #mnode{metaparams = Attrs}, PatchOp) ->
   Val = lee:get(Model, Data, lee_lib:patch_key(PatchOp)),
   Resource = ?m_attr(anvl_resource, anvl_resource, Attrs),

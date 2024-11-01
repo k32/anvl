@@ -66,7 +66,7 @@ conditions() ->
 %% Internal functions
 %%================================================================================
 
-%% Simple parse transform that replaces (or adds) -module attribute
+%% @hidden Simple parse transform that replaces (or adds) -module attribute
 parse_transform(Forms, Opts) ->
   [{d, 'PROJECT', Module} | _] = Opts,
   case Forms of

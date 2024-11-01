@@ -16,12 +16,17 @@
 %% You should have received a copy of the GNU General Public License
 %% along with this program.  If not, see <https://www.gnu.org/licenses/>.
 %%================================================================================
+
+%% @doc API for managing the hooks.
+%%
+%% Plugins can:
+%% <li>Declare hook points</li>
+%% <li>Inject code into other plugin's hook point</li>
 -module(anvl_hook).
 
-%-behavior(lee_metatype).
+-behavior(lee_metatype).
 
 -export([init/0, add/2, add/3, list/1, foreach/2, flatmap/2, first_match/2]).
-
 
 -ifndef(BOOTSTRAP).
 -export([names/1, metaparams/1, meta_validate_node/4]).
@@ -43,6 +48,7 @@
 %% API functions
 %%================================================================================
 
+%% @hidden
 init() ->
   _ = ets:new(?hooks_tab, [public, bag, named_table, {read_concurrency, true}]),
   ok.
@@ -84,9 +90,11 @@ first_match(Hookpoint, Args) ->
 
 -ifndef(BOOTSTRAP).
 
+%% @hidden
 names(_Config) ->
   [hook, pcfg, funarg].
 
+%% @hidden
 metaparams(hook) ->
   [ {mandatory, type, typerefl:term()}
   , {mandatory, name, typerefl:atom()}
@@ -103,6 +111,7 @@ metaparams(funarg) ->
   | lee_doc:documented()
   ].
 
+%% @hidden
 meta_validate_node(pcfg, _Model, _Key, #mnode{metaparams = Attrs}) ->
   case Attrs of
     #{type := Type, default := Default} ->

@@ -17,6 +17,7 @@
 %% along with this program.  If not, see <https://www.gnu.org/licenses/>.
 %%================================================================================
 
+%% @doc A universal plugin for discovering external dependencies.
 -module(anvl_locate).
 
 -behavior(anvl_plugin).
@@ -84,12 +85,15 @@ dir(Getter, What, Args) ->
 %% behavior callbacks
 %%================================================================================
 
+%% @hidden
 init() ->
   anvl_hook:add(locate, 9999, fun builtin/1).
 
+%% @hidden
 model() ->
   #{}.
 
+%% @hidden
 project_model() ->
   #{locate =>
       #{ hook =>
@@ -118,7 +122,7 @@ project_model() ->
 
 builtin(#{what := App, kind := erlc_deps}) when App =:= anvl; App =:= lee; App =:= typerefl;
                                                 App =:= snabbkaffe; App =:= anvl_git ->
-  ?LOG_NOTICE("Using ANVL-builtin version of ~p", [App]),
+  ?LOG_INFO("Using ANVL-builtin version of ~p", [App]),
   Dir = filename:join([anvl_project:root(), ?BUILD_ROOT, self_hash()]),
   _ = precondition(builtins_unpacked(Dir)),
   AppSrcPattern = lists:flatten(io_lib:format("~s/**/~p.app.src", [Dir, App])),

@@ -36,7 +36,7 @@
 -reflect_type([options/0]).
 
 init() ->
-  ok = anvl_resource:declare(git, 1),
+  ok = anvl_resource:declare(git, 5),
   ok = anvl_hook:add(locate, fun src_prepared/1).
 
 model() ->
@@ -49,7 +49,7 @@ model() ->
        , max_jobs =>
            {[value, cli_param, os_env, anvl_resource],
             #{ type => non_neg_integer()
-             , default => 3
+             , default => 5
              , cli_operand => "j-git"
              , anvl_resource => git
              }}
@@ -111,18 +111,20 @@ is_git_repo(Dir) ->
     anvl_lib:exec("git", ["rev-parse", "--is-inside-work-tree"], [{cd, Dir}]) =:= 0.
 
 ?MEMO(mirror_synced, Repo,
-      begin
-        Dir = mirror_dir(Repo),
-        ?LOG_NOTICE("Syncing mirror for repository ~s~nMirror dir: ~s", [Repo, Dir]),
-        case is_git_repo(Dir) of
-          true ->
-            0 = anvl_lib:exec("git", ["remote", "update"], [{cd, Dir}]);
-          false ->
-            ok = filelib:ensure_dir(Dir),
-            0 = anvl_lib:exec("git", ["clone", "--mirror", Repo, Dir])
-        end,
-        false
-      end).
+      anvl_resource:with(
+        git,
+        fun() ->
+            Dir = mirror_dir(Repo),
+            ?LOG_NOTICE("Syncing mirror for repository ~s~nMirror dir: ~s", [Repo, Dir]),
+            case is_git_repo(Dir) of
+              true ->
+                0 = anvl_lib:exec("git", ["remote", "update"], [{cd, Dir}]);
+              false ->
+                ok = filelib:ensure_dir(Dir),
+                0 = anvl_lib:exec("git", ["clone", "--mirror", Repo, Dir])
+            end,
+            false
+        end)).
 
 locked(SrcRootDir, What0, Opts = #{repo := Repo}) ->
   Fun = fun(What) ->

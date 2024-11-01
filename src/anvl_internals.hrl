@@ -22,4 +22,7 @@
 
 -define(project_model, anvl_project_model).
 
+%% Process variable used as a marker of holding a resource
+-define(anvl_reslock, anvl_resouce_lock).
+
 -endif.

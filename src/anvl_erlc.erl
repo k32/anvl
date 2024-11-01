@@ -22,7 +22,8 @@
 -behavior(anvl_plugin).
 
 %% API:
--export([sources_discovered/3, src_root/2, escript/3, app_compiled/2, module/2]).
+-export([sources_discovered/3, src_root/2, escript/3, app_compiled/2, module/2,
+         edoc/3]).
 
 %% behavior callbacks:
 -export([model/0, project_model/0, init/0, conditions/1]).
@@ -64,6 +65,20 @@
          , includes := [file:filename_all()]
          }.
 
+-type app_info() ::
+        #{ app := atom()
+         , src_root := file:filename_all()
+         , build_root := file:filename_all()
+         , build_dir := file:filename_all()
+         , compile_options := list()
+         , sources := [anvl_lib:filename_pattern()]
+           %% List of directories where hrl files are located:
+         , includes := [file:filename_all()]
+         , spec := application_spec()
+         , ebin_dir := file:filename_all()
+         , escript_files := [file:filename_all()]
+         }.
+
 -type source_location_ret() :: #{application() => string() | {atom(), term()}}.
 
 -type archive_file() :: {file:filename_all(), file:filename_all()}.
@@ -71,6 +86,7 @@
 -type escripts_ret() :: #{escript_name() => escript_spec()}.
 
 -define(app_info(PROFILE, APP), {?MODULE, app_info, PROFILE, APP}).
+-define(context(PROFILE, APP), {?MODULE, context, PROFILE, APP}).
 
 -reflect_type([profile/0, source_location_ret/0, compile_options/0, escripts_ret/0, context/0, application_spec/0, archive_file/0]).
 
@@ -86,6 +102,11 @@ sources_discovered(ProjectDir, Profile, App) ->
 src_root(Profile, App) ->
   _ = precondition(sources_discovered(anvl_project:root(), Profile, App)),
   anvl_locate:dir(erlc_deps, App, #{profile => Profile, app => App}).
+
+-spec app_context(profile(), application()) -> context().
+app_context(Profile, App) ->
+  _ = precondition(app_compiled(Profile, App)),
+  persistent_term:get(?context(Profile, App)).
 
 %% @doc Condition: Erlang application has been compiled
 -spec app_compiled(profile(), application()) -> anvl_condition:t().
@@ -119,9 +140,10 @@ src_root(Profile, App) ->
         IncludeDirs = [template(I, Ctx0, list) || I <- IncludePatterns],
         COpts = [{i, I} || I <- IncludeDirs] ++ COpts0,
         Context = Ctx0 #{includes => IncludeDirs, compile_options => COpts},
+        CRef = ?context(Profile, App),
+        persistent_term:put(CRef, Context),
         %% 2. Get list of source files:
         Sources = list_app_sources(Context),
-        CRef = anvl_condition:make_context(Context),
         ok = filelib:ensure_path(filename:join(BuildDir, "ebin")),
         ok = filelib:ensure_path(filename:join(BuildDir, "include")),
         ok = filelib:ensure_path(filename:join(BuildDir, "anvl_deps")),
@@ -135,6 +157,17 @@ src_root(Profile, App) ->
           clean_orphans(Sources, Context) or
           copy_includes(Context) or
           render_app_spec(AppSrcProperties, Sources, Context)
+      end).
+
+-spec edoc(file:filename_all(), profile(), application()) -> anvl_condition:t().
+?MEMO(edoc, ProjectRoot, Profile, App,
+      begin
+        OutputDir = cfg_edoc_output_dir(ProjectRoot, Profile, App),
+        Options = cfg_edoc_options(ProjectRoot, Profile, App),
+        ok = filelib:ensure_path(OutputDir),
+        #{src_root := Src, includes := IncludeDirs} = app_context(Profile, App),
+        edoc:application(App, Src, [{includes, IncludeDirs}, {dir, OutputDir} | Options]),
+        true
       end).
 
 %% @doc Speculative condition: a particular module has been compiled.
@@ -293,6 +326,20 @@ project_model() ->
              , function => erlc_escript_extra_files
              , default => []
              }}
+       , edoc_output_dir =>
+           {[pcfg],
+            #{ type => ?BOOTSTRAP_TYPE(string())
+             , function => erlc_edoc_dir
+             , default => "doc"
+             },
+            maps:merge(Profile, App)}
+       , edoc_options =>
+           {[pcfg],
+            #{ type => ?BOOTSTRAP_TYPE(list())
+             , function => erlc_edoc_options
+             , default => [{preprocess, true}]
+             },
+            maps:merge(Profile, App)}
        }}.
 
 init() ->
@@ -354,7 +401,7 @@ escript(ProjectRoot, Profile, EscriptName, Apps, EmuFlags) ->
 
 ?MEMO(beam, Src, CRef,
       begin
-        #{profile := Profile, compile_options := COpts} = Context = anvl_condition:get_context(CRef),
+        #{profile := Profile, compile_options := COpts} = Context = persistent_term:get(CRef),
         Module = module_of_erl(Src),
         satisfies(module(Profile, Module)),
         Beam = beam_of_erl(Src, Context),
@@ -374,7 +421,7 @@ escript(ProjectRoot, Profile, EscriptName, Apps, EmuFlags) ->
 %% module are satisfied
 ?MEMO(beam_deps, Src, Beam, CRef,
       begin
-        #{profile := Profile} = Ctx = anvl_condition:get_context(CRef),
+        #{profile := Profile} = Ctx = persistent_term:get(CRef),
         DepFile = dep_of_erl(Src, Ctx),
         precondition(depfile(Src, DepFile, CRef)),
         {ok, Bin} = file:read_file(DepFile),
@@ -422,7 +469,7 @@ module_loaded(Profile, Module, CRef) ->
 %% compiled and loaded
 ?MEMO(local_module_loaded, Module, CRef,
       begin
-        Ctx = #{src_root := SrcRoot} = anvl_condition:get_context(CRef),
+        Ctx = #{src_root := SrcRoot} = persistent_term:get(CRef),
         case lists:search(fun(Src) ->
                               module_of_erl(Src) =:= Module
                           end,
@@ -440,7 +487,7 @@ module_loaded(Profile, Module, CRef) ->
         newer(Src, DepFile) andalso
           begin
             ?LOG_INFO("Updating dependencies for ~s", [Src]),
-            #{includes := IncludeDirs, compile_options := COpts} = anvl_condition:get_context(CRef),
+            #{includes := IncludeDirs, compile_options := COpts} = persistent_term:get(CRef),
             PredefMacros = lists:filtermap(fun({d, D})    -> {true, D};
                                               ({d, D, V}) -> {true, {D, V}};
                                               (_)         -> false
@@ -518,6 +565,7 @@ render_app_spec(AppSrcProperties, Sources, Context) ->
   NewContent0 = {application, App, [{modules, Modules} | AppSrcProperties]},
   NewContent = cfg_app_src_hook(ProjectRoot, Profile, NewContent0),
   anvl_condition:set_result(?app_info(Profile, App),
+                            Context
                             #{ ebin_dir => BuildDir
                              , spec => NewContent
                              }),
@@ -610,6 +658,9 @@ cfg_compile_options(ProjectRoot, Profile, App) ->
 cfg_escript_specs(ProjectRoot, Profile) ->
   anvl_project:conf(ProjectRoot, [erlc, escripts], #{profile => Profile}).
 
+cfg_edoc(ProjectRoot, Profile) ->
+  anvl_project:conf(ProjectRoot, [erlc, edoc], #{profile => Profile}).
+
 cfg_app_src_hook(ProjectRoot, Profile, AppSpec) ->
   Args = #{profile => Profile, spec => AppSpec},
   anvl_project:conf(ProjectRoot, erlc_app_spec_hook, [Args], AppSpec,
@@ -659,6 +710,14 @@ cfg_escript_extra_files(_, _, _) ->
   [].
 
 -endif.
+
+%% These options are not used during bootstrap, it's not necessary to
+%% mock them:
+cfg_edoc_output_dir(ProjectRoot, Profile, App) ->
+  anvl_project:conf(ProjectRoot, [erlc, edoc_output_dir], #{profile => Profile, app => App}).
+
+cfg_edoc_options(ProjectRoot, Profile, App) ->
+  anvl_project:conf(ProjectRoot, [erlc, edoc_options], #{profile => Profile, app => App}).
 
 default_escript_files() ->
   [ "priv/**"

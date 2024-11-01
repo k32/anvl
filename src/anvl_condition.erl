@@ -17,19 +17,25 @@
 %% along with this program.  If not, see <https://www.gnu.org/licenses/>.
 %%================================================================================
 
-%% At the heart of `anvl` lies a very simple memoization library.
+%% @doc This module contains functions responsible for ANVL's core
+%% functionality.
 %%
-%% Build system = memoization.
-%% More specifically, `build_target(Target) -> memoize(changed(Target) andalso rebuild(Target))'
+%% At the heart of `anvl' lies a very simple memoization library.
+%%
+%% Build system = memoization. More specifically,
+%%
+%% ```
+%% build_target(Target) ->
+%%       memoize(changed(Target) andalso rebuild(Target)).
+%% '''
 -module(anvl_condition).
 
 -behavior(gen_server).
 
 %% API:
--export([stats/0, precondition/1, precondition/2, is_changed/1, with_resource/2]).
+-export([stats/0, precondition/1, precondition/2, is_changed/1]).
 -export([speculative/1, satisfies/1]).
 -export([get_result/1, has_result/1, set_result/2]).
--export([make_context/1, get_context/1]).
 
 %% behavior callbacks:
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
@@ -37,22 +43,22 @@
 %% internal exports:
 -export([start_link/0, condition_entrypoint/2]).
 
--export_type([t/0, cref/0]).
+-export_type([t/0]).
 
 -include_lib("kernel/include/logger.hrl").
 -include("anvl_defs.hrl").
+-include("anvl_internals.hrl").
 
 %%================================================================================
 %% Type declarations
 %%================================================================================
 
--type t() :: #anvl_memo_thunk{
-                descr :: _,
-                func :: function(),
-                args :: list()
-               }.
-
--opaque cref() :: term().
+-opaque t() ::
+          #anvl_memo_thunk{
+             descr :: _,
+             func :: function(),
+             args :: list()
+            }.
 
 -type speculative() :: term().
 
@@ -84,16 +90,17 @@
 -define(cnt_changed, 3).
 -define(cnt_failed, 4).
 -define(gauge_waited, anvl_condition_gauge_waited).
--define(anvl_reslock, anvl_resouce_lock).
 
 %%================================================================================
 %% API functions
 %%================================================================================
 
+%% @hidden
 -spec start_link() -> {ok, pid()}.
 start_link() ->
   gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
+%% @doc Get varios statistics about the run.
 -spec stats() -> map().
 stats() ->
   CRef = persistent_term:get(?counters),
@@ -105,12 +112,15 @@ stats() ->
    , top_reductions => stats_top(reductions, 10)
    }.
 
+%% @equiv precondition(L, 100)
 -spec precondition([t()] | t()) -> boolean().
 precondition(Tup) when is_record(Tup, anvl_memo_thunk) ->
   precondition([Tup]);
 precondition(L) when is_list(L) ->
   precondition(L, 100).
 
+%% @doc For a satisfied condition, this function returns whether the condition has
+%% made changes to the system. Otherwise it returns `undefined'.
 -spec is_changed(t()) -> boolean() | undefined.
 is_changed(Cond) ->
   case ets:lookup(?tab, key(Cond)) of
@@ -120,6 +130,16 @@ is_changed(Cond) ->
       undefined
   end.
 
+%% @doc Block execution of the function until all preconditions are
+%% satisfied. Throws an exception if some precondition could not be
+%% satisified.
+%%
+%% @param L list of preconditions
+%%
+%% @param ChunkSize maximum degree of parallelism
+%%
+%% @returns whether any changes were made to the system to satify the
+%% preconditions.
 -spec precondition([t()], pos_integer() | infinity) -> boolean().
 precondition(L, ChunkSize) when ChunkSize > 0 ->
   case erlang:get(?anvl_reslock) of
@@ -139,16 +159,18 @@ precondition(L, ChunkSize) when ChunkSize > 0 ->
 
 %%%% Speculative targets:
 
-%% @doc This function is called by the condition process to specify
-%% that it resolves additional conditions:
--spec satisfies(speculative()) -> ok.
-satisfies(Cond) ->
-  put(?resolve_conditions, [Cond | get_resolve_conditions()]).
-
-%% @doc Built-in condition that serves as a placeholder in the
-%% situations where a concrete recipe that satisfies the condition is
-%% not known in advance.
--spec speculative(speculative()) -> ok.
+%% @doc Sometimes a condition doesn't know the recipe to resolve a
+%% precondition, but it assumes that it will be resolved eventually
+%% <em>somehow</em>. For example, a module in appliction X can use a
+%% parse transform declared in another application, but it don't know
+%% which one. We call this situation a ``speculative'' precondition.
+%%
+%% `speculative/1' is a built-in condition that serves as a
+%% placeholder in such situations. Needless to say, this functionality
+%% is an unsound hack meant as a last-resort measure.
+%%
+%% @param Cond token that represents the result.
+-spec speculative(speculative()) -> t().
 speculative(Cond) ->
   Body = fun(C) ->
              receive
@@ -158,11 +180,33 @@ speculative(Cond) ->
          end,
   #anvl_memo_thunk{descr = speculative, func = Body, args = [Cond]}.
 
+%% @doc This function declares that the current condition resolves a
+%% speculative condition. It's a counterpart to `speculative/1'.
+%%
+%% Once a condition that called `satisfies(X)' is resolved (with any
+%% result, including failure), speculative condition `X' is resolved
+%% with the same result.
+%%
+%% It's recommended to call `satisfies' at the very beginning of the
+%% condition: if any subsequent code crashes, this will automatically
+%% mark speculative condition as failed, and notify condition
+%% dependent on it.
+-spec satisfies(speculative()) -> ok.
+satisfies(Cond) ->
+  put(?resolve_conditions, [Cond | get_resolve_conditions()]).
+
 %%% Return values:
 
-%% @doc This function MUST ONLY be called by the conditions module
-%% that SETS the result. It must wrap it in a proper API function
-%% complete with return type.
+%% @doc ANVL condition's return value is a boolean that specifies
+%% presense of side-effects. If it needs to return any other data,
+%% `get_result/1' and `set_result/2' functions can be used. These
+%% functions, essentially, allow to set and access global variables.
+%%
+%% This function MUST ONLY be called by the plugin that SETS the
+%% result. Plugins must wrap return values in a proper API function
+%% complete with return type. Raw global variables should be never
+%% exposed to the outside, because it would lead to unmaintainable
+%% code.
 -spec get_result(_Key) -> _Value.
 get_result(Key) ->
   case ets:lookup(?results, Key) of
@@ -185,53 +229,13 @@ set_result(Key, Value) ->
   true = ets:insert_new(?results, {Key, Value}),
   Value.
 
-%%% Context is a term that can be shared with the preconditions of
-%%% some complex condition. Only one context is allowed per condition.
-%%% It's guaranteed to be available until the condition is satisfied.
-
--spec get_context(cref()) -> term().
-get_context(CRef) ->
-  persistent_term:get({?MODULE, context, CRef}).
-
--spec make_context(term()) -> cref().
-make_context(Ctx) ->
-  CRef = self(),
-  persistent_term:put({?MODULE, context, CRef}, Ctx),
-  CRef.
-
-%% Aquire a resource semaphore.
-%%
-%% Warning: don't abuse this API. It is only useful for calling
-%% external commands, like calling `gcc' or `git'.
-%%
-%% There are some limitations to avoid deadlocks:
-%%
-%% - Condition can hold at most one resource at a time
-%% - While resource is locked, it cannot invoke preconditions
--spec with_resource(atom(), fun(() -> A)) -> A.
-with_resource(undefined, _Fun) ->
-  error(badarg);
-with_resource(Resource, Fun) ->
-  case erlang:get(?anvl_reslock) of
-    undefined ->
-      try
-        erlang:put(?anvl_reslock, Resource),
-        anvl_resource:grab(Resource),
-        Fun()
-      after
-        anvl_resource:release(Resource),
-        erlang:erase(?anvl_reslock)
-      end;
-    OldResource ->
-      error(#{msg => "Condition can hold at most one resource", new_resource => Resource, held_resource => OldResource})
-  end.
-
 %%================================================================================
 %% behavior callbacks
 %%================================================================================
 
 -record(s, {}).
 
+%% @hidden
 init([]) ->
   process_flag(trap_exit, true),
   ets:new(?tab, [set, named_table, public, {write_concurrency, true}, {read_concurrency, true}, {keypos, 2}]),
@@ -241,15 +245,19 @@ init([]) ->
   S = #s{},
   {ok, S}.
 
+%% @hidden
 handle_call(_Call, _From, S) ->
   {reply, {error, unknown_call}, S}.
 
+%% @hidden
 handle_cast(_Cast, S) ->
   {noreply, S}.
 
+%% @hidden
 handle_info(_Info, S) ->
   {noreply, S}.
 
+%% @hidden
 terminate(_Reason, _S) ->
   ok.
 

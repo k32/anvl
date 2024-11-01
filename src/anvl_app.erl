@@ -17,6 +17,7 @@
 %% along with this program.  If not, see <https://www.gnu.org/licenses/>.
 %%================================================================================
 
+%% @hidden
 -module(anvl_app).
 
 -behavior(application).
@@ -37,6 +38,7 @@
 %% API
 %%================================================================================
 
+%% @doc Entrypoint for `anvl' escript.
 main(CLIArgs) ->
   set_logger_conf(),
   application:set_env(anvl, cli_args, CLIArgs),
@@ -50,6 +52,7 @@ main(CLIArgs) ->
       exec_top(Toplevel)
   end.
 
+%% @doc Stop the `escript'
 -spec halt(char()) -> no_return().
 halt(ExitCode) ->
   logger_std_h:filesync(default),
@@ -59,6 +62,7 @@ halt(ExitCode) ->
 %% Internal exports
 %%================================================================================
 
+%% @hidden Used internally to bootstrap ANVL
 bootstrap() ->
   {ok, _} = ?MODULE:start(normal, []),
   ?LOG_NOTICE("Bootstrap: Stage 2"),
@@ -68,10 +72,12 @@ bootstrap() ->
 %% behavior callbacks
 %%================================================================================
 
+%% @hidden
 start(_StartType, _StartArgs) ->
   anvl_hook:init(),
   anvl_sup:start_link().
 
+%% @hidden
 stop(_) ->
   ok.
 
