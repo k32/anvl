@@ -251,7 +251,7 @@ metamodel() ->
 project_metamodel() ->
   [ lee_metatype:create(lee_doc_root)
   , lee_metatype:create(lee_undocumented)
-  , lee_metatype:create(anvl_hook)
+  , lee_metatype:create(anvl_project)
   ].
 
 cli_args_getter() ->

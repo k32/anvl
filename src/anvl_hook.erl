@@ -28,12 +28,6 @@
 
 -export([init/0, add/2, add/3, list/1, foreach/2, flatmap/2, first_match/2]).
 
--ifndef(BOOTSTRAP).
--export([names/1, metaparams/1, meta_validate_node/4]).
-
--include_lib("lee/include/lee.hrl").
--endif.
-
 %%================================================================================
 %% Type declarations
 %%================================================================================
@@ -83,53 +77,6 @@ flatmap(Hookpoint, Args) ->
 -spec first_match(hookpoint(), term()) -> {ok, term()} | undefined.
 first_match(Hookpoint, Args) ->
   do_first_match(list(Hookpoint), Args).
-
-%%================================================================================
-%% Lee metatype callbacks
-%%================================================================================
-
--ifndef(BOOTSTRAP).
-
-%% @hidden
-names(_Config) ->
-  [hook, pcfg, funarg].
-
-%% @hidden
-metaparams(hook) ->
-  [ {mandatory, type, typerefl:term()}
-  , {mandatory, name, typerefl:atom()}
-  | lee_doc:documented()
-  ];
-metaparams(pcfg) ->
-  [ {optional, default, typerefl:term()}
-  , {mandatory, function, typerefl:atom()}
-  | lee_doc:documented()
-  ];
-metaparams(funarg) ->
-  %% funarg is used for documentation purposes only
-  [ {mandatory, type, typerefl:term()}
-  | lee_doc:documented()
-  ].
-
-%% @hidden
-meta_validate_node(pcfg, _Model, _Key, #mnode{metaparams = Attrs}) ->
-  case Attrs of
-    #{type := Type, default := Default} ->
-      case typerefl:typecheck(Type, Default) of
-        ok ->
-          {[], []};
-        {error, Err} ->
-          Str = "Mistyped default value. " ++
-            lee_lib:format_typerefl_error(Err),
-          {[Str], []}
-      end;
-    _ ->
-      {[], []}
-  end;
-meta_validate_node(_MT, _Model, _Key, _Mnode) ->
-  {[], []}.
-
--endif.
 
 %%================================================================================
 %% Internal functions

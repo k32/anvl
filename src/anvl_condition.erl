@@ -100,7 +100,7 @@
 start_link() ->
   gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
-%% @doc Get varios statistics about the run.
+%% @doc Get various statistics about the run.
 -spec stats() -> map().
 stats() ->
   CRef = persistent_term:get(?counters),
@@ -216,6 +216,7 @@ get_result(Key) ->
       error({no_result, Key})
   end.
 
+-spec has_result(_Key) -> boolean().
 has_result(Key) ->
   case ets:lookup(?results, Key) of
     [_] ->

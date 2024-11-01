@@ -23,12 +23,12 @@
 -behavior(anvl_plugin).
 
 %% API:
--export([located/4, dir/3]).
+-export([located/4, dir/3, add_hook/2, add_hook/1]).
 
 %% behavior callbacks:
--export([model/0, project_model/0, init/0]).
+-export([init/0]).
 
--export_type([]).
+-export_type([kind/0, what/0, spec/0, locate_hook/0, hook_ret/0]).
 
 -include_lib("kernel/include/logger.hrl").
 -include_lib("stdlib/include/zip.hrl").
@@ -44,6 +44,7 @@
 -type spec() :: file:filename_all() | {subdir, file:filename_all()} | {atom(), term()} | undefined.
 
 -type hook_ret() :: {true, file:filename_all()} | false.
+-type locate_hook() :: fun((#{kind := kind(), what := what(), spec := spec()}) -> hook_ret()).
 
 -reflect_type([kind/0, what/0, spec/0, hook_ret/0]).
 
@@ -53,6 +54,7 @@
 %% API functions
 %%================================================================================
 
+%% @doc Condition: external dependency `What' of kind `Getter' has been located.
 -spec located(spec_getter_fun(), file:filename(), what(), _Args) -> anvl_condition:t().
 ?MEMO(located, Getter, ProjectDir, What, Args,
       anvl_condition:has_result(#?MODULE{kind = Getter, what = What, args = Args}) orelse
@@ -81,40 +83,21 @@
 dir(Getter, What, Args) ->
   anvl_condition:get_result(#?MODULE{kind = Getter, what = What, args = Args}).
 
+-spec add_hook(locate_hook()) -> ok.
+add_hook(Fun) ->
+  add_hook(Fun, 0).
+
+-spec add_hook(locate_hook(), integer()) -> ok.
+add_hook(Fun, Prio) ->
+  anvl_hook:add(locate, Prio, Fun).
+
 %%================================================================================
 %% behavior callbacks
 %%================================================================================
 
 %% @hidden
 init() ->
-  anvl_hook:add(locate, 9999, fun builtin/1).
-
-%% @hidden
-model() ->
-  #{}.
-
-%% @hidden
-project_model() ->
-  #{locate =>
-      #{ hook =>
-           {[pcfg],
-            #{ function => 'locate'
-             , type => ?BOOTSTRAP_TYPE(hook_ret())
-             },
-            #{ kind =>
-                 {[funarg],
-                  #{ type => ?BOOTSTRAP_TYPE(kind())
-                   }}
-             , what =>
-                 {[funarg],
-                  #{ type => ?BOOTSTRAP_TYPE(what())
-                   }}
-             , spec =>
-                 {[funarg],
-                  #{ type => ?BOOTSTRAP_TYPE(spec())
-                   }}
-             }}
-       }}.
+  add_hook(fun builtin/1, 9999).
 
 %%================================================================================
 %% Internal functions

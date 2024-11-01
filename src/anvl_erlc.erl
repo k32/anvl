@@ -22,11 +22,12 @@
 -behavior(anvl_plugin).
 
 %% API:
--export([sources_discovered/3, src_root/2, escript/3, app_compiled/2, module/2,
-         edoc/3]).
+-export([app_info/2, escript/3, app_compiled/2, module/2, edoc/3]).
 
 %% behavior callbacks:
 -export([model/0, project_model/0, init/0, conditions/1]).
+
+-export_type([app_info/0]).
 
 -include_lib("kernel/include/logger.hrl").
 -include("anvl.hrl").
@@ -94,21 +95,7 @@
 %% API functions
 %%================================================================================
 
--spec sources_discovered(file:filename_all(), profile(), application()) -> anvl_condition:t().
-sources_discovered(ProjectDir, Profile, App) ->
-  anvl_locate:located(erlc_deps, ProjectDir, App, #{profile => Profile, app => App}).
-
--spec src_root(profile(), application()) -> file:filename_all() | builtin.
-src_root(Profile, App) ->
-  _ = precondition(sources_discovered(anvl_project:root(), Profile, App)),
-  anvl_locate:dir(erlc_deps, App, #{profile => Profile, app => App}).
-
--spec app_context(profile(), application()) -> context().
-app_context(Profile, App) ->
-  _ = precondition(app_compiled(Profile, App)),
-  persistent_term:get(?context(Profile, App)).
-
-%% @doc Condition: Erlang application has been compiled
+%% @doc Condition: Erlang application has been compiled.
 -spec app_compiled(profile(), application()) -> anvl_condition:t().
 ?MEMO(app_compiled, Profile, App,
       begin
@@ -159,6 +146,7 @@ app_context(Profile, App) ->
           render_app_spec(AppSrcProperties, Sources, Context)
       end).
 
+%% @doc Condition: Erlang documentation for an application has been created.
 -spec edoc(file:filename_all(), profile(), application()) -> anvl_condition:t().
 ?MEMO(edoc, ProjectRoot, Profile, App,
       begin
@@ -175,6 +163,7 @@ app_context(Profile, App) ->
 module(Profile, Module) ->
   anvl_condition:speculative({erlang_module_compiled, Profile, Module}).
 
+%% @doc Condition: escript has been built.
 -spec escript(file:filename_all(), profile(), string()) -> anvl_condition:t().
 ?MEMO(escript, ProjectRoot, Profile, EscriptName,
       begin
@@ -186,11 +175,8 @@ module(Profile, Module) ->
         end
       end).
 
--spec app_info(profile(), application()) ->
-        #{ spec := application_spec()
-         , ebin_dir := file:filename_all()
-         , escript_files := [file:filename_all()]
-         }.
+%% @doc Return various information about an OTP application.
+-spec app_info(profile(), application()) -> app_info().
 app_info(Profile, App) ->
   anvl_condition:get_result(?app_info(Profile, App)).
 
@@ -198,6 +184,7 @@ app_info(Profile, App) ->
 %% Behavior callbacks
 %%================================================================================
 
+%% @hidden
 model() ->
   Profiles = profiles(anvl_project:root()),
   Profile = {[value, cli_param],
@@ -243,6 +230,7 @@ model() ->
              }}
        }}.
 
+%% @hidden
 project_model() ->
   Profile = #{ profile =>
                  {[funarg],
@@ -342,10 +330,12 @@ project_model() ->
             maps:merge(Profile, App)}
        }}.
 
+%% @hidden
 init() ->
   %% ok = anvl_resource:declare(erlc, 100),
   ok.
 
+%% @hidden
 conditions(ProjectRoot) ->
   get_compile_apps(ProjectRoot) ++ get_escripts(ProjectRoot).
 
@@ -503,6 +493,20 @@ module_loaded(Profile, Module, CRef) ->
 %%================================================================================
 %% Internal functions
 %%================================================================================
+
+-spec sources_discovered(file:filename_all(), profile(), application()) -> anvl_condition:t().
+sources_discovered(ProjectDir, Profile, App) ->
+  anvl_locate:located(erlc_deps, ProjectDir, App, #{profile => Profile, app => App}).
+
+-spec src_root(profile(), application()) -> file:filename_all() | builtin.
+src_root(Profile, App) ->
+  _ = precondition(sources_discovered(anvl_project:root(), Profile, App)),
+  anvl_locate:dir(erlc_deps, App, #{profile => Profile, app => App}).
+
+-spec app_context(profile(), application()) -> context().
+app_context(Profile, App) ->
+  _ = precondition(app_compiled(Profile, App)),
+  persistent_term:get(?context(Profile, App)).
 
 get_escripts(ProjectRoot) ->
   Keys = anvl_plugin:list_conf([anvl_erlc, escript, {}]),
