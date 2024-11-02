@@ -53,7 +53,7 @@ add(HookPoint, Fun) ->
 
 -spec add(hookpoint(), integer(), hook()) -> ok.
 add(HookPoint, Priority, Fun) ->
-  ets:insert(?hooks_tab, {HookPoint, Priority, Fun}),
+  ets:insert(?hooks_tab, {HookPoint, -Priority, Fun}),
   ok.
 
 -spec list(hookpoint()) -> [hook()].

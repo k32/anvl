@@ -17,7 +17,14 @@
 %% along with this program.  If not, see <https://www.gnu.org/licenses/>.
 %%================================================================================
 
-%% @doc A universal plugin for discovering external dependencies.
+%% @doc A universal plugin for managing external dependencies.
+%%
+%% This plugin doesn't do much on its own, but it provides a generic
+%% declarative interface for discovering, downloading and unpacking
+%% dependencies.
+%%
+%% Other plugins (such as `anvl_git' or any third-party plugin) can
+%% hook into `anvl_locate'.
 -module(anvl_locate).
 
 -behavior(anvl_plugin).
@@ -55,6 +62,19 @@
 %%================================================================================
 
 %% @doc Condition: external dependency `What' of kind `Getter' has been located.
+%%
+%% == Arguments ==
+%%
+%% <li>`Getter' Project configuration function that returns discovery
+%% specifiction. For example, `erlc_deps'.</li>
+%%
+%% <li>`ProjectDir' Directory that contains project configuration
+%% (and `anvl.erl' file). Project configuration should contain
+%% function with name referred by `Getter' variable.</li>
+%%
+%% <li>`What': Identifier of the entity being located.</li>
+%%
+%% <li>`Args' Arguments that will be passed to `Getter'</li>
 -spec located(spec_getter_fun(), file:filename(), what(), _Args) -> anvl_condition:t().
 ?MEMO(located, Getter, ProjectDir, What, Args,
       anvl_condition:has_result(#?MODULE{kind = Getter, what = What, args = Args}) orelse
@@ -79,17 +99,25 @@
         false
       end).
 
+%% @doc Return a directory that contains located dependency
 -spec dir(spec_getter_fun(), what(), _Args) -> file:filename().
 dir(Getter, What, Args) ->
   anvl_condition:get_result(#?MODULE{kind = Getter, what = What, args = Args}).
 
+%% @equiv add_hook(Fun, 0)
 -spec add_hook(locate_hook()) -> ok.
 add_hook(Fun) ->
   add_hook(Fun, 0).
 
+%% @doc Add a dependency discovery hook.
+%%
+%% @param Fun Hook function
+%%
+%% @param Priority When multiple hooks are capable of resolving the
+%% dependency hooks with higher priority are preferred.
 -spec add_hook(locate_hook(), integer()) -> ok.
-add_hook(Fun, Prio) ->
-  anvl_hook:add(locate, Prio, Fun).
+add_hook(Fun, Priority) ->
+  anvl_hook:add(locate, Priority, Fun).
 
 %%================================================================================
 %% behavior callbacks
@@ -97,7 +125,7 @@ add_hook(Fun, Prio) ->
 
 %% @hidden
 init() ->
-  add_hook(fun builtin/1, 9999).
+  add_hook(fun builtin/1, -9999).
 
 %%================================================================================
 %% Internal functions
