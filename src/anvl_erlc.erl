@@ -22,12 +22,13 @@
 -behavior(anvl_plugin).
 
 %% API:
+-export([add_pre_compile_hook/1, add_pre_edoc_hook/1]).
 -export([app_info/2, escript/3, app_compiled/2, module/2, edoc/3]).
 
 %% behavior callbacks:
 -export([model/0, project_model/0, init/0, conditions/1]).
 
--export_type([app_info/0]).
+-export_type([context/0, app_info/0]).
 
 -include_lib("kernel/include/logger.hrl").
 -include("anvl.hrl").
@@ -95,6 +96,19 @@
 %% API functions
 %%================================================================================
 
+%% @doc Add a pre-compile hook. Functions hooked there will run after
+%% dependencies are satisfied, but before building the application
+%% itself.
+-spec add_pre_compile_hook(fun((context()) -> _)) -> ok.
+add_pre_compile_hook(Fun) ->
+  anvl_hook:add(erlc_pre_compile_hook, Fun).
+
+%% @doc Add a pre-edoc hook. Functions hooked there will run before
+%% building the documentation for the app.
+-spec add_pre_edoc_hook(fun((app_info()) -> _)) -> ok.
+add_pre_edoc_hook(Fun) ->
+  anvl_hook:add(erlc_pre_edoc_hook, Fun).
+
 %% @doc Condition: Erlang application has been compiled.
 -spec app_compiled(profile(), application()) -> anvl_condition:t().
 ?MEMO(app_compiled, Profile, App,
@@ -134,7 +148,7 @@
         ok = filelib:ensure_path(filename:join(BuildDir, "ebin")),
         ok = filelib:ensure_path(filename:join(BuildDir, "include")),
         ok = filelib:ensure_path(filename:join(BuildDir, "anvl_deps")),
-        ok = anvl_hook:foreach(erlc_pre_compile_app, Context),
+        ok = anvl_hook:foreach(erlc_pre_compile_hook, Context),
         %% TODO: this is a hack, should be done by dependency manager:
         EbinDir = filename:join(BuildDir, "ebin"),
         true = code:add_patha(EbinDir),
@@ -153,7 +167,8 @@
         OutputDir = cfg_edoc_output_dir(ProjectRoot, Profile, App),
         Options = cfg_edoc_options(ProjectRoot, Profile, App),
         ok = filelib:ensure_path(OutputDir),
-        #{src_root := Src, includes := IncludeDirs} = app_context(Profile, App),
+        #{src_root := Src, includes := IncludeDirs} = AppInfo = app_info(Profile, App),
+        ok = anvl_hook:foreach(erlc_pre_edoc_hook, AppInfo),
         edoc:application(App, Src, [{includes, IncludeDirs}, {dir, OutputDir} | Options]),
         true
       end).
@@ -175,9 +190,11 @@ module(Profile, Module) ->
         end
       end).
 
-%% @doc Return various information about an OTP application.
+%% @doc Return various information about a compiled OTP application
+%% (precondition: `app_compiled').
 -spec app_info(profile(), application()) -> app_info().
 app_info(Profile, App) ->
+  _ = precondition(app_compiled(Profile, App)),
   anvl_condition:get_result(?app_info(Profile, App)).
 
 %%================================================================================
