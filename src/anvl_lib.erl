@@ -29,9 +29,7 @@
 -include_lib("kernel/include/logger.hrl").
 -include_lib("kernel/include/file.hrl").
 -include("anvl_macros.hrl").
--ifndef(BOOTSTRAP).
 -include_lib("typerefl/include/types.hrl").
--endif. %% !BOOTSTRAP
 
 %%================================================================================
 %% Type declarations

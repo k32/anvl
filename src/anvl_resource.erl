@@ -44,12 +44,10 @@
 
 -export_type([]).
 
--ifndef(BOOTSTRAP).
 -export([names/1, metaparams/1, post_patch/5]).
 
 -include_lib("typerefl/include/types.hrl").
 -include_lib("lee/include/lee.hrl").
--endif.
 
 -include("anvl_internals.hrl").
 
@@ -224,8 +222,6 @@ handle_cast(_Cast, S) ->
 %% Lee metatype callbacks
 %%================================================================================
 
--ifndef(BOOTSTRAP).
-
 %% @hidden
 names(_Config) ->
   [anvl_resource].
@@ -240,8 +236,6 @@ post_patch(anvl_resource, Model, Data, #mnode{metaparams = Attrs}, PatchOp) ->
   Val = lee:get(Model, Data, lee_lib:patch_key(PatchOp)),
   Resource = ?m_attr(anvl_resource, anvl_resource, Attrs),
   set_max(Resource, Val).
-
--endif.
 
 %%================================================================================
 %% Internal exports

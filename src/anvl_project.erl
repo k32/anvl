@@ -24,11 +24,8 @@
 %% Internal exports
 -export([conf/5, parse_transform/2]).
 
--ifndef(BOOTSTRAP).
 -export([names/1, metaparams/1, meta_validate_node/4]).
-
 -include_lib("lee/include/lee.hrl").
--endif.
 
 -include("anvl.hrl").
 -include("anvl_internals.hrl").
@@ -73,8 +70,6 @@ conditions() ->
 %% Lee metatype callbacks
 %%================================================================================
 
--ifndef(BOOTSTRAP).
-
 %% @hidden
 names(_Config) ->
   [hook, pcfg, funarg].
@@ -113,8 +108,6 @@ meta_validate_node(pcfg, _Model, _Key, #mnode{metaparams = Attrs}) ->
   end;
 meta_validate_node(_MT, _Model, _Key, _Mnode) ->
   {[], []}.
-
--endif.
 
 %%================================================================================
 %% Internal functions

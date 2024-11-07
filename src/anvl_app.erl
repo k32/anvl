@@ -65,8 +65,9 @@ halt(ExitCode) ->
 %% @hidden Used internally to bootstrap ANVL
 bootstrap() ->
   {ok, _} = ?MODULE:start(normal, []),
-  ?LOG_NOTICE("Bootstrap: Stage 2"),
-  exec_top(anvl_erlc:escript(anvl_project:root(), stage2, anvl)).
+  anvl_plugin:init(),
+  _ = precondition(anvl_erlc:escript(anvl_project:root(), stage2, anvl)),
+  ok.
 
 %%================================================================================
 %% behavior callbacks

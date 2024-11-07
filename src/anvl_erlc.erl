@@ -30,6 +30,7 @@
 
 -export_type([context/0, app_info/0]).
 
+-include_lib("typerefl/include/types.hrl").
 -include_lib("kernel/include/logger.hrl").
 -include("anvl.hrl").
 
@@ -224,7 +225,7 @@ model() ->
              },
             #{ name =>
                  {[value, cli_positional],
-                  #{ type => ?BOOTSTRAP_TYPE(list(atom()))
+                  #{ type => list(atom())
                    , default => []
                    , cli_arg_position => rest
                    }}
@@ -238,7 +239,7 @@ model() ->
              },
             #{ apps =>
                  {[value, cli_positional],
-                  #{ type => ?BOOTSTRAP_TYPE(list(atom()))
+                  #{ type => list(atom())
                    , default => []
                    , cli_arg_position => rest
                    }}
@@ -251,24 +252,24 @@ model() ->
 project_model() ->
   Profile = #{ profile =>
                  {[funarg],
-                  #{ type => ?BOOTSTRAP_TYPE(profile())
+                  #{ type => profile()
                    }}
              },
   App = #{ app =>
              {[funarg],
-              #{ type => ?BOOTSTRAP_TYPE(application())
+              #{ type => application()
                }}
          },
   #{erlc =>
       #{ profiles =>
            {[pcfg],
-            #{ type => ?BOOTSTRAP_TYPE(list(profile()))
+            #{ type => list(profile())
              , function => erlc_profiles
              , default => [default, test]
              }}
        , bdeps =>
            {[pcfg],
-            #{ type => ?BOOTSTRAP_TYPE([application()])
+            #{ type => [application()]
              , function => erlc_bdeps
              , default => []
              },
@@ -276,71 +277,71 @@ project_model() ->
             }
        , includes =>
            {[pcfg],
-            #{ type => ?BOOTSTRAP_TYPE([anvl_lib:filename_pattern()])
+            #{ type => [anvl_lib:filename_pattern()]
              , function => erlc_include_dirs
              , default => default_include_dirs()
              },
             maps:merge(Profile, App)}
        , sources =>
            {[pcfg],
-            #{ type => ?BOOTSTRAP_TYPE([anvl_lib:filename_pattern()])
+            #{ type => [anvl_lib:filename_pattern()]
              , function => erlc_sources
              , default => default_sources()
              },
             maps:merge(Profile, App)}
        , compile_options =>
            {[pcfg],
-            #{ type => ?BOOTSTRAP_TYPE(list())
+            #{ type => list()
              , function => erlc_compile_options
              , default => []
              },
             Profile}
        , deps =>
            {[pcfg],
-            #{ type => ?BOOTSTRAP_TYPE(anvl_locate:spec())
+            #{ type => anvl_locate:spec()
              , function => erlc_deps
              },
             Profile}
        , escripts =>
            {[pcfg],
-            #{ type => ?BOOTSTRAP_TYPE(escripts_ret())
+            #{ type => escripts_ret()
              , function => erlc_escripts
              },
             Profile}
        , app_src_hook =>
            {[pcfg],
-            #{ type => ?BOOTSTRAP_TYPE(application_spec())
+            #{ type => application_spec()
              , function => erlc_app_spec_hook
              },
             Profile
             #{ spec =>
                  {[funarg],
-                  #{ type => ?BOOTSTRAP_TYPE(application_spec())
+                  #{ type => application_spec()
                    }}
              }}
        , escript_files =>
            {[pcfg],
-            #{ type => ?BOOTSTRAP_TYPE([string()])
+            #{ type => [string()]
              , function => erlc_escript_files
              , default => default_escript_files()
              },
             maps:merge(Profile, App)}
        , escript_extra_files =>
            {[pcfg],
-            #{ type => ?BOOTSTRAP_TYPE([archive_file()])
+            #{ type => [archive_file()]
              , function => erlc_escript_extra_files
              , default => []
              }}
        , edoc_output_dir =>
            {[pcfg],
-            #{ type => ?BOOTSTRAP_TYPE(string())
+            #{ type => string()
              , function => erlc_edoc_dir
              , default => "doc"
              },
             maps:merge(Profile, App)}
        , edoc_options =>
            {[pcfg],
-            #{ type => ?BOOTSTRAP_TYPE(list())
+            #{ type => list()
              , function => erlc_edoc_options
              , default => [{preprocess, true}]
              },
@@ -662,8 +663,6 @@ ensure_string(L) when is_list(L) ->
 %% Configuration:
 %%================================================================================
 
--ifndef(BOOTSTRAP).
-
 profiles(ProjectRoot) ->
   anvl_project:conf(ProjectRoot, [erlc, profiles], #{}).
 
@@ -685,7 +684,7 @@ cfg_edoc(ProjectRoot, Profile) ->
 cfg_app_src_hook(ProjectRoot, Profile, AppSpec) ->
   Args = #{profile => Profile, spec => AppSpec},
   anvl_project:conf(ProjectRoot, erlc_app_spec_hook, [Args], AppSpec,
-                    ?BOOTSTRAP_TYPE(application_spec())).
+                    application_spec()).
 
 cfg_bdeps(ProjectRoot, Profile, App) ->
   anvl_project:conf(ProjectRoot, [erlc, bdeps], #{profile => Profile, app => App}).
@@ -695,42 +694,6 @@ cfg_escript_files(ProjectRoot, Profile, App) ->
 
 cfg_escript_extra_files(ProjectRoot, Profile, Escript) ->
   anvl_project:conf(ProjectRoot, [erlc, escript_extra_files], #{profile => Profile, escript => Escript}).
-
--else.
-
-profiles(_) ->
-  [stage2].
-
-cfg_compile_options(_ProjectRoot, _Profile, _App) ->
-  [].
-
-cfg_include_dirs(_, _, _) ->
-  default_include_dirs().
-
-cfg_sources(_, _, _) ->
-  default_sources().
-
-cfg_escript_specs(_, _) ->
-  #{anvl =>
-      #{ apps => [anvl, lee, typerefl]
-       , emu_args => "-escript main anvl_app"
-       }}.
-
-cfg_app_src_hook(_, _, AppSpec) ->
-  AppSpec.
-
-cfg_bdeps(_, _, lee) ->
-  [snabbkaffe];
-cfg_bdeps(_, _, _) ->
-  [].
-
-cfg_escript_files(_, _, _) ->
-  default_escript_files().
-
-cfg_escript_extra_files(_, _, _) ->
-  [].
-
--endif.
 
 %% These options are not used during bootstrap, it's not necessary to
 %% mock them:

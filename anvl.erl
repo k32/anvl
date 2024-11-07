@@ -21,13 +21,10 @@ plugins(_) ->
   [anvl_erlc, anvl_git].
 
 conditions(_) ->
-  [escript, perf, docs].
+  [escript, docs].
 
 escript() ->
   anvl_condition:precondition(anvl_erlc:escript(".", default, anvl)).
-
-perf() ->
-  anvl_condition:precondition(anvl_erlc:escript(".", perf, anvl)).
 
 docs() ->
   anvl_condition:precondition(anvl_erlc:edoc(".", default, anvl)).

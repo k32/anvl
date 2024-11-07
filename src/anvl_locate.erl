@@ -37,6 +37,7 @@
 
 -export_type([kind/0, what/0, spec/0, locate_hook/0, hook_ret/0]).
 
+-include_lib("typerefl/include/types.hrl").
 -include_lib("kernel/include/logger.hrl").
 -include_lib("stdlib/include/zip.hrl").
 -include("anvl.hrl").
@@ -79,8 +80,7 @@
 ?MEMO(located, Getter, ProjectDir, What, Args,
       anvl_condition:has_result(#?MODULE{kind = Getter, what = What, args = Args}) orelse
       begin
-        Spec = anvl_project:conf(ProjectDir, Getter, Args, undefined,
-                                 ?BOOTSTRAP_TYPE(spec())),
+        Spec = anvl_project:conf(ProjectDir, Getter, Args, undefined, spec()),
         IsLiteral = io_lib:char_list(Spec),
         Dir = case Spec of
                 _ when IsLiteral ->
