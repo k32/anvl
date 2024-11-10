@@ -1,2 +1,0 @@
-all:
-	rebar3 do dialyzer,eunit,edoc

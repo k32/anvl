@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2022-2023 k32. All Rights Reserved.
+%% Copyright (c) 2022-2024 k32. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -20,13 +20,13 @@
          metaparams/2,
          validate/3, validate_node/5,
          pre_compile/3, meta_validate/2, meta_validate_node/4,
-         description/3, doc_refer_key/3,
+         description/3, doc_refer/4,
          read_patch/2, post_patch/5]).
 
 %% API:
 -export([is_implemented/3]).
 
--export_types([cooked_metatype/0, metavalidate_result/0]).
+-export_type([cooked_metatype/0, metavalidate_result/0]).
 
 -include("lee_internal.hrl").
 -include_lib("snabbkaffe/include/trace.hrl").
@@ -40,7 +40,7 @@
 -type callback() :: create | metaparams
                   | pre_compile | meta_validate | meta_validate_node
                   | validate | validate_node
-                  | description | doc_refer_key
+                  | description | doc_refer
                   | read_patch | post_patch.
 
 -type metavalidate_result() :: {_Err :: [string()], _Warn :: [string()], [lee_storage:patch_op()]}.
@@ -52,7 +52,7 @@
 -optional_callbacks([metaparams/1, create/1,
                      validate/3, validate_node/5,
                      pre_compile/2, meta_validate/2, meta_validate_node/4,
-                     description/3, doc_refer_key/3,
+                     description/3, doc_refer/4,
                      read_patch/2, post_patch/5
                     ]).
 
@@ -122,12 +122,11 @@
 %% Documentation
 %%--------------------------------------------------------------------------------
 
-%% Generate DocBook chapters
--callback description(lee:metatype(), lee:model(), lee_doc:options()) -> [lee_doc:docbook_xml()].
+%% Generate internal representation of the documentation chapter
+%% describing the metatype.
+-callback description(lee:metatype(), lee:model(), lee_doc:options()) -> [lee_doc:doclet()].
 
-%% Return a DocBook XML term containing link to the description of the
-%% key in the context of metatype
--callback doc_refer_key(lee:metatype(), lee:model(), lee:model_key()) -> [lee_doc:docbook_xml()].
+-callback doc_refer(lee:metatype(), lee:model(), lee_doc:options(), lee:model_key()) -> [lee_doc:doclet()].
 
 %%================================================================================
 %% Macros
@@ -268,7 +267,11 @@ post_patch(Metatype, Model, Data, MNode, PatchOp) ->
 %% Documentation
 %%--------------------------------------------------------------------------------
 
--spec description(lee:metatype(), lee:model(), lee_doc:options()) -> [lee_doc:docbook_xml()].
+%% @doc Extract documentation for the metatype from the model.
+%%
+%% Documentation uses an internal intermediate format that consists of
+%% a nested forest of `doclets'.
+-spec description(lee:metatype(), lee:model(), lee_doc:options()) -> [lee_doc:doclet()].
 description(Metatype, Model, Options) ->
     Module = get_module(Model, Metatype),
     case ?is_implemented(Module) of
@@ -276,11 +279,14 @@ description(Metatype, Model, Options) ->
         false -> []
     end.
 
--spec doc_refer_key(lee:metatype(), lee:model(), lee:model_key()) -> [lee_doc:docbook_xml()].
-doc_refer_key(Metatype, Model, Key) ->
+%% @doc Create a doclet for a metatype that can be embedded into
+%% another place. It can produce an xref or a full description.
+-spec doc_refer(lee:metatype(), lee:model(), lee_doc:options(), lee:model_key()) -> [lee_doc:doclet()].
+doc_refer(Metatype, Model, Options = #{metatypes := MTs}, Key) ->
     Module = get_module(Model, Metatype),
-    case ?is_implemented(Module) of
-        true  -> Module:?FUNCTION_NAME(Metatype, Model, Key);
+    Documented = MTs =:= all orelse lists:member(Metatype, MTs),
+    case ?is_implemented(Module) andalso Documented of
+        true  -> Module:?FUNCTION_NAME(Metatype, Model, Options, Key);
         false -> []
     end.
 
@@ -288,31 +294,19 @@ doc_refer_key(Metatype, Model, Key) ->
 %% Internal functions
 %%================================================================================
 
--spec callback_arity(callback()) -> arity().
-callback_arity(create) ->
-    1;
-callback_arity(metaparams) ->
-    1;
-callback_arity(pre_compile) ->
-    2;
-callback_arity(meta_validate) ->
-    2;
-callback_arity(meta_validate_node) ->
-    4;
-callback_arity(validate) ->
-    3;
-callback_arity(validate_node) ->
-    5;
-callback_arity(description) ->
-    3;
-callback_arity(doc_refer_key) ->
-    3;
-callback_arity(read_patch) ->
-    2;
-callback_arity(post_patch) ->
-    5;
-callback_arity(CB) ->
-    error({unknown_callback, CB}).
+-spec callback_arity(callback())   -> arity().
+callback_arity(create)             -> 1;
+callback_arity(metaparams)         -> 1;
+callback_arity(pre_compile)        -> 2;
+callback_arity(meta_validate)      -> 2;
+callback_arity(meta_validate_node) -> 4;
+callback_arity(validate)           -> 3;
+callback_arity(validate_node)      -> 5;
+callback_arity(description)        -> 3;
+callback_arity(doc_refer)          -> 4;
+callback_arity(read_patch)         -> 2;
+callback_arity(post_patch)         -> 5;
+callback_arity(CB)                 -> error({unknown_callback, CB}).
 
 -spec get_module(lee:model(), lee:metatype()) -> module().
 get_module(#model{metamodules = Modules}, Metatype) ->

@@ -1,9 +1,24 @@
--ifndef(TYPEREFL_AST_MACROS_HRL).
--define(TYPEREFL_AST_MACROS_HRL, true).
-
+%%--------------------------------------------------------------------
+%% Copyright (c) 2022-2023 EMQ Technologies Co., Ltd. All Rights Reserved.
+%%
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
+%%--------------------------------------------------------------------
+-ifndef(ERLANG_QQ_HRL).
+-define(ERLANG_QQ_HRL, true).
 
 %% Naming convention: uppercase macros are for matching, lower-case
-%% are for generation (they contain Line as a free variable)
+%% are for generation (they contain `Line' as a free variable, so make
+%% sure it's bound)
 
 -define(INT(Line, Val),
         {integer, Line, Val}).
@@ -69,4 +84,4 @@
         {'fun', Line,
          {function, ?atom(MODULE), ?atom(NAME), {integer, Line, ARITY}}}).
 
--endif. %% TYPEREFL_AST_MACROS_HRL
+-endif.
