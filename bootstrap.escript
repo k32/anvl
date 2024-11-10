@@ -24,7 +24,7 @@ main(_Args) ->
   Dir = "_anvl_build/stage1/ebin",
   %% Stage1:
   io:format("===================~n Bootstrap stage 1~n===================~n", []),
-  ok = filelib:ensure_path(Dir),
+  ok = filelib:ensure_dir(filename:join(Dir, "anvl")),
   code:add_path(Dir),
   Opts = [ {outdir, Dir}
          , {i, "include"}
