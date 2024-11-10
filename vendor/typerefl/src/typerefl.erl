@@ -29,7 +29,7 @@
 %% Special types that should not be imported:
 -export([node/0, union/2, union/1, tuple/1, range/2]).
 
--export_type([type/0, check_result/0, result/0, typename/0, err/0]).
+-export_type([type/0, check_result/0, result/0, typename/0, err/0, thunk/1]).
 
 -type err() :: map().
 
@@ -52,9 +52,10 @@
 -define(is_thunk(A), is_function(A, 0)).
 
 -define(prim(Name, Check, Rest),
-        {?type_refl, #{ check => fun erlang:Check/1
-                      , name => str(??Name "()")
-                      } Rest}).
+        {?type_refl, begin #{ check => fun erlang:Check/1
+                            , name => str(??Name "()")
+                            }
+                     end Rest}).
 
 -define(prim(Name, Check), ?prim(Name, Check, #{})).
 
@@ -528,6 +529,10 @@ iodata() ->
 unicode_chardata() ->
   alias("unicode:chardata", union([unicode_charlist(), binary()])).
 
+-spec filename_all() -> type().
+filename_all() ->
+  alias("file:filename_all", union([binary(), string()])).
+
 %% @doc Type of UTF8 strings that match a regexp
 -spec regexp_string(_Regexp :: string() | binary()) -> type().
 regexp_string(Regexp) ->
@@ -604,10 +609,6 @@ ip_address() ->
                      , pretty_print => fun inet:ntoa/1
                      },
   alias("ip_address", BaseType, AdditionalAttrs, []).
-
--spec filename_all() -> type().
-filename_all() ->
-  alias("filename_all", union([binary(), string()])).
 
 %% @doc Get type name.
 -spec name(type() | ?type_var(atom())) -> string().
@@ -802,7 +803,7 @@ or_else(A, B) ->
 
 %% @private Transforms tuples to `tuple/1' calls and so on. Forces
 %% lazy evaluation.
--spec desugar(tuple() | [type(), ...] | [] | #{type() => type()}) -> type().
+-spec desugar(type()) -> type_intern().
 desugar(T = {?type_refl, _}) ->
   T;
 desugar(#lazy_type{thunk = Type}) ->
@@ -843,7 +844,7 @@ string_to_term(String) ->
       {error, "Unable to tokenize Erlang term"}
   end.
 
--spec re_match(string() | binary(), re:mp()) -> boolean().
+-spec re_match(string() | binary(), _RE) -> boolean().
 re_match(Str, RE)  ->
   try re:run(Str, RE, [{capture, none}]) of
     match   -> true;

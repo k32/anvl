@@ -1,4 +1,4 @@
 erlc_bdeps(#{app := lee}) ->
-  [snabbkaffe];
+  [typerefl, snabbkaffe];
 erlc_bdeps(_) ->
   [].
