@@ -1,0 +1,22 @@
+name: Bootstrap
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        otp: ['26']
+    steps:
+    - uses: actions/checkout@v4
+    - uses: erlef/setup-beam@v1
+      with:
+        otp-version: ${{matrix.otp}}
+    - name: Bootstrap
+      run: |
+        ./bootstrap.escript
