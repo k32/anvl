@@ -18,7 +18,7 @@
 %%================================================================================
 
 plugins(_) ->
-  [anvl_erlc, anvl_git].
+  [anvl_erlc, anvl_git, anvl_plugin_builder].
 
 conditions(_) ->
   [escript, docs].
@@ -53,9 +53,12 @@ erlc_escripts(_) ->
 %% cross-compilation, e.g. when we need to bootstrap anvl on different
 %% OTP release.
 erlc_escript_extra_files(#{escript := anvl}) ->
-  {0, Files} = anvl_lib:exec("git", ["ls-files"], [collect_output]),
+  {0, Files} = anvl_lib:exec_("git", ["ls-files"], [collect_output]),
   [{ File
    , filename:join("__self", File)
    } || File <- Files,
         string:prefix(File, "test") =:= nomatch,
         File =/= <<"anvl">>].
+
+plugin_builder_doc(_) ->
+  "doc/src/anvl.texi".
