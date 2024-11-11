@@ -28,7 +28,7 @@
 -export([init/1, handle_call/3, handle_cast/2, terminate/2]).
 
 %% Internal exports
--export([model/0, project_model/0, start_link/0]).
+-export([model/0, project_model/0, start_link/0, metamodel/0, project_metamodel/0]).
 
 -export_type([]).
 
@@ -60,7 +60,7 @@
 ?MEMO(loaded, Plugin,
       begin
         ?LOG_INFO("Loading ~p", [Plugin]),
-        Changed = if Plugin =:= anvl_erlc; Plugin =:= anvl_locate; Plugin =:= anvl_git ->
+        Changed = if Plugin =:= anvl_erlc; Plugin =:= anvl_locate; Plugin =:= anvl_git; Plugin =:= anvl_plugin_builder ->
                       %% Don't recompile builtin plugins:
                       false;
                      true ->

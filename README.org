@@ -107,13 +107,6 @@ While this looks verbose at first, it opens up some possibilities.
 First of all, using a full-fledged programming language to define conditions gives access to proper data structures and algorithms, and allows to encapsulate build rules into reusable modules with well-defined interfaces.
 But more importantly, it allows to manage systems in ways that go beyond simply reading and writing files.
 
-* TODO Invocation
-
-* TODO Configuration
-
-* TODO Writing conditions
-
-* TODO Plugins
 
 ** Builtin Plugins
 

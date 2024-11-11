@@ -21,6 +21,6 @@
 -define(ANVL_IMPORTS_HRL, true).
 
 -import(anvl_condition, [precondition/1, precondition/2, satisfies/1]).
--import(anvl_lib, [newer/2, template/3, patsubst1/3, patsubst1/2, patsubst/3, patsubst/2]).
+-import(anvl_lib, [newer/2, template/3, patsubst/3, patsubst/2]).
 
 -endif.

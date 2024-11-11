@@ -28,7 +28,7 @@
 %% behavior callbacks:
 -export([model/0, project_model/0, init/0, conditions/1]).
 
--export_type([context/0, app_info/0]).
+-export_type([app_info/0]).
 
 -include_lib("typerefl/include/types.hrl").
 -include_lib("kernel/include/logger.hrl").
@@ -213,19 +213,23 @@ model() ->
               }},
   #{anvl_erlc =>
       #{ profile =>
-           {[value, cli_param],
-             #{ type => typerefl:union(Profiles)
+           {[value, cli_param, os_env],
+             #{ oneliner => "Build profile"
+              , type => typerefl:union(Profiles)
               , default => hd(Profiles)
               , cli_operand => "erlc-profile"
+              , os_env => "ERLC_PROFILE"
               }}
        , escript =>
            {[map, cli_action],
-            #{ key_elements => [[name]]
+            #{ oneliner => "Build an escript"
+             , key_elements => [[name]]
              , cli_operand => "escript"
              },
             #{ name =>
                  {[value, cli_positional],
-                  #{ type => list(atom())
+                  #{ oneliner => "Names of the escript to build"
+                   , type => list(atom())
                    , default => []
                    , cli_arg_position => rest
                    }}
@@ -234,12 +238,14 @@ model() ->
              }}
        , compile =>
            {[map, cli_action],
-            #{ key_elements => [[apps]]
+            #{ oneliner => "Compile Erlang/OTP applications"
+             , key_elements => [[apps]]
              , cli_operand => "erlc"
              },
             #{ apps =>
                  {[value, cli_positional],
-                  #{ type => list(atom())
+                  #{ oneliner => "Names of OTP applications to compile"
+                   , type => list(atom())
                    , default => []
                    , cli_arg_position => rest
                    }}
@@ -401,7 +407,7 @@ escript(ProjectRoot, Profile, EscriptName, Apps, EmuFlags) ->
                  , {archive, Bins, ArchiveOpts}
                  ],
       case escript:create(Filename, Sections) of
-        ok           -> 0 = anvl_lib:exec("chmod", ["+x", Filename]);
+        ok           -> anvl_lib:exec("chmod", ["+x", Filename]);
         {error, Err} -> ?UNSAT("Failed to create escript ~s~nError: ~p", [EscriptName, Err])
       end,
       true
@@ -416,7 +422,7 @@ escript(ProjectRoot, Profile, EscriptName, Apps, EmuFlags) ->
         newer(Src, Beam) or precondition(beam_deps(Src, Beam, CRef)) andalso
           begin
             ?LOG_INFO("Compiling ~s", [Src]),
-            case compile:noenv_file(Src, [report, {outdir, filename:dirname(Beam)} | COpts]) of
+            case compile:noenv_file(Src, [no_spawn_compiler_process, report, {outdir, filename:dirname(Beam)} | COpts]) of
               {ok, Module} ->
                 true;
               error ->
@@ -614,10 +620,10 @@ module_of_erl(Src) ->
   list_to_atom(filename:basename(Src, ".erl")).
 
 beam_of_erl(Src, Context) ->
-  binary_to_list(patsubst1("${build_dir}/ebin/${basename}.beam", Src, Context)).
+  binary_to_list(patsubst("${build_dir}/ebin/${basename}.beam", Src, Context)).
 
 dep_of_erl(Src, Context) ->
-  patsubst1("${build_dir}/anvl_deps/${basename}${extension}.dep", Src, Context).
+  patsubst("${build_dir}/anvl_deps/${basename}${extension}.dep", Src, Context).
 
 build_dir(BuildRoot, App) ->
   filename:join(BuildRoot, atom_to_list(App)).

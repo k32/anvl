@@ -35,7 +35,7 @@
 %% behavior callbacks:
 -export([init/0]).
 
--export_type([kind/0, what/0, spec/0, locate_hook/0, hook_ret/0]).
+-export_type([kind/0, spec/0, locate_hook/0, hook_ret/0]).
 
 -include_lib("typerefl/include/types.hrl").
 -include_lib("kernel/include/logger.hrl").
