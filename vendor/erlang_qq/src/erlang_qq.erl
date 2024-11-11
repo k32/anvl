@@ -1,14 +1,14 @@
-%% Poor man's metaprogramming library for Erlang
+%% Poor man's metaprogramming library for Erlang (originally part of
+%% `typerefl')
 %%
 %% It's slow and inefficient, but it's only used internally to help
-%% creating `typerefl_trans' module.
+%% creating parser transforms modules.
 %%
-%% Not using `parse_trans' to avoid extra dependencies
--module(typerefl_quote).
+-module(erlang_qq).
 
 -export([parse_transform/2, abstract/1, const/2]).
 
--include("typerefl_ast_macros.hrl").
+-include("erlang_qq.hrl").
 
 parse_transform(Forms, _Options) ->
   normal(Forms).
@@ -19,15 +19,7 @@ parse_transform(Forms, _Options) ->
 %% ```
 %% '$$'(...stuff...)
 %% '''
-normal({call, _Line, {atom, _, '$$'}, [Outer]}) ->
-  case Outer of
-    {'fun', _, {clauses, Quoted}} ->
-      %% Remove outer `fun' and only leave its clauses:
-      ok;
-    Quoted ->
-      %% A plain term has been quoted, leave it as is:
-      ok
-  end,
+normal({call, _Line, {atom, _, '$$'}, [Quoted]}) ->
   Result = abstract(Quoted),
   %% io:format("Quoted block ~p~n", [Result]),
   Result;

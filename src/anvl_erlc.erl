@@ -214,18 +214,21 @@ model() ->
   #{anvl_erlc =>
       #{ profile =>
            {[value, cli_param],
-             #{ type => typerefl:union(Profiles)
+             #{ oneliner => "Build profile"
+              , type => typerefl:union(Profiles)
               , default => hd(Profiles)
               , cli_operand => "erlc-profile"
               }}
        , escript =>
            {[map, cli_action],
-            #{ key_elements => [[name]]
+            #{ oneliner => "Build an escript"
+             , key_elements => [[name]]
              , cli_operand => "escript"
              },
             #{ name =>
                  {[value, cli_positional],
-                  #{ type => list(atom())
+                  #{ oneliner => "Names of the escript to build"
+                   , type => list(atom())
                    , default => []
                    , cli_arg_position => rest
                    }}
@@ -234,12 +237,14 @@ model() ->
              }}
        , compile =>
            {[map, cli_action],
-            #{ key_elements => [[apps]]
+            #{ oneliner => "Compile Erlang/OTP applications"
+             , key_elements => [[apps]]
              , cli_operand => "erlc"
              },
             #{ apps =>
                  {[value, cli_positional],
-                  #{ type => list(atom())
+                  #{ oneliner => "Names of OTP applications to compile"
+                   , type => list(atom())
                    , default => []
                    , cli_arg_position => rest
                    }}
@@ -401,7 +406,7 @@ escript(ProjectRoot, Profile, EscriptName, Apps, EmuFlags) ->
                  , {archive, Bins, ArchiveOpts}
                  ],
       case escript:create(Filename, Sections) of
-        ok           -> 0 = anvl_lib:exec("chmod", ["+x", Filename]);
+        ok           -> anvl_lib:exec("chmod", ["+x", Filename]);
         {error, Err} -> ?UNSAT("Failed to create escript ~s~nError: ~p", [EscriptName, Err])
       end,
       true

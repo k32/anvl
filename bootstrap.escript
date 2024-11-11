@@ -24,15 +24,16 @@ main(_Args) ->
   Dir = "_anvl_build/stage1/ebin",
   %% Stage1:
   io:format("===================~n Bootstrap stage 1~n===================~n", []),
-  ok = filelib:ensure_path(Dir),
+  ok = filelib:ensure_dir(filename:join(Dir, "anvl")),
   code:add_path(Dir),
   Opts = [ {outdir, Dir}
          , {i, "include"}
          , {i, "vendor"}
+         , {i, "vendor/erlang_qq/include"}
          , {i, "vendor/typerefl/include"}
          , {i, "vendor/lee/include"}
          ],
-  Files = [ "vendor/typerefl/src/typerefl_quote.erl"
+  Files = [ "vendor/erlang_qq/src/erlang_qq.erl"
           , "vendor/typerefl/src/typerefl_trans.erl"
           , "vendor/typerefl/src/typerefl.erl"
           ] ++ filelib:wildcard("vendor/lee/src/*/*.erl")
@@ -45,7 +46,7 @@ main(_Args) ->
   %% Compile stage2 escript:
   ok = anvl_app:bootstrap(),
   io:format("===================~n Bootstrap stage 3~n===================~n", []),
-  %% Use stage3 to recompile itself:
+  %% Use escript produced at stage2 to recompile the code into the final binary:
   Port = erlang:open_port({spawn_executable, "_anvl_build/stage2/anvl"}, [exit_status, nouse_stdio]),
   receive
     {Port, {exit_status, E}} -> halt(E)

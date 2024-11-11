@@ -22,7 +22,7 @@
 %% API:
 -export([template/3, patsubst1/3, patsubst1/2, patsubst/3, patsubst/2]).
 -export([newer/2, hash/1]).
--export([exec/2, exec/3]).
+-export([exec/2, exec/3, exec_/2, exec_/3]).
 
 -export_type([template_vars/0]).
 
@@ -101,12 +101,30 @@ patsubst(Pattern, Filenames) ->
 patsubst(Pattern, Filenames, TVars) ->
   [{Src, patsubst1(Pattern, Src, TVars)} || Src <- Filenames].
 
--spec exec(string(), [string()]) -> integer().
+%% @doc Execute a command and return true if it exits with code 0.
+-spec exec(string(), [string()]) -> true.
 exec(Cmd, Args) ->
   exec(Cmd, Args, []).
 
--spec exec(string(), [string()], list()) -> integer().
-exec(Cmd0, Args, Opts0) ->
+%% @doc Execute a command and return exit code
+-spec exec(string(), [string()], list()) -> true.
+exec(Cmd, Args, Opts) ->
+  case exec_(Cmd, Args, Opts) of
+    0 ->
+      true;
+    ExitStatus ->
+      ?LOG_CRITICAL("Command ~s ~s failed with exit code ~p", [Cmd, lists:join(" ", Args), ExitStatus]),
+      exit(unsat)
+  end.
+
+%% @doc Execute a command and return exit code
+-spec exec_(string(), [string()]) -> integer().
+exec_(Cmd, Args) ->
+  exec(Cmd, Args, []).
+
+%% @doc Execute a command and return exit code
+-spec exec_(string(), [string()], list()) -> integer().
+exec_(Cmd0, Args, Opts0) ->
   case proplists:get_value(search_path, Opts0, true) of
     true ->
       Cmd = os:find_executable(Cmd0),

@@ -45,12 +45,14 @@ model() ->
   #{git =>
       #{ local_mirror_dir =>
            {[value, os_env],
-            #{ default => filename:join(filename:basedir(user_cache, "anvl"), "gitmirror")
+            #{ oneliner => "Local Git mirror directory"
+             , default => filename:join(filename:basedir(user_cache, "anvl"), "gitmirror")
              , type => string()
              }}
        , max_jobs =>
            {[value, cli_param, os_env, anvl_resource],
-            #{ type => non_neg_integer()
+            #{ oneliner => "Maximum number of parallel Git processes"
+             , type => non_neg_integer()
              , default => 5
              , cli_operand => "j-git"
              , anvl_resource => git
@@ -86,7 +88,7 @@ archive_unpacked(What, Repo, CommitHash, Paths) ->
         precondition(mirror_synced(Repo)),
       %% 2. Create an archive from the commit hash:
       ok = filelib:ensure_dir(TmpFile),
-      0 = anvl_lib:exec("git", ["archive", "--format", "tar", "-o", TmpFile, CommitHash | Paths], [{cd, MirrorDir}]),
+      anvl_lib:exec("git", ["archive", "--format", "tar", "-o", TmpFile, CommitHash | Paths], [{cd, MirrorDir}]),
       %% 3. Extract archive:
       ok = erl_tar:extract(TmpFile, [{cwd, LocalDir}]),
       %% 4. Remove the temp file:
@@ -97,7 +99,7 @@ archive_unpacked(What, Repo, CommitHash, Paths) ->
 mirror_has_commit(MirrorDir, Hash) ->
   case is_git_repo(MirrorDir) of
     true ->
-      case anvl_lib:exec("git", ["cat-file", "-e", <<Hash/binary, "^{commit}">>], [{cd, MirrorDir}]) of
+      case anvl_lib:exec_("git", ["cat-file", "-e", <<Hash/binary, "^{commit}">>], [{cd, MirrorDir}]) of
         0 -> true;
         1 -> false
       end;
@@ -107,7 +109,7 @@ mirror_has_commit(MirrorDir, Hash) ->
 
 is_git_repo(Dir) ->
   filelib:is_dir(Dir) andalso
-    anvl_lib:exec("git", ["rev-parse", "--is-inside-work-tree"], [{cd, Dir}]) =:= 0.
+    anvl_lib:exec_("git", ["rev-parse", "--is-inside-work-tree"], [{cd, Dir}]) =:= 0.
 
 ?MEMO(mirror_synced, Repo,
       anvl_resource:with(
@@ -117,10 +119,10 @@ is_git_repo(Dir) ->
             ?LOG_NOTICE("Syncing mirror for repository ~s~nMirror dir: ~s", [Repo, Dir]),
             case is_git_repo(Dir) of
               true ->
-                0 = anvl_lib:exec("git", ["remote", "update"], [{cd, Dir}]);
+                anvl_lib:exec("git", ["remote", "update"], [{cd, Dir}]);
               false ->
                 ok = filelib:ensure_dir(Dir),
-                0 = anvl_lib:exec("git", ["clone", "--mirror", Repo, Dir])
+                anvl_lib:exec("git", ["clone", "--mirror", Repo, Dir])
             end,
             false
         end)).
@@ -151,7 +153,7 @@ mirror_dir(Repo) ->
   filename:join(cfg_mirror_dir(), anvl_lib:hash(Repo)).
 
 get_commit_hash(RepoDir, #{ref := Ref}) ->
-  case anvl_lib:exec("git", ["show-ref", "-s", "refs/" ++ Ref], [{cd, RepoDir}, collect_output]) of
+  case anvl_lib:exec_("git", ["show-ref", "-s", "refs/" ++ Ref], [{cd, RepoDir}, collect_output]) of
     {0, [Hash]} ->
       string:trim(Hash);
     {ExitStatus, Output} ->

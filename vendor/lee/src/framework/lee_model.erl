@@ -33,7 +33,8 @@
 %%====================================================================
 %% Types
 %%====================================================================
--type metatype_index() :: #{lee:metatype() => ordsets:set(lee:model_key())}.
+
+-type metatype_index() :: #{lee:metatype() => ordsets:ordset(lee:model_key())}.
 
 %%====================================================================
 %% API functions
@@ -61,7 +62,7 @@ compile(MetaModules0, Models0) ->
                            , meta_class_idx = mk_metatype_index(Model)
                            },
             case lee:meta_validate(Result) of
-              {[], _Warn, Patch} ->
+                {[], _Warn, Patch} ->
                     {ok, patch_meta(Result, Patch)};
                 {Errs, _Warns, _Patch} ->
                     {error, Errs}
@@ -95,9 +96,8 @@ merge(L) ->
     end.
 
 %% @doc Merge two Lee model modules into a single module
--spec merge(M, M) -> {ok, lee:cooked_module()}
-                   | {error, [string()]}
-               when M :: lee:cooked_module().
+-spec merge(M, lee:lee_module()) -> {ok, M} | {error, [string()]}
+              when M :: lee:cooked_module().
 merge(M1, M2) ->
     Fun = fun(Key, MNode, Acc) ->
                   [{set, Key, MNode} | Acc]
@@ -116,7 +116,7 @@ merge(M1, M2) ->
     end.
 
 %% @doc Get a node from the model, assuming that it is present
--spec get(lee:model_key(), lee:model() | lee:module()) -> #mnode{}.
+-spec get(lee:model_key(), lee:model() | lee:cooked_module()) -> #mnode{}.
 get(Id, #model{model = Module}) ->
     get(Id, Module);
 get(Id, Module) ->
@@ -142,8 +142,8 @@ get_meta(Id, #model{metaconfig = MetaConfig}) ->
 
 %% @doc Apply a function to all nodes of a raw model module.
 -spec map_vals( fun((lee:model_key(), lee:mnode()) -> lee:mnode())
-              , lee:module()
-              ) -> lee:module().
+              , lee:lee_module()
+              ) -> lee:lee_module().
 map_vals(Fun, Model) ->
     do_map_vals(Fun, Model, []).
 
@@ -153,7 +153,7 @@ map_vals(Fun, Model) ->
           , Model
           ) -> Acc
       when Acc   :: term()
-         , Model :: lee:model() | lee:module().
+         , Model :: lee:model() | lee:lee_module().
 fold(Fun0, Acc0, Data) ->
     Fun = fun(Key, Val, Acc, _) ->
                   {Fun0(Key, Val, Acc), ?unused}
@@ -222,7 +222,7 @@ all_metatypes(#model{metamodules = MM}) ->
 
 %% @doc Get an index of mnodes belonging to metatypes
 -spec get_metatype_index(lee:metatype(), lee:model()) ->
-          ordsets:set(lee:model_key()).
+          ordsets:ordset(lee:model_key()).
 get_metatype_index(MT, #model{meta_class_idx = Idx}) ->
     maps:get(MT, Idx, []).
 
@@ -272,13 +272,14 @@ do_map_vals(Fun, Model, Parent) ->
                               {MTs, Attrs, Children}
                       end
               end
-            , Model).
+            , Model
+            ).
 
--spec compile_module(_ModuleLookup, lee:module() | lee:cooked_module()) -> lee:cooked_module().
+-spec compile_module(_ModuleLookup, lee:lee_module() | lee:cooked_module()) -> lee:cooked_module().
 compile_module(MLookup, Module) when is_map(Module) ->
     Fun = fun(Key, MNode = #mnode{metaparams = MPs0, metatypes = MTs}, Acc) ->
                   MPs = lists:foldl( fun(MT, Params) ->
-                                             MTMod = maps:get(MT, MLookup),
+                                             #{MT := MTMod} = MLookup,
                                              lee_metatype:pre_compile(MT, MTMod, Params)
                                      end
                                    , MPs0
