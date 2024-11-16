@@ -23,7 +23,7 @@
 -behavior(supervisor).
 
 %% API:
--export([start_link/0, init_plugins/0]).
+-export([start_link/0, start_link_resource_sup/0, init_plugins/0, ensure_resource/1]).
 
 %% behavior callbacks:
 -export([init/1]).
@@ -38,55 +38,61 @@
 %%================================================================================
 
 -define(SUP, ?MODULE).
+-define(RES_SUP, anvl_resource_sup).
 
 -spec start_link() -> supervisor:startlink_ret().
 start_link() ->
-  supervisor:start_link({local, ?SUP}, ?MODULE, []).
+  supervisor:start_link({local, ?SUP}, ?MODULE, top).
+
+-spec start_link_resource_sup() -> supervisor:startlink_ret().
+start_link_resource_sup() ->
+  supervisor:start_link({local, ?RES_SUP}, ?MODULE, resources).
 
 init_plugins() ->
-  {ok, _} = supervisor:start_child(?SUP, plugin_server()),
+  {ok, _} = supervisor:start_child(?SUP, worker(anvl_plugin)),
   ok.
+
+ensure_resource(Resource) ->
+  supervisor:start_child(?RES_SUP, [Resource]).
 
 %%================================================================================
 %% behavior callbacks
 %%================================================================================
 
-init([]) ->
-  Children = [resource_server(), condition_server()],
+init(top) ->
+  ResourceSup = #{ id       => resource
+                 , start    => {?MODULE, start_link_resource_sup, []}
+                 , restart  => permanent
+                 , shutdown => infinity
+                 , type     => supervisor
+                 },
+  Children = [ResourceSup, worker(anvl_condition)],
   SupFlags = #{ strategy      => one_for_one
               , intensity     => 0
               , period        => 10
               , auto_shutdown => never
               },
+  {ok, {SupFlags, Children}};
+init(resources) ->
+  anvl_resource:tab(),
+  Children = [#{ id       => resource
+               , start    => {anvl_resource, start_link, []}
+               , shutdown => 100
+               }],
+  SupFlags = #{ strategy  => simple_one_for_one
+              , intensity => 0
+              , period    => 1
+              },
   {ok, {SupFlags, Children}}.
-
--spec condition_server() -> supervisor:child_spec().
-condition_server() ->
-  #{ id          => condition
-   , start       => {anvl_condition, start_link, []}
-   , shutdown    => 5_000
-   , restart     => permanent
-   , type        => worker
-   }.
-
--spec resource_server() -> supervisor:child_spec().
-resource_server() ->
-  #{ id          => resource
-   , start       => {anvl_resource, start_link, []}
-   , shutdown    => 5_000
-   , restart     => permanent
-   , type        => worker
-   }.
-
--spec plugin_server() -> supervisor:child_spec().
-plugin_server() ->
-  #{ id          => plugins
-   , start       => {anvl_plugin, start_link, []}
-   , shutdown    => 5_000
-   , restart     => permanent
-   , type        => worker
-   }.
 
 %%================================================================================
 %% Internal functions
 %%================================================================================
+
+worker(Module) ->
+  #{ id       => Module
+   , start    => {Module, start_link, []}
+   , shutdown => 5_000
+   , restart  => permanent
+   , type     => worker
+   }.

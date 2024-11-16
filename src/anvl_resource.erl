@@ -37,10 +37,10 @@
 -export([with/2, grab/1, release/1, declare/2, set_max/2]).
 
 %% behavior callbacks:
--export([init/1, handle_call/3, handle_cast/2]).
+-export([init/1, terminate/1, handle_call/3, handle_cast/2]).
 
 %% internal exports:
--export([start_link/0]).
+-export([start_link/1, tab/0]).
 
 -export_type([]).
 
@@ -57,20 +57,23 @@
 
 -type resource() :: term().
 
--record(declare, {name :: atom(), max :: pos_integer(), new :: boolean()}).
--record(grab, {name :: atom()}).
--record(release, {name :: atom()}).
+-define(TAB, anvl_resource_tab).
+-record(set_max, {max :: pos_integer()}).
+-record(grab, {}).
+-record(release, {}).
 
 %%================================================================================
 %% API functions
 %%================================================================================
 
--define(SERVER, ?MODULE).
+%% @private
+tab() ->
+  ets:new(?TAB, [public, named_table, {keypos, 1}]).
 
 %% @private
--spec start_link() -> {ok, pid()}.
-start_link() ->
-  gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+-spec start_link(resource()) -> {ok, pid()}.
+start_link(Resource) ->
+  gen_server:start_link(?MODULE, Resource, []).
 
 %% @doc Declare a new resource type. This function should be called by
 %% the plugin in its `init/0' callback.
@@ -99,22 +102,18 @@ start_link() ->
 %% @param Max initial resource capacity
 -spec declare(resource(), pos_integer()) -> ok.
 declare(Resource, Max) ->
-  case gen_server:call(?SERVER, #declare{name = Resource, max = Max, new = true}) of
-    ok ->
-      ok;
-    {error, Err} ->
-      error(#{msg => "Failed to declare resource", reason => Err, resource => Resource})
-  end.
+  {ok, _} = anvl_sup:ensure_resource(Resource),
+  set_max(Resource, Max).
 
 %% @hidden Update resource capacity. Called by `post_patch'.
 -spec set_max(resource(), pos_integer()) -> ok.
-set_max(Resource, Max) ->
-  gen_server:call(?SERVER, #declare{name = Resource, max = Max, new = false}).
+set_max(Resource, Max) when is_integer(Max), Max > 0 ->
+  gen_server:call(server(Resource), #set_max{max = Max}).
 
 %% @private
 -spec grab(resource()) -> ok.
 grab(Resource) ->
-  case gen_server:call(?SERVER, #grab{name = Resource}) of
+  case gen_server:call(server(Resource), #grab{}) of
     ok ->
       ok;
     {error, Err} ->
@@ -124,7 +123,7 @@ grab(Resource) ->
 %% @private
 -spec release(resource()) -> ok.
 release(Resource) ->
-  case gen_server:call(?SERVER, #release{name = Resource}) of
+  case gen_server:call(server(Resource), #release{}) of
     ok ->
       ok;
     {error, Err} ->
@@ -164,53 +163,38 @@ with(Resource, Fun) ->
 %%================================================================================
 
 -record(res,
-        { max :: pos_integer()
-        , current :: non_neg_integer()
-        , queue :: queue:queue()
+        { max = 1 :: pos_integer()
+        , current = 0 :: non_neg_integer()
+        , queue = queue:new() :: queue:queue()
         }).
 
 %% @hidden
-init(_) ->
+init(Resource) ->
   process_flag(trap_exit, true),
-  {ok, #{}}.
+  true = ets:insert(?TAB, {Resource, self()}),
+  {ok, #res{}}.
 
 %% @hidden
-handle_call(#declare{name = Name, max = Max, new = New}, _From, S) ->
-  case S of
-    _ when not is_atom(Name); not is_integer(Max); Max =< 0 ->
-      {reply, {error, badarg}, S};
-    #{Name := _} when New ->
-      {reply, {error, already_exists, Name}, S};
-    #{Name := Res0} ->
-      Res = dequeue(Res0#res{max = Max}),
-      {reply, ok, S#{Name := Res}};
-    _ ->
-      Res = #res{ max = Max
-                , current = 0
-                , queue = queue:new()
-                },
-      {reply, ok, S#{Name => Res}}
+terminate(Resource) ->
+  ets:delete(?TAB, Resource).
+
+%% @hidden
+handle_call(#set_max{max = Max}, _From, S0) ->
+  S = dequeue(S0#res{max = Max}),
+  {reply, ok, S};
+handle_call(#grab{}, From, S0) ->
+  #res{current = Current, queue = Q, max = Max} = S0,
+  if Current < Max ->
+      S = S0#res{current = Current + 1},
+      {reply, ok, S};
+     true ->
+      S = S0#res{queue = queue:in(From, Q)},
+      {noreply, S}
   end;
-handle_call(#grab{name = Name}, From, S) ->
-  case S of
-    #{Name := Res0 = #res{max = Max, current = Current}} when Current < Max ->
-      Res = Res0#res{current = Current + 1},
-      {reply, ok, S#{Name := Res}};
-    #{Name := Res0 = #res{queue = Q0}} ->
-      Res = Res0#res{queue = queue:in(From, Q0)},
-      {noreply, S#{Name := Res}};
-    #{} ->
-      {reply, {error, no_such_resource}, S}
-  end;
-handle_call(#release{name = Name}, _From, S) ->
-  case S of
-    #{Name := Res0} ->
-      #res{current = Current} = Res0,
-      Res = dequeue(Res0#res{current = Current - 1}),
-      {reply, ok, S#{Name := Res}};
-    #{} ->
-      {reply, {error, no_such_resource}, S}
-  end;
+handle_call(#release{}, _From, S0) ->
+  #res{current = Current} = S0,
+  S = dequeue(S0#res{current = Current - 1}),
+  {reply, ok, S};
 handle_call(_Call, _From, S) ->
   {reply, {error, unknown_call}, S}.
 
@@ -255,3 +239,6 @@ dequeue(Res0 = #res{current = Current, queue = Q0}) ->
     {empty, _Q} ->
       Res0
   end.
+
+server(Resource) ->
+  ets:lookup_element(?TAB, Resource, 2).
