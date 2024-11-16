@@ -236,6 +236,14 @@ model() ->
              , profile =>
                  Profile
              }}
+       , jobs =>
+           {[value, cli_param, os_env, anvl_resource],
+            #{ oneliner => "Parallel compiler jobs"
+             , type => pos_integer()
+             , cli_operand => "j-erlc"
+             , default => 16
+             , anvl_resource => erlc
+             }}
        , compile =>
            {[map, cli_action],
             #{ oneliner => "Compile Erlang/OTP applications"
@@ -356,7 +364,7 @@ project_model() ->
 
 %% @hidden
 init() ->
-  %% ok = anvl_resource:declare(erlc, 100),
+  ok = anvl_resource:declare(erlc, 1),
   ok.
 
 %% @hidden
@@ -420,15 +428,17 @@ escript(ProjectRoot, Profile, EscriptName, Apps, EmuFlags) ->
         satisfies(module(Profile, Module)),
         Beam = beam_of_erl(Src, Context),
         newer(Src, Beam) or precondition(beam_deps(Src, Beam, CRef)) andalso
-          begin
-            ?LOG_INFO("Compiling ~s", [Src]),
-            case compile:noenv_file(Src, [no_spawn_compiler_process, report, {outdir, filename:dirname(Beam)} | COpts]) of
-              {ok, Module} ->
-                true;
-              error ->
-                ?UNSAT("Compilation of ~s failed", [Src])
-            end
-          end
+          anvl_resource:with(
+            erlc,
+            fun() ->
+                ?LOG_INFO("Compiling ~s", [Src]),
+                case compile:noenv_file(Src, [no_spawn_compiler_process, report, {outdir, filename:dirname(Beam)} | COpts]) of
+                  {ok, Module} ->
+                    true;
+                  error ->
+                    ?UNSAT("Compilation of ~s failed", [Src])
+                end
+            end)
       end).
 
 %% @private Precondition: Compile-time dependencies of the Erlang
