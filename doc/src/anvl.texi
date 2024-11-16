@@ -1,0 +1,114 @@
+\input texinfo   @c -*-texinfo-*-
+@c %**start of header
+@setfilename anvl.info
+@settitle ANVΛ
+@c %**end of header
+@copying
+A general-purpose parallel task execution tool.
+
+Copyright @copyright{} 2024
+
+@quotation
+Permission is granted to copy, distribute and/or modify this document
+under the terms of the GNU Free Documentation License, Version 1.3
+or any later version published by the Free Software Foundation;
+with no Invariant Sections, no Front-Cover Texts, and no Back-Cover Texts.
+A copy of the license is included in the section entitled ``GNU
+Free Documentation License''.
+
+A copy of the license is also available from the Free Software
+Foundation Web site at @url{https://www.gnu.org/licenses/fdl.html}.
+
+@end quotation
+
+@end copying
+
+@titlepage
+@title ANVΛ
+@subtitle A general-purpose parallel task execution tool
+@author  k32
+@page
+@vskip 0pt plus 1filll
+@insertcopying
+@end titlepage
+
+@c Output the table of the contents at the beginning.
+@contents
+
+@ifnottex
+@node Top
+@top ANVΛ
+
+@insertcopying
+@end ifnottex
+
+@node ANVL erlc
+@chapter Builtin Plugin @code{anvl_erlc}
+
+@code{anvl_erlc} is a built-in plugin that compiles Erlang applications structured accorging to the
+@url{https://www.erlang.org/doc/system/applications#directory-structure,OTP design principles}.
+It allows ANVL to load other 3rd-party plugins.
+
+
+@node Erlc Invokation
+@section Invokation
+@lowersections
+@include anvl_erlc/cli_param.texi
+
+@heading Environment Variables
+@include anvl_erlc/os_env.texi
+@raisesections
+
+@node Erlc All Configurable Values
+@section All Configurable Values
+@lowersections
+@include anvl_erlc/value.texi
+@raisesections
+
+@node ANVL Plugin Locate
+@chapter Builtin Plugin @code{anvl_locate}
+
+@code{anvl_locate} is a built-in plugin that provides a generic discovery mechanism for external dependencies.
+
+@node ANVL Plugin Git
+@chapter Builtin Plugin @code{anvl_git}
+
+@node Git Invokation
+@section Invokation
+@lowersections
+@include anvl_git/cli_param.texi
+
+@heading Environment Variables
+@include anvl_git/os_env.texi
+@raisesections
+
+@node Git All Configurable Values
+@section All Configurable Values
+@lowersections
+@include anvl_git/value.texi
+@raisesections
+
+@node ANVL Plugin Builder
+@chapter Builtin Plugin @code{anvl_plugin_builder}
+
+@node ANVL Plugin Builder Invokation
+@section Invokation
+@lowersections
+@include anvl_plugin_builder/cli_param.texi
+@include anvl_plugin_builder/os_env.texi
+@raisesections
+
+@node ANVL Plugin Builder All Configurable Values
+@section All Configurable Variables
+@lowersections
+@include anvl_plugin_builder/value.texi
+@raisesections
+
+@node Index
+@unnumbered Index
+
+@syncodeindex vr cp
+@syncodeindex fn cp
+@printindex cp
+
+@bye

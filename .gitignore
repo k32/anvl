@@ -13,7 +13,7 @@ erl_crash.dump
 logs
 *.html
 TAGS
-doc/
+doc/*
 !doc/src
 snabbkaffe
 !vendor/snabbkaffe
