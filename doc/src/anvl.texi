@@ -64,7 +64,7 @@ Foundation Web site at @url{https://www.gnu.org/licenses/fdl.html}.
 @node ANVL Common
 @chapter Common ANVL Features
 
-@lee{anvl_plugin,}
+@lee{anvl_plugin,ANVL}
 
 @node ANVL erlc
 @chapter Builtin Plugin @code{anvl_erlc}
@@ -73,7 +73,7 @@ Foundation Web site at @url{https://www.gnu.org/licenses/fdl.html}.
 @url{https://www.erlang.org/doc/system/applications#directory-structure,OTP design principles}.
 It allows ANVL to load other 3rd-party plugins.
 
-@lee{anvl_erlc,ERLC}
+@lee{anvl_erlc,ANVL Erlc}
 
 @node ANVL Plugin Locate
 @chapter Builtin Plugin @code{anvl_locate}
@@ -83,7 +83,7 @@ It allows ANVL to load other 3rd-party plugins.
 @node ANVL Plugin Git
 @chapter Builtin Plugin @code{anvl_git}
 
-@lee{anvl_git,GIT}
+@lee{anvl_git,ANVL Git}
 
 @node ANVL Plugin Builder
 @chapter Builtin Plugin @code{anvl_plugin_builder}

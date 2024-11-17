@@ -48,21 +48,21 @@
 
 -type spec_getter_fun() :: atom().
 -type kind() :: atom().
--type what() :: atom().
--type spec() :: file:filename_all() | {subdir, file:filename_all()} | {atom(), term()} | undefined.
+-type dep() :: atom().
+-type spec() :: file:filename_all() | {atom(), term()} | undefined.
 
 -type hook_ret() :: {true, file:filename_all()} | false.
--type locate_hook() :: fun((#{kind := kind(), what := what(), spec := spec()}) -> hook_ret()).
+-type locate_hook() :: fun((#{kind := kind(), dep := dep(), spec := spec()}) -> hook_ret()).
 
--reflect_type([kind/0, what/0, spec/0, hook_ret/0]).
+-reflect_type([kind/0, dep/0, spec/0, hook_ret/0]).
 
--record(?MODULE, {kind :: kind(), what :: what(), args}).
+-record(?MODULE, {kind :: kind(), dep :: dep(), args}).
 
 %%================================================================================
 %% API functions
 %%================================================================================
 
-%% @doc Condition: external dependency `What' of kind `Getter' has been located.
+%% @doc Condition: external dependency `Dep' of kind `Getter' has been located.
 %%
 %% == Arguments ==
 %%
@@ -73,36 +73,35 @@
 %% (and `anvl.erl' file). Project configuration should contain
 %% function with name referred by `Getter' variable.</li>
 %%
-%% <li>`What': Identifier of the entity being located.</li>
+%% <li>`Dep': Identifier of the entity being located.</li>
 %%
 %% <li>`Args' Arguments that will be passed to `Getter'</li>
--spec located(spec_getter_fun(), file:filename(), what(), _Args) -> anvl_condition:t().
-?MEMO(located, Getter, ProjectDir, What, Args,
-      anvl_condition:has_result(#?MODULE{kind = Getter, what = What, args = Args}) orelse
+-spec located(spec_getter_fun(), file:filename(), dep(), _Args) -> anvl_condition:t().
+?MEMO(located, Getter, ProjectDir, Dep, Args,
+      anvl_condition:has_result(#?MODULE{kind = Getter, dep = Dep, args = Args}) orelse
       begin
         Spec = anvl_project:conf(ProjectDir, Getter, Args, undefined, spec()),
         IsLiteral = io_lib:char_list(Spec),
         Dir = case Spec of
                 _ when IsLiteral ->
-                  Spec;
-                {subdir, D} ->
-                  filename:join(D, What);
+                  Subs = #{kind => atom_to_binary(Getter), dep => atom_to_binary(Dep)},
+                  anvl_lib:template(Spec, Subs, list);
                 _ ->
-                  case anvl_hook:first_match(locate, #{kind => Getter, what => What, spec => Spec}) of
+                  case anvl_hook:first_match(locate, #{kind => Getter, dep => Dep, spec => Spec}) of
                     {ok, Result} ->
                       Result;
                     undefined ->
-                      ?UNSAT("Failed to locate ~p (~p)", [What, Args])
+                      ?UNSAT("Failed to locate ~p (~p)", [Dep, Args])
                   end
               end,
-        anvl_condition:set_result(#?MODULE{kind = Getter, what = What, args = Args}, Dir),
+        anvl_condition:set_result(#?MODULE{kind = Getter, dep = Dep, args = Args}, Dir),
         false
       end).
 
 %% @doc Return a directory that contains located dependency
--spec dir(spec_getter_fun(), what(), _Args) -> file:filename().
-dir(Getter, What, Args) ->
-  anvl_condition:get_result(#?MODULE{kind = Getter, what = What, args = Args}).
+-spec dir(spec_getter_fun(), dep(), _Args) -> file:filename().
+dir(Getter, Dep, Args) ->
+  anvl_condition:get_result(#?MODULE{kind = Getter, dep = Dep, args = Args}).
 
 %% @equiv add_hook(Fun, 0)
 -spec add_hook(locate_hook()) -> ok.
@@ -131,8 +130,8 @@ init() ->
 %% Internal functions
 %%================================================================================
 
-builtin(#{what := App, kind := erlc_deps}) when App =:= anvl; App =:= lee; App =:= typerefl;
-                                                App =:= snabbkaffe; App =:= anvl_git ->
+builtin(#{dep := App, kind := erlc_deps}) when App =:= anvl; App =:= lee; App =:= typerefl;
+                                               App =:= snabbkaffe; App =:= anvl_git ->
   ?LOG_INFO("Using ANVL-builtin version of ~p", [App]),
   Dir = filename:join([anvl_project:root(), ?BUILD_ROOT, self_hash()]),
   _ = precondition(builtins_unpacked(Dir)),

@@ -39,7 +39,7 @@ erlc_profiles(_) ->
 erlc_deps(#{app := anvl}) ->
   ".";
 erlc_deps(_) ->
-  {subdir, "vendor"}.
+  "vendor/${dep}".
 
 erlc_escripts(perf) ->
   maps:update_with(emu_args,

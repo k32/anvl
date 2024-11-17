@@ -215,7 +215,7 @@ conf_override(ProjectRoot, Function, Args, Result) ->
       Result
   end.
 
-anvl_config_module(Dir) ->
+anvl_config_module(Dir) when is_list(Dir) ->
   list_to_atom("anvl_config##" ++ Dir).
 
 plugins(Module) ->
