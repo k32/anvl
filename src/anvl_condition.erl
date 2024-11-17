@@ -108,8 +108,8 @@ stats() ->
    , complete => counters:get(CRef, ?cnt_complete)
    , changed => counters:get(CRef, ?cnt_changed)
    , failed => counters:get(CRef, ?cnt_failed)
-   , top_time => stats_top(work_time, 10)
-   , top_reductions => stats_top(reductions, 10)
+   , top_time => stats_top(work_time, anvl_plugin:conf([top, n_time]))
+   , top_reds => stats_top(reductions, anvl_plugin:conf([top, n_reds]))
    }.
 
 %% @equiv precondition(L, 100)
@@ -424,6 +424,9 @@ report_stats(Condition, T0) ->
   ets:insert(?stats_tab, {Condition, Stats}),
   ok.
 
+stats_top(_, 0) ->
+  %% Skip calculations entirely:
+  [];
 stats_top(Key, MaxItems) ->
   {_, Top} =
     ets:foldl(

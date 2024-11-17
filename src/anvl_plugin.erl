@@ -58,17 +58,20 @@
 %% @doc Condition: `Plugin' has been loaded.
 -spec loaded(atom()) -> anvl_condition:t().
 ?MEMO(loaded, Plugin,
-      begin
-        ?LOG_INFO("Loading ~p", [Plugin]),
-        Changed = if Plugin =:= anvl_erlc; Plugin =:= anvl_locate; Plugin =:= anvl_git; Plugin =:= anvl_plugin_builder ->
-                      %% Don't recompile builtin plugins:
-                      false;
-                     true ->
-                      precondition(anvl_erlc:app_compiled(default, Plugin))
-                  end,
-        load_model(Plugin),
-        Plugin:init(),
-        Changed
+      case Plugin of
+        ?MODULE ->
+          false;
+        _ ->
+          ?LOG_INFO("Loading ~p", [Plugin]),
+          Changed = if Plugin =:= anvl_erlc; Plugin =:= anvl_locate; Plugin =:= anvl_git; Plugin =:= anvl_plugin_builder ->
+                        %% Don't recompile builtin plugins:
+                        false;
+                       true ->
+                        precondition(anvl_erlc:app_compiled(default, Plugin))
+                    end,
+          load_model(Plugin),
+          Plugin:init(),
+          Changed
       end).
 
 %% @hidden
@@ -98,7 +101,8 @@ model() ->
   #{ log =>
        #{ global_level =>
             {[value, os_env, cli_param, logger_level],
-             #{ default     => notice
+             #{ oneliner    => "Specify minimum severity of log messages"
+              , default     => notice
               , type        => lee_logger:level()
               , cli_operand => "log-level"
               }}
@@ -112,9 +116,33 @@ model() ->
         }
    , custom_conditions =>
        {[value, cli_positional],
-        #{ type             => typerefl:list(atom())
+        #{ oneliner         => "List of conditions to satisfy"
+         , type             => typerefl:list(atom())
          , cli_arg_position => rest
          }}
+   , shell =>
+       {[value, cli_param],
+        #{ oneliner    => "Start Erlang shell after completing the tasks"
+         , type        => boolean()
+         , cli_operand => "shell"
+         , default     => false
+         }}
+   , top =>
+       #{ n_time =>
+            {[value, cli_param, os_env],
+             #{ oneliner    => "Show top N slowest jobs"
+              , type        => non_neg_integer()
+              , cli_operand => "top-time"
+              , default     => 0
+              }}
+        , n_reds =>
+           {[value, cli_param, os_env],
+            #{ oneliner    => "Show top N jobs by reductions"
+             , type        => non_neg_integer()
+             , cli_operand => "top-reds"
+             , default     => 0
+             }}
+        }
    }.
 
 %% @hidden

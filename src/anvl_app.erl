@@ -100,12 +100,31 @@ exec_top(Preconditions) ->
         [?LOG_DEBUG("Condition state: ~p", [S]) || S <- ets:tab2list(anvl_condition)]
     end,
   Dt = (os:system_time(microsecond) - T0) / 1000,
-  #{complete := Complete, changed := Changed, failed := Failed, top_time := _TopTime} = anvl_condition:stats(),
-  %% TopFormat = [io_lib:format("~s ~p -> ~p ms~n", [D, A, V / 1000])
-  %%              || {#anvl_memo_thunk{descr = D, args = A}, V} <- TopTime],
+  #{ complete := Complete, changed := Changed, failed := Failed
+   , top_time := TopTime, top_reds := TopReds
+   } = anvl_condition:stats(),
   ?LOG_NOTICE("~p satisfied ~p failed ~p changed. Net time: ~pms~n",
               [Complete, Failed, Changed, Dt]),
-  ?MODULE:halt(ExitCode).
+  format_top("time", TopTime),
+  format_top("reductions", TopReds),
+  case anvl_plugin:conf([shell]) of
+    false ->
+      ?MODULE:halt(ExitCode);
+    true ->
+      shell:start_interactive(),
+      receive after infinity -> ok end
+  end.
+
+format_top(_, []) ->
+  ok;
+format_top("time", Top) ->
+  S = [io_lib:format("~s ~p -> ~p ms~n", [D, A, V / 1000])
+       || {#anvl_memo_thunk{descr = D, args = A}, V} <- Top],
+  ?LOG_NOTICE("    Top longest running jobs~n~s", [S]);
+format_top("reductions", Top) ->
+  S = [io_lib:format("~s ~p -> ~p~n", [D, A, V])
+       || {#anvl_memo_thunk{descr = D, args = A}, V} <- Top],
+  ?LOG_NOTICE("    Top jobs by reductions~n~s", [S]).
 
 set_logger_conf() ->
   logger:update_handler_config(default, type, standart_io),

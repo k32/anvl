@@ -48,7 +48,7 @@ erlc_escripts(perf) ->
 erlc_escripts(_) ->
   #{anvl =>
       #{ apps => [anvl, lee, typerefl]
-       , emu_args => "-escript main anvl_app"
+       , emu_args => "-dist_listen false -escript main anvl_app"
        }}.
 
 %% Package our own sources into the escript.
@@ -66,7 +66,7 @@ erlc_escript_extra_files(#{escript := anvl}) ->
 
 %% Settings related to documentation generation:
 plugin_builder(_) ->
-  [anvl_erlc, anvl_git, anvl_locate, anvl_plugin_builder].
+  [anvl_plugin, anvl_erlc, anvl_git, anvl_locate, anvl_plugin_builder].
 
 plugin_builder_doc(_) ->
   "doc/src/anvl.texi".

@@ -2,6 +2,25 @@
 @c %**start of header
 @setfilename anvl.info
 @settitle ANVΛ
+
+@macro lee{DIR, PREFIX}
+  @node \PREFIX\ Invokation
+  @section Invokation
+  @lowersections
+    @include \DIR\/cli_param.texi
+  @raisesections
+
+  @node \PREFIX\ Environment variables
+  @section Environment Variables
+  @include \DIR\/os_env.texi
+
+  @node \PREFIX\ All Configurable Values
+  @section All Configurable Values
+  @lowersections
+    @include \DIR\/value.texi
+  @raisesections
+@end macro
+
 @c %**end of header
 @copying
 A general-purpose parallel task execution tool.
@@ -42,6 +61,11 @@ Foundation Web site at @url{https://www.gnu.org/licenses/fdl.html}.
 @insertcopying
 @end ifnottex
 
+@node ANVL Common
+@chapter Common ANVL Features
+
+@lee{anvl_plugin,}
+
 @node ANVL erlc
 @chapter Builtin Plugin @code{anvl_erlc}
 
@@ -49,21 +73,7 @@ Foundation Web site at @url{https://www.gnu.org/licenses/fdl.html}.
 @url{https://www.erlang.org/doc/system/applications#directory-structure,OTP design principles}.
 It allows ANVL to load other 3rd-party plugins.
 
-
-@node Erlc Invokation
-@section Invokation
-@lowersections
-@include anvl_erlc/cli_param.texi
-
-@heading Environment Variables
-@include anvl_erlc/os_env.texi
-@raisesections
-
-@node Erlc All Configurable Values
-@section All Configurable Values
-@lowersections
-@include anvl_erlc/value.texi
-@raisesections
+@lee{anvl_erlc,ERLC}
 
 @node ANVL Plugin Locate
 @chapter Builtin Plugin @code{anvl_locate}
@@ -73,36 +83,12 @@ It allows ANVL to load other 3rd-party plugins.
 @node ANVL Plugin Git
 @chapter Builtin Plugin @code{anvl_git}
 
-@node Git Invokation
-@section Invokation
-@lowersections
-@include anvl_git/cli_param.texi
-
-@heading Environment Variables
-@include anvl_git/os_env.texi
-@raisesections
-
-@node Git All Configurable Values
-@section All Configurable Values
-@lowersections
-@include anvl_git/value.texi
-@raisesections
+@lee{anvl_git,GIT}
 
 @node ANVL Plugin Builder
 @chapter Builtin Plugin @code{anvl_plugin_builder}
 
-@node ANVL Plugin Builder Invokation
-@section Invokation
-@lowersections
-@include anvl_plugin_builder/cli_param.texi
-@include anvl_plugin_builder/os_env.texi
-@raisesections
-
-@node ANVL Plugin Builder All Configurable Values
-@section All Configurable Variables
-@lowersections
-@include anvl_plugin_builder/value.texi
-@raisesections
+@lee{anvl_plugin_builder,ANVL Plugin Builder}
 
 @node Index
 @unnumbered Index
