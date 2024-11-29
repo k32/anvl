@@ -23,7 +23,7 @@
 
 %% API:
 -export([add_pre_compile_hook/1, add_pre_edoc_hook/1]).
--export([app_info/2, escript/3, app_compiled/2, module/2, edoc/3]).
+-export([app_info/2, escript/3, app_compiled/2, dialyzed/2, module/2, edoc/3]).
 
 %% behavior callbacks:
 -export([model/0, project_model/0, init/0, conditions/1]).
@@ -174,6 +174,23 @@ add_pre_edoc_hook(Fun) ->
         true
       end).
 
+-spec dialyzed(profile(), nonempty_list(application())) -> anvl_condition:t().
+?MEMO(dialyzed, Profile, Apps,
+      begin
+        precondition([app_compiled(Profile, App) || App <- Apps]),
+        Dirs = lists:flatmap(
+                  fun(App) ->
+                      #{ebin_dir := Ebin} = app_info(Profile, App),
+                      filelib:wildcard(filename:join(Ebin, "ebin/*.beam"))
+                  end,
+                  Apps),
+        logger:notice("Dirs ~p", [Dirs]),
+        dialyzer:run([ {analysis_type, incremental}
+                     , {warning_files, Dirs}
+                     ]),
+        false
+      end).
+
 %% @doc Speculative condition: a particular module has been compiled.
 -spec module(profile(), module()) -> anvl_condition:t().
 module(Profile, Module) ->
@@ -253,8 +270,22 @@ model() ->
             #{ apps =>
                  {[value, cli_positional],
                   #{ oneliner => "Names of OTP applications to compile"
-                   , type => list(atom())
-                   , default => []
+                   , type => nonempty_list(atom())
+                   , cli_arg_position => rest
+                   }}
+             , profile =>
+                 Profile
+             }}
+       , dialyzer =>
+           {[map, cli_action],
+            #{ oneliner => "Run Dialyzer on a set of Erlang/OTP applications"
+             , key_elements => [[apps]]
+             , cli_operand => "dialyzer"
+             },
+            #{ apps =>
+                 {[value, cli_positional],
+                  #{ oneliner => "Names of OTP applications to analyze"
+                   , type => nonempty_list(atom())
                    , cli_arg_position => rest
                    }}
              , profile =>
@@ -369,7 +400,7 @@ init() ->
 
 %% @hidden
 conditions(ProjectRoot) ->
-  get_compile_apps(ProjectRoot) ++ get_escripts(ProjectRoot).
+  get_compile_apps(ProjectRoot) ++ get_escripts(ProjectRoot) ++ get_dialyzer(ProjectRoot).
 
 %%================================================================================
 %% Condition implementations
@@ -562,6 +593,15 @@ get_compile_apps(_ProjectRoot) ->
                     [anvl_erlc:app_compiled(Profile, I) || I <- Apps]
                 end,
                 Keys).
+
+get_dialyzer(_ProjectRoot) ->
+  Keys = anvl_plugin:list_conf([anvl_erlc, dialyzer, {}]),
+  lists:map(fun(Key) ->
+                Profile = anvl_plugin:conf(Key ++ [profile]),
+                Apps = anvl_plugin:conf(Key ++ [apps]),
+                anvl_erlc:dialyzed(Profile, Apps)
+            end,
+            Keys).
 
 %% @private Clean ebin directory of files that don't have sources:
 clean_orphans(Sources, Context) ->

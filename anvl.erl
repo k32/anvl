@@ -17,21 +17,55 @@
 %% along with this program.  If not, see <https://www.gnu.org/licenses/>.
 %%================================================================================
 
+-include_lib("anvl.hrl").
+
 plugins(_) ->
   [anvl_erlc, anvl_git, anvl_plugin_builder].
 
+?MEMO(install,
+      begin
+        Prefix = filename:join(os:getenv("HOME"), ".local"),
+        precondition([escript(), docs()]) or
+          install_includes(Prefix) or
+          install(Prefix, "${prefix}/bin/anvl", "anvl") or
+          install(Prefix, "${prefix}/share/anvl/info/anvl.info", "_anvl_doc/anvl.info")
+      end).
+
+install_includes(Prefix) ->
+  {0, Files} = anvl_lib:exec_("git", ["ls-files"], [collect_output]),
+  lists:foldl(
+    fun(Src, Acc) ->
+        case filename:extension(Src) of
+          <<".hrl">> -> install(Prefix, "${prefix}/share/anvl/include/${basename}.hrl", Src);
+          _ -> false
+        end or Acc
+    end,
+    false,
+    Files).
+
+install(Prefix, Template, Src) ->
+  Dest = patsubst(Template, Src, #{prefix => Prefix}),
+  newer(Src, Dest) andalso
+    begin
+      logger:notice("Installing ~p to ~p", [Src, Dest]),
+      {ok, _} = file:copy(Src, Dest),
+      true
+    end.
+
 conditions(_) ->
-  [escript, docs].
+  [escript, docs, install].
 
 escript() ->
-  anvl_condition:precondition(anvl_erlc:escript(".", default, anvl)).
+  anvl_erlc:escript(".", default, anvl).
 
-docs() ->
-  anvl_condition:precondition(
-    [ anvl_erlc:edoc(".", default, anvl)
-    , anvl_plugin_builder:documented(".", html)
-    , anvl_plugin_builder:documented(".", info)
-    ]).
+?MEMO(docs,
+      begin
+        precondition(
+          [ anvl_erlc:edoc(".", default, anvl)
+          , anvl_plugin_builder:documented(".", html)
+          , anvl_plugin_builder:documented(".", info)
+          ])
+      end).
 
 erlc_profiles(_) ->
   [default, stage2, test, perf].
@@ -41,28 +75,17 @@ erlc_deps(#{app := anvl}) ->
 erlc_deps(_) ->
   "vendor/${dep}".
 
-erlc_escripts(perf) ->
-  maps:update_with(emu_args,
-                   fun(Str) -> Str ++ " +JPperf true" end,
-                   erlc_escripts(default));
-erlc_escripts(_) ->
+erlc_escripts(#{profile := Profile}) ->
+  CommonArgs = "-dist_listen false -escript main anvl_app",
+  EmuArgs = case Profile of
+              stage2 -> "-anvl include_dir \"include\" " ++ CommonArgs;
+              perf -> "+JPperf true " ++ CommonArgs;
+              _ -> CommonArgs
+            end,
   #{anvl =>
       #{ apps => [anvl, lee, typerefl]
-       , emu_args => "-dist_listen false -escript main anvl_app"
+       , emu_args => EmuArgs
        }}.
-
-%% Package our own sources into the escript.
-%%
-%% This is needed to handle builtin dependencies and for
-%% cross-compilation, e.g. when we need to bootstrap anvl on different
-%% OTP release.
-erlc_escript_extra_files(#{escript := anvl}) ->
-  {0, Files} = anvl_lib:exec_("git", ["ls-files"], [collect_output]),
-  [{ File
-   , filename:join("__self", File)
-   } || File <- Files,
-        string:prefix(File, "test") =:= nomatch,
-        File =/= <<"anvl">>].
 
 %% Settings related to documentation generation:
 plugin_builder(_) ->

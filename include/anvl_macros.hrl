@@ -31,33 +31,37 @@
 
 -define(BUILD_ROOT, <<"_anvl_build">>).
 
--define(CNAME(FUN), ?MODULE_STRING ":" FUN).
-
 -define(MEMO_THUNK(COMMENT, FUN, ARGS),
         #anvl_memo_thunk{descr = COMMENT, func = FUN, args = ARGS}).
 
+-ifdef(MODULE_STRING).
+-define(MEMO_NAMESPACE, ?MODULE_STRING).
+-else.
+-define(MEMO_NAMESPACE, ?PROJECT_STRING).
+-endif.
+
 -define(MEMO(NAME, BODY),
 NAME() ->
-   ?MEMO_THUNK(?MODULE_STRING ":" ??NAME, fun() -> BODY end, [])).
+   ?MEMO_THUNK(?MEMO_NAMESPACE ":" ??NAME, fun() -> BODY end, [])).
 
 -define(MEMO(NAME, A, BODY),
 NAME(__A) ->
-   ?MEMO_THUNK(?MODULE_STRING ":" ??NAME, fun(A) -> BODY end, [__A])).
+   ?MEMO_THUNK(?MEMO_NAMESPACE ":" ??NAME, fun(A) -> BODY end, [__A])).
 
 -define(MEMO(NAME, A, B, BODY),
 NAME(__A, __B) ->
-   ?MEMO_THUNK(?MODULE_STRING ":" ??NAME, fun(A, B) -> BODY end, [__A, __B])).
+   ?MEMO_THUNK(?MEMO_NAMESPACE ":" ??NAME, fun(A, B) -> BODY end, [__A, __B])).
 
 -define(MEMO(NAME, A, B, C, BODY),
 NAME(__A, __B, __C) ->
-   ?MEMO_THUNK(?MODULE_STRING ":" ??NAME, fun(A, B, C) -> BODY end, [__A, __B, __C])).
+   ?MEMO_THUNK(?MEMO_NAMESPACE ":" ??NAME, fun(A, B, C) -> BODY end, [__A, __B, __C])).
 
 -define(MEMO(NAME, A, B, C, D, BODY),
 NAME(__A, __B, __C, __D) ->
-   ?MEMO_THUNK(?MODULE_STRING ":" ??NAME, fun(A, B, C, D) -> BODY end, [__A, __B, __C, __D])).
+   ?MEMO_THUNK(?MEMO_NAMESPACE ":" ??NAME, fun(A, B, C, D) -> BODY end, [__A, __B, __C, __D])).
 
 -define(MEMO(NAME, A, B, C, D, E, BODY),
 NAME(__A, __B, __C, __D, __E) ->
-   ?MEMO_THUNK(?MODULE_STRING ":" ??NAME, fun(A, B, C, D, E) -> BODY end, [__A, __B, __C, __D, __E])).
+   ?MEMO_THUNK(?MEMO_NAMESPACE ":" ??NAME, fun(A, B, C, D, E) -> BODY end, [__A, __B, __C, __D, __E])).
 
 -endif.

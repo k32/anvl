@@ -34,7 +34,7 @@
 -behavior(gen_server).
 
 %% API:
--export([with/2, grab/1, release/1, declare/2, set_max/2]).
+-export([with/2, declare/2, set_max/2]).
 
 %% behavior callbacks:
 -export([init/1, terminate/1, handle_call/3, handle_cast/2]).
@@ -110,30 +110,11 @@ declare(Resource, Max) ->
 set_max(Resource, Max) when is_integer(Max), Max > 0 ->
   gen_server:call(server(Resource), #set_max{max = Max}).
 
-%% @private
--spec grab(resource()) -> ok.
-grab(Resource) ->
-  case gen_server:call(server(Resource), #grab{}) of
-    ok ->
-      ok;
-    {error, Err} ->
-      error(#{msg => "Failed to grab resource", reason => Err, resource => Resource})
-  end.
-
-%% @private
--spec release(resource()) -> ok.
-release(Resource) ->
-  case gen_server:call(server(Resource), #release{}) of
-    ok ->
-      ok;
-    {error, Err} ->
-      error(#{msg => "Failed to release resource", reason => Err, resource => Resource})
-  end.
-
 %% @doc Run an operation with aquired resource semaphore.
 %%
 %% Warning: don't abuse this API. It is only useful for calling
-%% external commands, like calling `gcc' or `git'.
+%% external commands, like calling `gcc' or `git' or heavy
+%% computations.
 %%
 %% There are some limitations to avoid deadlocks:
 %%
@@ -148,10 +129,10 @@ with(Resource, Fun) ->
     undefined ->
       try
         erlang:put(?anvl_reslock, Resource),
-        anvl_resource:grab(Resource),
+        grab(Resource),
         Fun()
       after
-        anvl_resource:release(Resource),
+        release(Resource),
         erlang:erase(?anvl_reslock)
       end;
     OldResource ->
@@ -228,6 +209,26 @@ post_patch(anvl_resource, Model, Data, #mnode{metaparams = Attrs}, PatchOp) ->
 %%================================================================================
 %% Internal functions
 %%================================================================================
+
+%% @private
+-spec grab(resource()) -> ok.
+grab(Resource) ->
+  case gen_server:call(server(Resource), #grab{}) of
+    ok ->
+      ok;
+    {error, Err} ->
+      error(#{msg => "Failed to grab resource", reason => Err, resource => Resource})
+  end.
+
+%% @private
+-spec release(resource()) -> ok.
+release(Resource) ->
+  case gen_server:call(server(Resource), #release{}) of
+    ok ->
+      ok;
+    {error, Err} ->
+      error(#{msg => "Failed to release resource", reason => Err, resource => Resource})
+  end.
 
 dequeue(Res0 = #res{current = Current, max = Max}) when Current >= Max ->
   Res0;

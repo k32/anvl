@@ -29,7 +29,7 @@
 -export([start/2, stop/1]).
 
 %% internal exports:
--export([bootstrap/0]).
+-export([bootstrap/0, prefix/0]).
 
 -include_lib("kernel/include/logger.hrl").
 -include("anvl.hrl").
@@ -39,6 +39,8 @@
 %%================================================================================
 
 %% @doc Entrypoint for `anvl' escript.
+main(["--help" | _]) ->
+  help();
 main(CLIArgs) ->
   set_logger_conf(),
   application:set_env(anvl, cli_args, CLIArgs),
@@ -50,6 +52,15 @@ main(CLIArgs) ->
       ?MODULE:halt(1);
     Toplevel ->
       exec_top(Toplevel)
+  end.
+
+help() ->
+  os:putenv("VISUAL", "info"),
+  {ok, Info} = file:read_file(filename:join(prefix(), "share/anvl/info/anvl.info")),
+  user_drv ! {self(), {open_editor, Info}},
+  receive
+    {_Drv, {editor_data, _}} ->
+      ?MODULE:halt(1)
   end.
 
 %% @doc Stop the `escript'
@@ -65,9 +76,18 @@ halt(ExitCode) ->
 %% @hidden Used internally to bootstrap ANVL
 bootstrap() ->
   {ok, _} = ?MODULE:start(normal, []),
+  application:set_env(anvl, include_dir, "include"),
   anvl_plugin:init(),
   _ = precondition(anvl_erlc:escript(anvl_project:root(), stage2, anvl)),
   ok.
+
+prefix() ->
+  case lists:reverse(filename:split(escript:script_name())) of
+    ["anvl", "bin" | Prefix] ->
+      filename:join(lists:reverse(Prefix));
+    _ ->
+      undefined
+  end.
 
 %%================================================================================
 %% behavior callbacks

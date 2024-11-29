@@ -354,7 +354,7 @@ exec(#anvl_memo_thunk{descr = Descr, func = Fun, args = A}) ->
         Bool when is_boolean(Bool) ->
           Bool;
         Other ->
-          ?LOG_CRITICAL("(Plugin error): condition ~s returned non-boolean result ~p", [Descr, Other]),
+          ?LOG_CRITICAL("(Plugin error): condition ~s returned non-boolean result:~n    ~p", [Descr, Other]),
           exit(unsat)
       end;
     false ->

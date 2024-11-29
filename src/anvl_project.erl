@@ -65,7 +65,6 @@ conditions() ->
                         plugins(config_module(root()))),
   custom_conditions(AdHoc) ++ AdHoc.
 
-
 %%================================================================================
 %% Lee metatype callbacks
 %%================================================================================
@@ -136,6 +135,8 @@ config_module(ProjectRoot) ->
           {true, _} ->
             Module = anvl_config_module(Dir),
             Options = [{d, 'PROJECT', Module},
+                       {d, 'PROJECT_STRING', atom_to_list(Module)},
+                       {i, include_dir()},
                        {parse_transform, ?MODULE},
                        report, no_error_module_mismatch,
                        nowarn_export_all, export_all, binary],
@@ -246,8 +247,16 @@ custom_conditions(AdHoc) ->
   Mod = config_module(root()),
   case [Fun || Fun <- Funs, not erlang:function_exported(Mod, Fun, 0)] of
     [] ->
-      [?MEMO_THUNK("toplevel", fun Mod:Fun/0, []) || Fun <- Funs];
+      [Mod:Fun() || Fun <- Funs];
     Undefined ->
       ?LOG_CRITICAL("Condition(s) are declared, but undefined: ~p", [Undefined]),
       anvl_app:halt(1)
+  end.
+
+include_dir() ->
+  case application:get_env(anvl, include_dir) of
+    undefined ->
+      filename:join(anvl_app:prefix(), "share/anvl/include");
+    {ok, Dir} ->
+      Dir
   end.

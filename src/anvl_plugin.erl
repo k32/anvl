@@ -143,6 +143,15 @@ model() ->
              , default     => 0
              }}
         }
+   , help =>
+       #{ run =>
+            {[value, cli_param],
+             #{ oneliner    => "Get help"
+              , type        => boolean()
+              , default     => false
+              , cli_operand => "help"
+              }}
+        }
    }.
 
 %% @hidden

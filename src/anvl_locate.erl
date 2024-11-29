@@ -17,15 +17,17 @@
 %% along with this program.  If not, see <https://www.gnu.org/licenses/>.
 %%================================================================================
 
-%% @doc A universal plugin for managing external dependencies.
-%%
-%% This plugin doesn't do much on its own, but it provides a generic
-%% declarative interface for discovering, downloading and unpacking
-%% dependencies.
-%%
-%% Other plugins (such as `anvl_git' or any third-party plugin) can
-%% hook into `anvl_locate'.
 -module(anvl_locate).
+-moduledoc """
+A universal plugin for managing external dependencies.
+
+This plugin doesn't do much on its own, but it provides a generic
+declarative interface for discovering, downloading and unpacking
+dependencies.
+
+Other plugins (such as @code{anvl_git} or any third-party plugin) can
+hook into @code{anvl_locate}'.
+""".
 
 -behavior(anvl_plugin).
 
@@ -131,7 +133,8 @@ init() ->
 %%================================================================================
 
 builtin(#{dep := App, kind := erlc_deps}) when App =:= anvl; App =:= lee; App =:= typerefl;
-                                               App =:= snabbkaffe; App =:= anvl_git ->
+                                               App =:= snabbkaffe; App =:= anvl_git;
+                                               App =:= erlang_qq ->
   ?LOG_INFO("Using ANVL-builtin version of ~p", [App]),
   Dir = filename:join([anvl_project:root(), ?BUILD_ROOT, self_hash()]),
   _ = precondition(builtins_unpacked(Dir)),
@@ -140,8 +143,13 @@ builtin(#{dep := App, kind := erlc_deps}) when App =:= anvl; App =:= lee; App =:
   AppSrc = filename:split(AppSrcFile),
   {AppDirComponents, _} = lists:split(length(AppSrc) - 2, AppSrc),
   {true, filename:join(AppDirComponents)};
-builtin(_) ->
-  false.
+builtin(#{dep := Dep}) ->
+  case atom_to_list(Dep) =:= filename:basename(anvl_project:root()) of
+    true ->
+      {true, anvl_project:root()};
+    false ->
+      false
+  end.
 
 ?MEMO(builtins_unpacked, Dir,
       begin

@@ -143,7 +143,7 @@ locked(SrcRootDir, What0, Opts = #{repo := Repo}) ->
                 true
             end
         end,
-  ?MEMO_THUNK(?CNAME("locked"), Fun, [What0]).
+  ?MEMO_THUNK(?MODULE_STRING ":locked", Fun, [What0]).
 
 locked_commit(SrcRootDir, What) ->
   {ok, Hash} = file:read_file(lock_file(SrcRootDir, What)),
