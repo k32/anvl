@@ -2,7 +2,7 @@
 %% This file is part of anvl, a parallel general-purpose task
 %% execution tool.
 %%
-%% Copyright (C) 2024 k32
+%% Copyright (C) 2024-2025 k32
 %%
 %% This program is free software: you can redistribute it and/or
 %% modify it under the terms of the GNU Lesser General Public License
@@ -21,6 +21,9 @@
 
 plugins(_) ->
   [anvl_erlc, anvl_git, anvl_plugin_builder].
+
+conditions(_) ->
+  [escript, docs, install].
 
 ?MEMO(install,
       begin
@@ -47,13 +50,10 @@ install(Prefix, Template, Src) ->
   Dest = patsubst(Template, Src, #{prefix => Prefix}),
   newer(Src, Dest) andalso
     begin
-      logger:notice("Installing ~p to ~p", [Src, Dest]),
+      logger:notice("Installing ~s to ~s", [Src, Dest]),
       {ok, _} = file:copy(Src, Dest),
       true
     end.
-
-conditions(_) ->
-  [escript, docs, install].
 
 escript() ->
   anvl_erlc:escript(".", default, anvl).
@@ -62,6 +62,7 @@ escript() ->
       begin
         precondition(
           [ anvl_erlc:edoc(".", default, anvl)
+          , anvl_erlc:edoc_texi(default, [anvl])
           , anvl_plugin_builder:documented(".", html)
           , anvl_plugin_builder:documented(".", info)
           ])

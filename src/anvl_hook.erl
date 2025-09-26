@@ -2,7 +2,7 @@
 %% This file is part of anvl, a parallel general-purpose task
 %% execution tool.
 %%
-%% Copyright (C) 2024 k32
+%% Copyright (C) 2024-2025 k32
 %%
 %% This program is free software: you can redistribute it and/or
 %% modify it under the terms of the GNU Lesser General Public License
@@ -17,12 +17,12 @@
 %% along with this program.  If not, see <https://www.gnu.org/licenses/>.
 %%================================================================================
 
-%% @doc API for managing the hooks.
-%%
-%% Plugins can:
-%% <li>Declare hook points</li>
-%% <li>Inject code into other plugin's hook point</li>
 -module(anvl_hook).
+-moduledoc """
+API for managing the hooks.
+
+Plugins can declare hook points and inject code into other plugin's hook points.
+""".
 
 -behavior(lee_metatype).
 
@@ -42,7 +42,7 @@
 %% API functions
 %%================================================================================
 
-%% @hidden
+-doc false.
 init() ->
   _ = ets:new(?hooks_tab, [public, bag, named_table, {read_concurrency, true}]),
   ok.

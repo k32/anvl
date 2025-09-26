@@ -2,7 +2,7 @@
 %% This file is part of anvl, a parallel general-purpose task
 %% execution tool.
 %%
-%% Copyright (C) 2024 k32
+%% Copyright (C) 2024-2025 k32
 %%
 %% This program is free software: you can redistribute it and/or
 %% modify it under the terms of the GNU Lesser General Public License
@@ -17,19 +17,17 @@
 %% along with this program.  If not, see <https://www.gnu.org/licenses/>.
 %%================================================================================
 
-%% @doc Resource is a mechanism for limiting paralellism of certain
-%% operations.
-%%
-%% This feature has a limited use in ANVL, since normally Erlang VM
-%% does a great job managing millions of parallel processes.
-%% Therefore, unlike, say, `make' ANVL doesn't have a global ``-j''
-%% flag.
-%%
-%% Nonetheless, parallelism of certain operations (invoking external
-%% processes, downloading files from the net) should be globally
-%% limited. ANVL allows to create a "resource" for each type of such
-%% operation.
 -module(anvl_resource).
+-moduledoc """
+Resource is a mechanism for limiting paralellism of certain operations.
+
+This feature has a limited use in ANVL,
+since normally Erlang VM does a great job managing millions of concurrent tasks.
+Therefore, unlike, say, @command{make} ANVL doesn't have a global @option{-j} flag.
+
+Nonetheless, parallelism of certain operations (invoking external processes, downloading files from the net) should be globally limited.
+ANVL allows to create a @emph{resource} for each type of such operation.
+""".
 
 -behavior(gen_server).
 
@@ -75,52 +73,57 @@ tab() ->
 start_link(Resource) ->
   gen_server:start_link(?MODULE, Resource, []).
 
-%% @doc Declare a new resource type. This function should be called by
-%% the plugin in its `init/0' callback.
-%%
-%% In order to make the resource capacity configurable by the user, it
-%% should be also declared in the plugin's configuration model as a
-%% value of `non_neg_integer()' type and with `anvl_resource'
-%% metatype. For example:
-%%
-%% ```
-%% project_model() ->
-%%  #{git =>
-%%     #{max_jobs =>
-%%        {[value, cli_param, anvl_resource],
-%%            #{ type => non_neg_integer()
-%%             , default => 5
-%%             , cli_operand => "j-git"
-%%             , anvl_resource => git
-%%             }},
-%%      ...
-%% '''
-%%
-%% Then the user can adjust the capacity via CLI: `anvl -j-git 10 ...'
-%%
-%% @param Resource name of the resource
-%% @param Max initial resource capacity
+-doc """
+Declare a new resource type identified by token @var{Resource} with initial capacity @var{Max}.
+This function should be called by the plugin in its `init/0' callback.
+
+In order to make the resource capacity configurable by the user,
+it should be also declared in the plugin's configuration model
+as a value of @code{non_neg_integer()} type and with @code{anvl_resource} metatype.
+For example:
+
+@example
+@verbatim
+project_model() ->
+ #{git =>
+    #{max_jobs =>
+       {[value, cli_param, anvl_resource],
+           #{ type => non_neg_integer()
+            , default => 5
+            , cli_operand => "j-git"
+            , anvl_resource => git
+            }},
+     ...
+@end verbatim
+@end example
+
+Then the user can adjust the capacity via CLI: @command{anvl -j-git 10 ...}
+""".
 -spec declare(resource(), pos_integer()) -> ok.
 declare(Resource, Max) ->
   {ok, _} = anvl_sup:ensure_resource(Resource),
   set_max(Resource, Max).
 
-%% @hidden Update resource capacity. Called by `post_patch'.
+%% Update resource capacity. Called by `post_patch'.
+-doc false.
 -spec set_max(resource(), pos_integer()) -> ok.
 set_max(Resource, Max) when is_integer(Max), Max > 0 ->
   gen_server:call(server(Resource), #set_max{max = Max}).
 
-%% @doc Run an operation with aquired resource semaphore.
-%%
-%% Warning: don't abuse this API. It is only useful for calling
-%% external commands, like calling `gcc' or `git' or heavy
-%% computations.
-%%
-%% There are some limitations to avoid deadlocks:
-%%
-%% <li>Condition can hold at most one resource at any given time</li>
-%% <li>While condition holds a resource, it cannot invoke
-%% preconditions</li>
+-doc """
+Run an operation with an aquired resource semaphore.
+
+Warning: don't abuse this API.
+It is only useful for calling external commands,
+like calling @command{gcc} or @command{git} or heavy computations.
+
+There are some limitations to avoid deadlocks:
+
+@itemize
+@item Condition can hold at most one resource at any given time.
+@item While condition holds a resource, it cannot invoke preconditions.
+@end itemize
+""".
 -spec with(resource(), fun(() -> A)) -> A.
 with(undefined, _Fun) ->
   error(badarg);
@@ -149,17 +152,17 @@ with(Resource, Fun) ->
         , queue = queue:new() :: queue:queue()
         }).
 
-%% @hidden
+-doc false.
 init(Resource) ->
   process_flag(trap_exit, true),
   true = ets:insert(?TAB, {Resource, self()}),
   {ok, #res{}}.
 
-%% @hidden
+-doc false.
 terminate(Resource) ->
   ets:delete(?TAB, Resource).
 
-%% @hidden
+-doc false.
 handle_call(#set_max{max = Max}, _From, S0) ->
   S = dequeue(S0#res{max = Max}),
   {reply, ok, S};
@@ -179,7 +182,7 @@ handle_call(#release{}, _From, S0) ->
 handle_call(_Call, _From, S) ->
   {reply, {error, unknown_call}, S}.
 
-%% @hidden
+-doc false.
 handle_cast(_Cast, S) ->
   {noreply, S}.
 
@@ -187,16 +190,16 @@ handle_cast(_Cast, S) ->
 %% Lee metatype callbacks
 %%================================================================================
 
-%% @hidden
+-doc false.
 names(_Config) ->
   [anvl_resource].
 
-%% @hidden
+-doc false.
 metaparams(anvl_resource) ->
   [ {mandatory, anvl_resource, atom()}
   ].
 
-%% @hidden
+-doc false.
 post_patch(anvl_resource, Model, Data, #mnode{metaparams = Attrs}, PatchOp) ->
   Val = lee:get(Model, Data, lee_lib:patch_key(PatchOp)),
   Resource = ?m_attr(anvl_resource, anvl_resource, Attrs),
@@ -210,7 +213,7 @@ post_patch(anvl_resource, Model, Data, #mnode{metaparams = Attrs}, PatchOp) ->
 %% Internal functions
 %%================================================================================
 
-%% @private
+-doc false.
 -spec grab(resource()) -> ok.
 grab(Resource) ->
   case gen_server:call(server(Resource), #grab{}) of
@@ -220,7 +223,7 @@ grab(Resource) ->
       error(#{msg => "Failed to grab resource", reason => Err, resource => Resource})
   end.
 
-%% @private
+-doc false.
 -spec release(resource()) -> ok.
 release(Resource) ->
   case gen_server:call(server(Resource), #release{}) of

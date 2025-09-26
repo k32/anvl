@@ -15,7 +15,7 @@
   @include \DIR\/os_env.texi
 
   @node \PREFIX\ All Configurable Values
-  @section All Configurable Values
+  @section Index of All Configurable Values
   @lowersections
     @include \DIR\/value.texi
   @raisesections
@@ -25,7 +25,7 @@
 @copying
 A general-purpose parallel task execution tool.
 
-Copyright @copyright{} 2024
+Copyright @copyright{} 2024-2025
 
 @quotation
 Permission is granted to copy, distribute and/or modify this document
@@ -62,7 +62,30 @@ Foundation Web site at @url{https://www.gnu.org/licenses/fdl.html}.
 @end ifnottex
 
 @node ANVL Common
-@chapter Common ANVL Features
+@chapter Introduction
+
+ANVL a general-purpose task planning and execution tool, that aims to be simple and flexible.
+
+ANVL solves the problem of transitioning the system into a desired state step-by-step, using parallelism when possible.
+It's meant as an alternative to tools like @code{make} and @code{ansible},
+but it takes a different approach focusing on @i{conditions} and @i{preconditions}, expressed in a simple DSL based on Erlang.
+
+The desired state of the system is expressed as a @i{condition}:
+a function that checks if the system is already in the correct state,
+and running arbitrary code to transfer into it there otherwise:
+
+@example erlang
+@verbatim
+-memo.
+file_exists(Name) ->
+  %% Check condition:
+  filelib:is_file(Name) orelse
+  begin
+     %% If condition is not satisfied, execute the code:
+     file:write_file(Name, <<>>)
+  end.
+@end verbatim
+@end example
 
 @lee{anvl_plugin,ANVL}
 
@@ -89,6 +112,10 @@ It allows ANVL to load other 3rd-party plugins.
 @chapter Builtin Plugin @code{anvl_plugin_builder}
 
 @lee{anvl_plugin_builder,ANVL Plugin Builder}
+
+@node API Reference
+@chapter API Reference
+@include edoc/anvl.texi
 
 @node Index
 @unnumbered Index

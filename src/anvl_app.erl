@@ -2,7 +2,7 @@
 %% This file is part of anvl, a parallel general-purpose task
 %% execution tool.
 %%
-%% Copyright (C) 2024 k32
+%% Copyright (C) 2024-2025 k32
 %%
 %% This program is free software: you can redistribute it and/or
 %% modify it under the terms of the GNU Lesser General Public License
@@ -17,8 +17,8 @@
 %% along with this program.  If not, see <https://www.gnu.org/licenses/>.
 %%================================================================================
 
-%% @hidden
 -module(anvl_app).
+-moduledoc false.
 
 -behavior(application).
 
@@ -138,7 +138,7 @@ exec_top(Preconditions) ->
 format_top(_, []) ->
   ok;
 format_top("time", Top) ->
-  S = [io_lib:format("~s ~p -> ~p ms~n", [D, A, V / 1000])
+  S = [io_lib:format("~10.3. fs  ~s ~p~n", [V / 1_000_000, D, A])
        || {#anvl_memo_thunk{descr = D, args = A}, V} <- Top],
   ?LOG_NOTICE("    Top longest running jobs~n~s", [S]);
 format_top("reductions", Top) ->

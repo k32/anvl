@@ -2,7 +2,7 @@
 %% This file is part of anvl, a parallel general-purpose task
 %% execution tool.
 %%
-%% Copyright (C) 2024 k32
+%% Copyright (C) 2024-2025 k32
 %%
 %% This program is free software: you can redistribute it and/or
 %% modify it under the terms of the GNU Lesser General Public License
@@ -18,6 +18,9 @@
 %%================================================================================
 
 -module(anvl_plugin).
+-moduledoc """
+An ANVL API for managing plugins.
+""".
 
 -behavior(gen_server).
 
@@ -55,7 +58,9 @@
 %% API functions
 %%================================================================================
 
-%% @doc Condition: `Plugin' has been loaded.
+-doc """
+Condition: @var{Plugin} has been loaded.
+""".
 -spec loaded(atom()) -> anvl_condition:t().
 ?MEMO(loaded, Plugin,
       case Plugin of
@@ -74,7 +79,7 @@
           Changed
       end).
 
-%% @hidden
+-doc false.
 init() ->
   ok = anvl_sup:init_plugins(),
   BuiltinPlugins = [anvl_locate, anvl_erlc, anvl_git],
@@ -86,22 +91,26 @@ init() ->
   %% Load global configuration:
   ok = gen_server:call(?MODULE, load_config).
 
-%% @doc Get global configuration for a key
+-doc """
+Get global configuration for a key.
+""".
 -spec conf(lee:key()) -> term().
 conf(Key) ->
   lee:get(?conf_storage, Key).
 
-%% @doc List global configuration for a key
+-doc """
+List global configuration for a key.
+""".
 -spec list_conf(lee:model_key()) -> term().
 list_conf(Key) ->
   lee:list(?conf_storage, Key).
 
-%% @hidden
+-doc false.
 model() ->
   #{ log =>
        #{ global_level =>
             {[value, os_env, cli_param, logger_level],
-             #{ oneliner    => "Specify minimum severity of log messages"
+             #{ oneliner    => "Minimum severity of log messages"
               , default     => notice
               , type        => lee_logger:level()
               , cli_operand => "log-level"
@@ -122,7 +131,7 @@ model() ->
          }}
    , shell =>
        {[value, cli_param],
-        #{ oneliner    => "Start Erlang shell after completing the tasks"
+        #{ oneliner    => "Start Erlang shell after running the tasks"
          , type        => boolean()
          , cli_operand => "shell"
          , default     => false
@@ -130,15 +139,15 @@ model() ->
    , top =>
        #{ n_time =>
             {[value, cli_param, os_env],
-             #{ oneliner    => "Show top N slowest jobs"
-              , type        => non_neg_integer()
+             #{ oneliner    => "Display top N slowest jobs"
+              , type        => union(non_neg_integer(), true)
               , cli_operand => "top-time"
               , default     => 0
               }}
         , n_reds =>
            {[value, cli_param, os_env],
-            #{ oneliner    => "Show top N jobs by reductions"
-             , type        => non_neg_integer()
+            #{ oneliner    => "Displey top N jobs by reductions"
+             , type        => union(non_neg_integer(), true)
              , cli_operand => "top-reds"
              , default     => 0
              }}
@@ -154,7 +163,7 @@ model() ->
         }
    }.
 
-%% @hidden
+-doc false.
 project_model() ->
    #{ plugins =>
        {[pcfg],
@@ -173,7 +182,7 @@ project_model() ->
 %% gen_server callbacks:
 %%================================================================================
 
-%% @hidden
+-doc false.
 start_link() ->
   gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
@@ -184,13 +193,13 @@ start_link() ->
         , conf
         }).
 
-%% @hidden
+-doc false.
 init([]) ->
   S = #s{},
   lee_storage:new(lee_persistent_term_storage, anvl_conf_storage),
   do_load_model(?MODULE, S).
 
-%% @hidden
+-doc false.
 handle_call(load_config, _From, S = #s{m = Model}) ->
   case lee:init_config(Model, ?conf_storage) of
     {ok, ?conf_storage, _Warnings} ->
@@ -212,11 +221,11 @@ handle_call({load_model, Plugin}, _From, S0) ->
 handle_call(_Call, _From, S) ->
   {reply, {error, unknown_call}, S}.
 
-%% @hidden
+-doc false.
 handle_cast(_Cast, S) ->
   {noreply, S}.
 
-%% @hidden
+-doc false.
 terminate(_Reason, _S) ->
   persistent_term:erase(?project_model),
   ok.

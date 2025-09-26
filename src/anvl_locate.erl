@@ -2,7 +2,7 @@
 %% This file is part of anvl, a parallel general-purpose task
 %% execution tool.
 %%
-%% Copyright (C) 2024 k32
+%% Copyright (C) 2024-2025 k32
 %%
 %% This program is free software: you can redistribute it and/or
 %% modify it under the terms of the GNU Lesser General Public License
@@ -37,7 +37,7 @@ hook into @code{anvl_locate}'.
 %% behavior callbacks:
 -export([init/0]).
 
--export_type([kind/0, spec/0, locate_hook/0, hook_ret/0]).
+-export_type([locate_hook/0]).
 
 -include_lib("typerefl/include/types.hrl").
 -include_lib("kernel/include/logger.hrl").
@@ -64,20 +64,22 @@ hook into @code{anvl_locate}'.
 %% API functions
 %%================================================================================
 
-%% @doc Condition: external dependency `Dep' of kind `Getter' has been located.
-%%
-%% == Arguments ==
-%%
-%% <li>`Getter' Project configuration function that returns discovery
-%% specifiction. For example, `erlc_deps'.</li>
-%%
-%% <li>`ProjectDir' Directory that contains project configuration
-%% (and `anvl.erl' file). Project configuration should contain
-%% function with name referred by `Getter' variable.</li>
-%%
-%% <li>`Dep': Identifier of the entity being located.</li>
-%%
-%% <li>`Args' Arguments that will be passed to `Getter'</li>
+-doc """
+Condition: external dependency @var{Dep} of kind @var{Getter} has been located.
+
+@emph{Arguments}:
+@itemize
+@item @var{Getter} Project configuration function that returns discovery specifiction.
+For example, @code{erlc_deps}.
+
+@item @var{ProjectDir}: directory that contains project configuration (and `anvl.erl' file).
+Project configuration should contain function with name referred by @var{Getter} variable.
+
+@item @var{Dep}: identifier of the entity being located.
+
+@item @var{Args}: arguments that will be passed to @var{Getter}.
+@end itemize
+""".
 -spec located(spec_getter_fun(), file:filename(), dep(), _Args) -> anvl_condition:t().
 ?MEMO(located, Getter, ProjectDir, Dep, Args,
       anvl_condition:has_result(#?MODULE{kind = Getter, dep = Dep, args = Args}) orelse
@@ -100,22 +102,25 @@ hook into @code{anvl_locate}'.
         false
       end).
 
-%% @doc Return a directory that contains located dependency
+-doc """
+Return a directory that contains located dependency.
+""".
 -spec dir(spec_getter_fun(), dep(), _Args) -> file:filename().
 dir(Getter, Dep, Args) ->
   anvl_condition:get_result(#?MODULE{kind = Getter, dep = Dep, args = Args}).
 
-%% @equiv add_hook(Fun, 0)
+-doc """
+Equivalent to @code{add_hook(Fun, 0)}.
+""".
 -spec add_hook(locate_hook()) -> ok.
 add_hook(Fun) ->
   add_hook(Fun, 0).
 
-%% @doc Add a dependency discovery hook.
-%%
-%% @param Fun Hook function
-%%
-%% @param Priority When multiple hooks are capable of resolving the
-%% dependency hooks with higher priority are preferred.
+-doc """
+Add function @var{Fun} as a dependency discovery hook.
+
+When multiple hooks are capable of resolving the dependency, hooks with higher @var{Priority} are chosen.
+""".
 -spec add_hook(locate_hook(), integer()) -> ok.
 add_hook(Fun, Priority) ->
   anvl_hook:add(locate, Priority, Fun).
@@ -124,7 +129,7 @@ add_hook(Fun, Priority) ->
 %% behavior callbacks
 %%================================================================================
 
-%% @hidden
+-doc false.
 init() ->
   add_hook(fun builtin/1, -9999).
 

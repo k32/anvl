@@ -2,7 +2,7 @@
 %% This file is part of anvl, a parallel general-purpose task
 %% execution tool.
 %%
-%% Copyright (C) 2024 k32
+%% Copyright (C) 2024-2025 k32
 %%
 %% This program is free software: you can redistribute it and/or
 %% modify it under the terms of the GNU Lesser General Public License
@@ -18,6 +18,9 @@
 %%================================================================================
 
 -module(anvl_git).
+-moduledoc """
+A builtin plugin for cloning Git repositories.
+""".
 
 -behavior(anvl_plugin).
 
@@ -35,12 +38,12 @@
 
 -reflect_type([options/0]).
 
-%% @hidden
+-doc false.
 init() ->
   ok = anvl_resource:declare(git, 5),
   ok = anvl_locate:add_hook(fun src_prepared/1).
 
-%% @hidden
+-doc false.
 model() ->
   #{git =>
       #{ local_mirror_dir =>

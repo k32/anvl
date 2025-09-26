@@ -2,7 +2,7 @@
 %% This file is part of anvl, a parallel general-purpose task
 %% execution tool.
 %%
-%% Copyright (C) 2024 k32
+%% Copyright (C) 2024-2025 k32
 %%
 %% This program is free software: you can redistribute it and/or
 %% modify it under the terms of the GNU Lesser General Public License
@@ -17,8 +17,10 @@
 %% along with this program.  If not, see <https://www.gnu.org/licenses/>.
 %%================================================================================
 
-%% @doc A plugin implementing common tasks for managing anvl plugins
 -module(anvl_plugin_builder).
+-moduledoc """
+A plugin implementing common tasks for managing anvl plugins.
+""".
 
 -behavior(anvl_plugin).
 
@@ -43,11 +45,11 @@
 %% Behavior callbacks
 %%================================================================================
 
-%% @hidden
+-doc false.
 init() ->
   ok.
 
-%% @hidden
+-doc false.
 model() ->
   #{anvl_plugin_builder =>
       #{ doc_dir =>
@@ -74,6 +76,7 @@ model() ->
              }}
        }}.
 
+-doc false.
 project_model() ->
   #{anvl_project_builder =>
       #{ plugins =>
@@ -88,7 +91,7 @@ project_model() ->
              }}
        }}.
 
-%% @hidden
+-doc false.
 conditions(ProjectRoot) ->
   Keys = anvl_plugin:list_conf([anvl_plugin_builder, document, {}]),
   lists:map(fun(Key) ->
@@ -102,8 +105,9 @@ conditions(ProjectRoot) ->
 %% Condition implementations
 %%================================================================================
 
-%% @doc Extract documentation from the model and output it to texinfo
-%% files that can be included into a main file.
+-doc """
+Extract documentation from the model and output it to texinfo files that can be included into a main file.
+""".
 ?MEMO(model_doc, Plugin,
       begin
         _ = precondition(anvl_plugin:loaded(Plugin)),

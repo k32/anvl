@@ -2,7 +2,7 @@
 %% This file is part of anvl, a parallel general-purpose task
 %% execution tool.
 %%
-%% Copyright (C) 2024 k32
+%% Copyright (C) 2024-2025 k32
 %%
 %% This program is free software: you can redistribute it and/or
 %% modify it under the terms of the GNU Lesser General Public License
@@ -18,12 +18,16 @@
 %%================================================================================
 
 -module(anvl_erlc).
+-moduledoc #{format => "text/texinfo"}.
+-moduledoc """
+A builtin plugin for compiling Erlang applications.
+""".
 
 -behavior(anvl_plugin).
 
 %% API:
 -export([add_pre_compile_hook/1, add_pre_edoc_hook/1]).
--export([app_info/2, escript/3, app_compiled/2, dialyzed/2, module/2, edoc/3]).
+-export([app_info/2, escript/3, app_compiled/2, dialyzed/2, module/2, edoc/3, edoc_texi/2]).
 
 %% behavior callbacks:
 -export([model/0, project_model/0, init/0, conditions/1]).
@@ -38,6 +42,9 @@
 %% Type declarations
 %%================================================================================
 
+-doc """
+This is a type.
+""".
 -type profile() :: atom().
 
 -type application() :: atom().
@@ -97,20 +104,26 @@
 %% API functions
 %%================================================================================
 
-%% @doc Add a pre-compile hook. Functions hooked there will run after
-%% dependencies are satisfied, but before building the application
-%% itself.
+-doc """
+Add a pre-compile hook. Functions hooked there will run after
+dependencies are satisfied, but before building the application
+itself.
+""".
 -spec add_pre_compile_hook(fun((context()) -> _)) -> ok.
 add_pre_compile_hook(Fun) ->
   anvl_hook:add(erlc_pre_compile_hook, Fun).
 
-%% @doc Add a pre-edoc hook. Functions hooked there will run before
-%% building the documentation for the app.
+-doc """
+Add a pre-edoc hook. Functions hooked there will run before
+building the documentation for the app.
+""".
 -spec add_pre_edoc_hook(fun((app_info()) -> _)) -> ok.
 add_pre_edoc_hook(Fun) ->
   anvl_hook:add(erlc_pre_edoc_hook, Fun).
 
-%% @doc Condition: Erlang application has been compiled.
+-doc """
+Condition: function has been compiled.
+""".
 -spec app_compiled(profile(), application()) -> anvl_condition:t().
 ?MEMO(app_compiled, Profile, App,
       begin
@@ -161,7 +174,7 @@ add_pre_edoc_hook(Fun) ->
           render_app_spec(AppSrcProperties, Sources, Context)
       end).
 
-%% @doc Condition: Erlang documentation for an application has been created.
+-doc "Condition: Erlang documentation for an application has been created.".
 -spec edoc(file:filename_all(), profile(), application()) -> anvl_condition:t().
 ?MEMO(edoc, ProjectRoot, Profile, App,
       begin
@@ -174,29 +187,168 @@ add_pre_edoc_hook(Fun) ->
         true
       end).
 
+-spec edoc_texi(profile(), nonempty_list(application())) -> anvl_condition:t().
+?MEMO(edoc_texi, Profile, Apps,
+      begin
+        %% FIXME:
+        OutDir = "_anvl_doc/edoc",
+        ok = filelib:ensure_path(OutDir),
+        precondition([app_compiled(Profile, App) || App <- Apps]),
+        lists:foreach(
+          fun(App) ->
+              #{ebin_dir := EbinDir, spec := Spec} = app_info(Profile, App),
+              {application, _, AppKVs} = Spec,
+              Modules = proplists:get_value(modules, AppKVs),
+              {ok, FD} = file:open(filename:join(OutDir, atom_to_list(App) ++ ".texi"), [write]),
+              P = fun(L) -> io:put_chars(FD, L) end,
+              [render_module_texi(P, App, EbinDir, M) || M <- Modules],
+              file:close(FD)
+          end,
+          Apps),
+        true
+      end).
+
+render_module_texi(P, App, EbinDir, Mod) ->
+  %% FIXME, hack. This is needed because we cannot access debug info
+  %% (and by extention doc chunks) in the escript. Build separate doc
+  %% chunks instead (How?)
+  FName = filename:join([EbinDir, "ebin", atom_to_list(Mod)]),
+  logger:notice("Rendering texi for ~p", [Mod]),
+  maybe
+    {ok, {Mod, [{abstract_code, Code}, {documentation, Documenation}]}} ?=
+      beam_lib:chunks(FName, [abstract_code, documentation]),
+    Specs = code_to_typespecs(Code),
+    {docs_v1,
+     Anno,                      % erl_anno:anno(),
+     _BeamLanguage,             % atom(),
+     Format,                    % binary(),
+     MDocWrapper,
+     Metadata,                  % map(),
+     Docs} = Documenation,
+    ModuleDoc = get_documentation(MDocWrapper),
+    true ?= ModuleDoc =/= false,
+    Chapter = <<"api/", (atom_to_binary(App))/binary, "/", (atom_to_binary(Mod))/binary>>,
+    P([<<"@node ">>, Chapter, $\n]),
+    P([<<"@section Module @code{">>, atom_to_binary(Mod), <<"}\n@lowersections\n">>]),
+    P(get_documentation(MDocWrapper)),
+    Functions = [I ||
+                  I = {{function, _, _}, _Posn, _NameStr, DocWrapper, _Attr} <- Docs,
+                  DocWrapper =/= hidden],
+    Types = [I ||
+              I = {{type, _, _}, _Posn, _NameStr, DocWrapper, _Attr} <- Docs,
+              DocWrapper =/= hidden],
+    document_category(P, Mod, <<"type">>, <<"Types">>, Specs, Types),
+    document_category(P, Mod, <<"function">>, <<"Functions">>, Specs, Functions),
+    P([<<"\n@raisesections\n">>]),
+    true
+  else
+    {error,beam_lib, {missing_chunk, _, "Docs"}} ->
+      false;
+    false ->
+      false
+  end.
+
+code_to_typespecs({raw_abstract_v1, AST}) ->
+  lists:foldl(
+    fun(I = {attribute, _Anno, spec, {{Name, Arity}, _}}, Acc) ->
+        Acc#{{function, Name, Arity} => I};
+       (I = {attribute, _Anno, type, {Name, _AST, Params}}, Acc) ->
+        Acc#{{type, Name, length(Params)} => I};
+       (_, Acc) ->
+        Acc
+    end,
+    #{},
+    AST).
+
+document_category(_, _, _, _, _, []) ->
+  ok;
+document_category(P, Mod, Category, Title, Specs, L) ->
+  P([<<"@section ">>, Title, $\n]),
+  lists:foreach(
+    fun({Key = {_, Name, Arity}, _Posn, NameStr, DocWrapper, Attr}) ->
+        logger:notice(Attr#{m => Mod, f => Name, namestr => NameStr, dw => DocWrapper}),
+        Regexp = <<"\\((?<a>\\w+)(\\s*,\\s*(?<b>\\w+))*\\)">>,
+        Arguments = case re:run(NameStr, Regexp, [{capture, all_names, binary}]) of
+                      nomatch -> [];
+                      {match, ArgL} -> lists:join($\ , ArgL)
+                    end,
+        P([ <<"@deffn ">>, Category, " "
+          , atom_to_binary(Mod), $:, atom_to_binary(Name), $/, integer_to_list(Arity)
+          , $\ , Arguments, $\n
+          ]),
+        case Specs of
+          #{Key := AST} ->
+            P([ <<"@example\n@verbatim\n">>
+              , erl_prettypr:format(AST)
+              , <<"\n@end verbatim\n@end example\n">>
+              ]);
+          #{} ->
+            ok
+        end,
+        %%P(erl_prettypr:best(maps:get(signature, Attr))),
+        P(get_documentation(DocWrapper)),
+        P([<<"@end deffn\n">>])
+    end,
+    L).
+
+fun_ref(Chapter, Name, Arity) ->
+  edoc_ref(<<Chapter/binary, "/f/">>, Name, Arity).
+
+type_ref(Chapter, Name, Arity) ->
+  edoc_ref(<<Chapter/binary, "/t/">>, Name, Arity).
+
+edoc_ref(Chapter, Name, Arity) ->
+  <<Chapter/binary, (atom_to_binary(Name))/binary, "/", (integer_to_binary(Arity))/binary>>.
+
+get_documentation(none) ->
+  [];
+get_documentation(hidden) ->
+  false;
+get_documentation(#{<<"en">> := Doc}) ->
+  [Doc, <<"\n\n">>].
+
 -spec dialyzed(profile(), nonempty_list(application())) -> anvl_condition:t().
 ?MEMO(dialyzed, Profile, Apps,
       begin
         precondition([app_compiled(Profile, App) || App <- Apps]),
-        Dirs = lists:flatmap(
+        precondition(plt(Profile, Apps)),
+        Dirs = lists:map(
                   fun(App) ->
                       #{ebin_dir := Ebin} = app_info(Profile, App),
-                      filelib:wildcard(filename:join(Ebin, "ebin/*.beam"))
+                      filename:join(Ebin, "ebin")
                   end,
                   Apps),
-        logger:notice("Dirs ~p", [Dirs]),
-        dialyzer:run([ {analysis_type, incremental}
-                     , {warning_files, Dirs}
-                     ]),
+        try dialyzer:run([{analysis_type, incremental}, {files_rec, Dirs}]) of
+          [] ->
+            false;
+          Warnings ->
+            logger:error(["Dialyzer warnings:\n" | [dialyzer:format_warning(Msg) || Msg <- Warnings]]),
+            ?UNSAT("Dialyzer check failed", [])
+        catch
+          {dialyzer_error, Err} ->
+            ?UNSAT("~s", [Err])
+        end
+      end).
+
+-spec plt(profile(), [application()]) -> anvl_condition:t().
+?MEMO(plt, Profile, Apps,
+      begin
+        Closure = lists:flatmap(
+                    fun(App) ->
+                        #{spec := Spec} = app_info(Profile, App),
+                        []
+                    end,
+                    Apps),
+        PltApps = Closure -- Apps,
         false
       end).
 
-%% @doc Speculative condition: a particular module has been compiled.
+-doc "Speculative condition: a particular module has been compiled.".
 -spec module(profile(), module()) -> anvl_condition:t().
 module(Profile, Module) ->
   anvl_condition:speculative({erlang_module_compiled, Profile, Module}).
 
-%% @doc Condition: escript has been built.
+-doc "Condition: escript has been built.".
 -spec escript(file:filename_all(), profile(), string()) -> anvl_condition:t().
 ?MEMO(escript, ProjectRoot, Profile, EscriptName,
       begin
@@ -208,8 +360,10 @@ module(Profile, Module) ->
         end
       end).
 
-%% @doc Return various information about a compiled OTP application
-%% (precondition: `app_compiled').
+-doc """
+Return various information about a compiled OTP application
+(precondition: @code{app_compiled}).
+""".
 -spec app_info(profile(), application()) -> app_info().
 app_info(Profile, App) ->
   _ = precondition(app_compiled(Profile, App)),
@@ -219,7 +373,7 @@ app_info(Profile, App) ->
 %% Behavior callbacks
 %%================================================================================
 
-%% @hidden
+-doc false.
 model() ->
   Profiles = profiles(anvl_project:root()),
   Profile = {[value, cli_param],
@@ -245,7 +399,7 @@ model() ->
              },
             #{ name =>
                  {[value, cli_positional],
-                  #{ oneliner => "Names of the escript to build"
+                  #{ oneliner => "Names of the escripts to build"
                    , type => list(atom())
                    , default => []
                    , cli_arg_position => rest
@@ -255,7 +409,7 @@ model() ->
              }}
        , jobs =>
            {[value, cli_param, os_env, anvl_resource],
-            #{ oneliner => "Parallel compiler jobs"
+            #{ oneliner => "Maximum number of parallel compiler jobs"
              , type => pos_integer()
              , cli_operand => "j-erlc"
              , default => 16
@@ -293,7 +447,7 @@ model() ->
              }}
        }}.
 
-%% @hidden
+-doc false.
 project_model() ->
   Profile = #{ profile =>
                  {[funarg],
@@ -338,7 +492,7 @@ project_model() ->
            {[pcfg],
             #{ type => list()
              , function => erlc_compile_options
-             , default => []
+             , default => [debug_info]
              },
             Profile}
        , deps =>
@@ -393,12 +547,12 @@ project_model() ->
             maps:merge(Profile, App)}
        }}.
 
-%% @hidden
+-doc false.
 init() ->
   ok = anvl_resource:declare(erlc, 1),
   ok.
 
-%% @hidden
+-doc false.
 conditions(ProjectRoot) ->
   get_compile_apps(ProjectRoot) ++ get_escripts(ProjectRoot) ++ get_dialyzer(ProjectRoot).
 
@@ -472,8 +626,9 @@ escript(ProjectRoot, Profile, EscriptName, Apps, EmuFlags) ->
             end)
       end).
 
-%% @private Precondition: Compile-time dependencies of the Erlang
-%% module are satisfied
+-doc """
+Precondition: Compile-time dependencies of the Erlang %% module are satisfied.
+""".
 ?MEMO(beam_deps, Src, Beam, CRef,
       begin
         #{profile := Profile} = Ctx = persistent_term:get(CRef),
@@ -520,8 +675,9 @@ module_loaded(Profile, Module, CRef) ->
       end
   end.
 
-%% @private Precondition: module defined in the same application is
-%% compiled and loaded
+-doc """
+Precondition: module defined in the same application is compiled and loaded.
+""".
 ?MEMO(local_module_loaded, Module, CRef,
       begin
         Ctx = #{src_root := SrcRoot} = persistent_term:get(CRef),
@@ -603,7 +759,7 @@ get_dialyzer(_ProjectRoot) ->
             end,
             Keys).
 
-%% @private Clean ebin directory of files that don't have sources:
+-doc "Clean ebin directory of files that don't have sources".
 clean_orphans(Sources, Context) ->
   Orphans = filelib:wildcard(beam_of_erl("*.erl", Context)) -- [beam_of_erl(Src, Context) || Src <- Sources],
   {ok, CWD} = file:get_cwd(),
@@ -619,7 +775,7 @@ clean_orphans(Sources, Context) ->
                 Orphans),
   false.
 
-%% @private Copy hrl files to the build directory
+-doc "Copy hrl files to the build directory".
 copy_includes(#{build_dir := BuildDir, src_root := SrcRoot}) ->
   Includes = filelib:wildcard(filename:join([SrcRoot, "include", "*.hrl"])),
   lists:foldl(fun(Src, Acc) ->

@@ -2,7 +2,7 @@
 %% This file is part of anvl, a parallel general-purpose task
 %% execution tool.
 %%
-%% Copyright (C) 2024 k32
+%% Copyright (C) 2024-2025 k32
 %%
 %% This program is free software: you can redistribute it and/or
 %% modify it under the terms of the GNU Lesser General Public License
@@ -17,18 +17,19 @@
 %% along with this program.  If not, see <https://www.gnu.org/licenses/>.
 %%================================================================================
 
-%% @doc This module contains functions responsible for ANVL's core
-%% functionality.
-%%
-%% At the heart of `anvl' lies a very simple memoization library.
-%%
-%% Build system = memoization. More specifically,
-%%
-%% ```
-%% build_target(Target) ->
-%%       memoize(changed(Target) andalso rebuild(Target)).
-%% '''
 -module(anvl_condition).
+-moduledoc """
+This module contains functions responsible for ANVL's core functionality.
+
+At the heart of @code{anvl} lies a very simple memoization library.
+
+Build system = memoization. More specifically,
+
+@example
+build_target(Target) ->
+      memoize(changed(Target) andalso rebuild(Target)).
+@end example
+""".
 
 -behavior(gen_server).
 
@@ -43,7 +44,7 @@
 %% internal exports:
 -export([start_link/0, condition_entrypoint/2]).
 
--export_type([t/0]).
+-export_type([t/0, speculative/0]).
 
 -include_lib("kernel/include/logger.hrl").
 -include("anvl_defs.hrl").
@@ -95,12 +96,12 @@
 %% API functions
 %%================================================================================
 
-%% @hidden
+-doc false.
 -spec start_link() -> {ok, pid()}.
 start_link() ->
   gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
-%% @doc Get various statistics about the run.
+-doc "Get various statistics about the run.".
 -spec stats() -> map().
 stats() ->
   CRef = persistent_term:get(?counters),
@@ -112,15 +113,19 @@ stats() ->
    , top_reds => stats_top(reductions, anvl_plugin:conf([top, n_reds]))
    }.
 
-%% @equiv precondition(L, 100)
+-doc """
+Equivalent to @code{precondition(L, 100)}.
+""".
 -spec precondition([t()] | t()) -> boolean().
 precondition(Tup) when is_record(Tup, anvl_memo_thunk) ->
   precondition([Tup]);
 precondition(L) when is_list(L) ->
   precondition(L, 100).
 
-%% @doc For a satisfied condition, this function returns whether the condition has
-%% made changes to the system. Otherwise it returns `undefined'.
+-doc """
+For a satisfied condition, this function returns whether the condition has
+made changes to the system. Otherwise it returns @code{undefined}.
+""".
 -spec is_changed(t()) -> boolean() | undefined.
 is_changed(Cond) ->
   case ets:lookup(?tab, key(Cond)) of
@@ -130,16 +135,14 @@ is_changed(Cond) ->
       undefined
   end.
 
-%% @doc Block execution of the function until all preconditions are
-%% satisfied. Throws an exception if some precondition could not be
-%% satisified.
-%%
-%% @param L list of preconditions
-%%
-%% @param ChunkSize maximum degree of parallelism
-%%
-%% @returns whether any changes were made to the system to satify the
-%% preconditions.
+-doc """
+Block execution of the function until all preconditions in the list @var{L} are satisfied.
+Throws an exception if some precondition could not be satisified.
+
+Function argument @var{ChunkSize} specifies maximum number of parallel tasks.
+
+Returns whether any changes were made to the system to satify the preconditions.
+""".
 -spec precondition([t()], pos_integer() | infinity) -> boolean().
 precondition(L, ChunkSize) when ChunkSize > 0 ->
   case erlang:get(?anvl_reslock) of
@@ -159,17 +162,18 @@ precondition(L, ChunkSize) when ChunkSize > 0 ->
 
 %%%% Speculative targets:
 
-%% @doc Sometimes a condition doesn't know the recipe to resolve a
-%% precondition, but it assumes that it will be resolved eventually
-%% <em>somehow</em>. For example, a module in appliction X can use a
-%% parse transform declared in another application, but it don't know
-%% which one. We call this situation a ``speculative'' precondition.
-%%
-%% `speculative/1' is a built-in condition that serves as a
-%% placeholder in such situations. Needless to say, this functionality
-%% is an unsound hack meant as a last-resort measure.
-%%
-%% @param Cond token that represents the result.
+-doc """
+Sometimes a condition doesn't know the recipe to resolve a precondition,
+but it assumes that it will be resolved eventually @emph{somehow}.
+For example, a module in appliction X can use a parse transform declared in another application,
+but it don't know which one.
+We call this situation @strong{speculative} precondition.
+
+This function is a built-in condition that serves as a placeholder in such situations.
+Needless to say, this functionality is an unsound hack meant as a last-resort measure.
+
+@var{Cond} token that represents the result.
+""".
 -spec speculative(speculative()) -> t().
 speculative(Cond) ->
   Body = fun(C) ->
@@ -180,33 +184,35 @@ speculative(Cond) ->
          end,
   #anvl_memo_thunk{descr = speculative, func = Body, args = [Cond]}.
 
-%% @doc This function declares that the current condition resolves a
-%% speculative condition. It's a counterpart to `speculative/1'.
-%%
-%% Once a condition that called `satisfies(X)' is resolved (with any
-%% result, including failure), speculative condition `X' is resolved
-%% with the same result.
-%%
-%% It's recommended to call `satisfies' at the very beginning of the
-%% condition: if any subsequent code crashes, this will automatically
-%% mark speculative condition as failed, and notify condition
-%% dependent on it.
+-doc """
+This function declares that the current condition resolves a speculative condition.
+It's a counterpart to @code{speculative/1}.
+
+Once a condition that called @code{satisfies(X)} is resolved
+(with any result, including failure),
+speculative condition @var{X} is resolved with the same result.
+
+It's recommended to call this function at the very beginning of the condition:
+in case of failure, this will automatically mark speculative condition as failed
+and notify condition dependent on it.
+""".
 -spec satisfies(speculative()) -> ok.
 satisfies(Cond) ->
   put(?resolve_conditions, [Cond | get_resolve_conditions()]).
 
 %%% Return values:
 
-%% @doc ANVL condition's return value is a boolean that specifies
-%% presense of side-effects. If it needs to return any other data,
-%% `get_result/1' and `set_result/2' functions can be used. These
-%% functions, essentially, allow to set and access global variables.
-%%
-%% This function MUST ONLY be called by the plugin that SETS the
-%% result. Plugins must wrap return values in a proper API function
-%% complete with return type. Raw global variables should be never
-%% exposed to the outside, because it would lead to unmaintainable
-%% code.
+-doc """
+ANVL condition's return value is a boolean that specifies presense of side-effects.
+If it needs to return any other data,
+@code{get_result/1} and @code{set_result/2} functions can be used.
+These functions, essentially, allow to set and access global variables.
+
+This function MUST ONLY be called by the plugin that SETS the result.
+Plugins must wrap return values in a proper API function complete with return type.
+Raw global variables should be never exposed to the outside,
+because it would lead to unmaintainable code.
+""".
 -spec get_result(_Key) -> _Value.
 get_result(Key) ->
   case ets:lookup(?results, Key) of
@@ -236,7 +242,7 @@ set_result(Key, Value) ->
 
 -record(s, {}).
 
-%% @hidden
+-doc false.
 init([]) ->
   process_flag(trap_exit, true),
   ets:new(?tab, [set, named_table, public, {write_concurrency, true}, {read_concurrency, true}, {keypos, 2}]),
@@ -246,19 +252,19 @@ init([]) ->
   S = #s{},
   {ok, S}.
 
-%% @hidden
+-doc false.
 handle_call(_Call, _From, S) ->
   {reply, {error, unknown_call}, S}.
 
-%% @hidden
+-doc false.
 handle_cast(_Cast, S) ->
   {noreply, S}.
 
-%% @hidden
+-doc false.
 handle_info(_Info, S) ->
   {noreply, S}.
 
-%% @hidden
+-doc false.
 terminate(_Reason, _S) ->
   ok.
 
@@ -427,6 +433,8 @@ report_stats(Condition, T0) ->
 stats_top(_, 0) ->
   %% Skip calculations entirely:
   [];
+stats_top(Key, true) ->
+  stats_top(Key, 10);
 stats_top(Key, MaxItems) ->
   {_, Top} =
     ets:foldl(
