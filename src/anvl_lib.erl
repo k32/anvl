@@ -52,7 +52,7 @@ Returns @code{true} if any of the source files is newer than the target or if th
 @code{false} otherwise.
 This function assumes that the @var{Target} will be created,
 and creates the directory for the @var{Target} as a side effect.
-If this is not desirable, use `newer_/2'.
+If this is not desirable, use @ref{anvl_lib:newer_/2}.
 
 Throws @code{@{no_src_file, Src, _Reason@}} error when source file is not found.
 
@@ -64,9 +64,9 @@ newer(Src, Target) ->
   newer_(Src, Target).
 
 -doc """
-Version of `newer/2' that does not create the target directory.
+Version of @code{newer/2} that does not create the target directory.
 """.
--spec newer_(file:filename_all() | [file:filename_all()], file:filename_all()) -> boolean().
+-spec newer_(Src :: file:filename_all() | [file:filename_all()], Target :: file:filename_all()) -> boolean().
 newer_([Src1|_] = Sources, Target) when is_binary(Src1); is_list(Src1) ->
   lists:any(fun(Src) -> newer_(Src, Target) end,
             Sources);
@@ -169,9 +169,9 @@ Then @var{Command} will be treated as an absolute name.
 @emph{Arguments}:
 
 @itemize
-@item @var{Cmd}: name of the executable (e.g. @command{ls})
+@item @var{Cmd}: name of the executable (e.g. @code{"ls"})
 @item @var{Args}: list of arguments passed to the executable (e.g. @code{["-a", "."]})
-@item @var{Opts}: list of options passed to @code{erlang:open_port/2}
+@item @var{Opts}: list of additional options passed to @code{erlang:open_port/2}
 @end itemize
 """.
 -spec exec(string(), [string()], list()) -> true.
@@ -199,8 +199,8 @@ If it contains a tuple @code{@{search_path, false@}} then @var{Command} is treat
 
 @emph{Arguments:}
 @itemize
-@item @var{Command}: name of the executable (e.g. `"ls"')
-@item @var{Args}: list of arguments passed to the executable (e.g. `["-a", "."]')
+@item @var{Command}: name of the executable (e.g. @code{"ls"})
+@item @var{Args}: list of arguments passed to the executable (e.g. @code{["-a", "."]})
 @item @var{Options}: list of options passed to @code{erlang:open_port/2}
 @end itemize
 """.

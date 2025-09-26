@@ -97,7 +97,7 @@ project_model() ->
 @end verbatim
 @end example
 
-Then the user can adjust the capacity via CLI: @command{anvl -j-git 10 ...}
+Then the user can adjust the capacity via CLI: @command{anvl --j-git 10 ...}
 """.
 -spec declare(resource(), pos_integer()) -> ok.
 declare(Resource, Max) ->

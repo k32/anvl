@@ -276,7 +276,6 @@ document_category(P, Category, Mod, Specs, L) ->
   P([<<"@section ">>, Title, <<"\n@table @strong\n">>]),
   lists:foreach(
     fun({Key = {_, Name, Arity}, _Posn, NameStr, DocWrapper, Attr}) ->
-        logger:notice(Attr#{m => Mod, f => Name, namestr => NameStr, dw => DocWrapper}),
         Regexp = <<"\\((?<a>\\w+)(\\s*,\\s*(?<b>\\w+))*\\)">>,
         Arguments = case re:run(NameStr, Regexp, [{capture, all_names, binary}]) of
                       nomatch -> [];

@@ -122,6 +122,7 @@ It allows ANVL to load other 3rd-party plugins.
 
 @syncodeindex vr cp
 @syncodeindex fn cp
+@syncodeindex tp cp
 @printindex cp
 
 @bye

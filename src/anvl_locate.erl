@@ -69,7 +69,7 @@ Condition: external dependency @var{Dep} of kind @var{Getter} has been located.
 
 @emph{Arguments}:
 @itemize
-@item @var{Getter} Project configuration function that returns discovery specifiction.
+@item @var{Kind}: project configuration function that returns discovery specifiction.
 For example, @code{erlc_deps}.
 
 @item @var{ProjectDir}: directory that contains project configuration (and `anvl.erl' file).
@@ -77,10 +77,10 @@ Project configuration should contain function with name referred by @var{Getter}
 
 @item @var{Dep}: identifier of the entity being located.
 
-@item @var{Args}: arguments that will be passed to @var{Getter}.
+@item @var{Args}: additional parameters for discovery.
 @end itemize
 """.
--spec located(spec_getter_fun(), file:filename(), dep(), _Args) -> anvl_condition:t().
+-spec located(Kind :: spec_getter_fun(), ProjectDir :: file:filename(), Dep :: dep(), Args :: term()) -> anvl_condition:t().
 ?MEMO(located, Getter, ProjectDir, Dep, Args,
       anvl_condition:has_result(#?MODULE{kind = Getter, dep = Dep, args = Args}) orelse
       begin
