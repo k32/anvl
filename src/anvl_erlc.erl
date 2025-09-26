@@ -237,8 +237,8 @@ render_module_texi(P, App, EbinDir, Mod) ->
     Types = [I ||
               I = {{type, _, _}, _Posn, _NameStr, DocWrapper, _Attr} <- Docs,
               DocWrapper =/= hidden],
-    document_category(P, Mod, <<"type">>, <<"Types">>, Specs, Types),
-    document_category(P, Mod, <<"function">>, <<"Functions">>, Specs, Functions),
+    document_category(P, type, Mod, Specs, Types),
+    document_category(P, function, Mod, Specs, Functions),
     P([<<"\n@raisesections\n">>]),
     true
   else
@@ -260,10 +260,20 @@ code_to_typespecs({raw_abstract_v1, AST}) ->
     #{},
     AST).
 
-document_category(_, _, _, _, _, []) ->
+document_category(_, _, _, _, []) ->
   ok;
-document_category(P, Mod, Category, Title, Specs, L) ->
-  P([<<"@section ">>, Title, $\n]),
+document_category(P, Category, Mod, Specs, L) ->
+  case Category of
+    type ->
+      Index = <<"@tindex ">>,
+      Title = <<"Types">>,
+      AnchorPrefix = <<"t:">>;
+    function ->
+      Index = <<"@findex ">>,
+      Title = <<"Functions">>,
+      AnchorPrefix = <<>>
+  end,
+  P([<<"@section ">>, Title, <<"\n@table @strong\n">>]),
   lists:foreach(
     fun({Key = {_, Name, Arity}, _Posn, NameStr, DocWrapper, Attr}) ->
         logger:notice(Attr#{m => Mod, f => Name, namestr => NameStr, dw => DocWrapper}),
@@ -272,9 +282,10 @@ document_category(P, Mod, Category, Title, Specs, L) ->
                       nomatch -> [];
                       {match, ArgL} -> lists:join($\ , ArgL)
                     end,
-        P([ <<"@deffn ">>, Category, " "
-          , atom_to_binary(Mod), $:, atom_to_binary(Name), $/, integer_to_list(Arity)
-          , $\ , Arguments, $\n
+        FullName = [atom_to_binary(Mod), $:, atom_to_binary(Name), $/, integer_to_list(Arity)],
+        P([ <<"@anchor{">>, AnchorPrefix, FullName, <<"}\n">>
+          , <<"@item @verb{|">>, NameStr, <<"|}\n">>
+          , Index, FullName, $\n
           ]),
         case Specs of
           #{Key := AST} ->
@@ -285,11 +296,11 @@ document_category(P, Mod, Category, Title, Specs, L) ->
           #{} ->
             ok
         end,
-        %%P(erl_prettypr:best(maps:get(signature, Attr))),
-        P(get_documentation(DocWrapper)),
-        P([<<"@end deffn\n">>])
+        P(get_documentation(DocWrapper))
+        %%P([<<"@end deffn\n">>])
     end,
-    L).
+    L),
+  P([<<"@end table\n">>]).
 
 fun_ref(Chapter, Name, Arity) ->
   edoc_ref(<<Chapter/binary, "/f/">>, Name, Arity).
