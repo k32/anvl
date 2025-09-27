@@ -17,7 +17,7 @@
 %% along with this program.  If not, see <https://www.gnu.org/licenses/>.
 %%================================================================================
 
--include_lib("anvl.hrl").
+-include("anvl.hrl").
 
 plugins(_) ->
   [anvl_erlc, anvl_git, anvl_texinfo].

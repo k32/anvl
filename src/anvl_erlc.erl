@@ -101,6 +101,45 @@ This is a type.
 
 -reflect_type([profile/0, source_location_ret/0, compile_options/0, escripts_ret/0, context/0, application_spec/0, archive_file/0]).
 
+-define(default_profiles, [default, test]).
+-doc """
+@pconf List of profiles.
+""".
+-doc #{default => ?default_profiles}.
+-callback erlc_profiles() -> [profile()].
+
+-define(default_include_dirs, ["${src_root}/include", "${src_root}/src"]).
+-doc """
+@pconf Search path for include files.
+""".
+-doc #{default => ?default_include_dirs}.
+-callback erlc_include_dirs(profile(), application()) -> [anvl_lib:filename_pattern()].
+
+-define(default_sources, ["${src_root}/src/*.erl", "${src_root}/src/*/*.erl"]).
+-doc """
+@pconf Wildcard patterns matching source files.
+""".
+-doc #{default => ?default_sources}.
+-callback erlc_sources(profile(), application()) -> [anvl_lib:filename_pattern()].
+
+-doc """
+@pconf Build-time dependencies of an Erlang application.
+""".
+-doc #{default => []}.
+-callback erlc_bdeps(profile(), application()) -> [application()].
+
+-doc """
+@pconf @ref{t:anvl_locate:spec/0,Locate spec} for the application.
+""".
+-callback erlc_deps(profile(), application()) -> anvl_locate:spec().
+
+-define(default_compile_options, [debug_info]).
+-doc """
+@pconf Additional options passed to erlang compiler.
+""".
+-doc #{default => ?default_compile_options}.
+-callback erlc_compile_options(profile()) -> list().
+
 %%================================================================================
 %% API functions
 %%================================================================================
@@ -810,7 +849,7 @@ default_escript_files() ->
   ].
 
 default_sources() ->
-  ["${src_root}/src/*.erl", "${src_root}/src/*/*.erl"].
+  ?default_sources.
 
 default_include_dirs() ->
-  ["${src_root}/include", "${src_root}/src"].
+  ?default_include_dirs.

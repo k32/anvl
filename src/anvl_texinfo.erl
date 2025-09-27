@@ -25,7 +25,7 @@ A plugin for creating and compiling @url{https://www.gnu.org/software/texinfo/, 
 -behavior(anvl_plugin).
 
 %% API
--export([documented/2, lee_model_doc/1, erl_doc/2, erl_module_doc/4]).
+-export([documented/2, lee_model_doc/1, erl_doc/2, erl_module_doc/3]).
 
 %% behavior callbacks:
 -export([init/0, model/0, project_model/0, conditions/1]).
@@ -40,6 +40,14 @@ A plugin for creating and compiling @url{https://www.gnu.org/software/texinfo/, 
 -type doc_format() :: info | html | pdf.
 
 -reflect_type([doc_format/0]).
+
+-doc """
+@pconf List of Erlang modules containing Lee models.
+
+These modules should export @code{model/0} function.
+""".
+-doc #{default => []}.
+-callback texinfo_lee_modules() -> [module()].
 
 %%================================================================================
 %% Behavior callbacks
@@ -167,11 +175,11 @@ Render documentation for an Erlang application @var{App} compiled in profile @va
         OutDir = filename:join(DocRootDir, atom_to_list(App)),
         OutFile = OutDir ++ ".texi",
         ok = filelib:ensure_path(OutDir),
-        #{ebin_dir := EbinDir, spec := Spec} = Ctx = anvl_erlc:app_info(Profile, App),
+        #{spec := Spec} = Ctx = anvl_erlc:app_info(Profile, App),
         {application, _, AppKVs} = Spec,
         Modules = proplists:get_value(modules, AppKVs),
         newer(anvl_erlc:app_file(Ctx), OutFile) or
-        precondition([erl_module_doc(Profile, OutDir, Ctx, I) || I <- Modules]) andalso
+        precondition([erl_module_doc(OutDir, Ctx, I) || I <- Modules]) andalso
           begin
             {ok, FD} = file:open(OutDir ++ ".texi", [write]),
             lists:foreach(
@@ -188,12 +196,11 @@ Render documentation for an Erlang application @var{App} compiled in profile @va
       end).
 
 -spec erl_module_doc(
-        Profile :: anvl_erc:profile(),
         OutputDir :: file:filename(),
         AppInfo :: anvl_erc:app_info(),
         Mod :: module()
        ) -> anvl_condition:t().
-?MEMO(erl_module_doc, Profile, OutDir, Ctx = #{app := App}, Mod,
+?MEMO(erl_module_doc, OutDir, Ctx = #{app := App}, Mod,
       begin
         OutFile = erl_module_doc_fn(OutDir, Mod),
         BeamFile = anvl_erlc:beam_file(Ctx, Mod),
@@ -221,11 +228,11 @@ render_module_doc(P, App, FName) ->
       beam_lib:chunks(FName, [abstract_code, documentation]),
     Specs = code_to_typespecs(Code),
     {docs_v1,
-     Anno,                      % erl_anno:anno(),
+     _Anno,                     % erl_anno:anno(),
      _BeamLanguage,             % atom(),
-     Format,                    % binary(),
+     _Format,                   % binary(),
      MDocWrapper,
-     Metadata,                  % map(),
+     _Metadata,                 % map(),
      Docs} = Documenation,
     ModuleDoc = get_documentation(MDocWrapper),
     true ?= ModuleDoc =/= false,
@@ -239,6 +246,10 @@ render_module_doc(P, App, FName) ->
     Types = [I ||
               I = {{type, _, _}, _Posn, _NameStr, DocWrapper, _Attr} <- Docs,
               DocWrapper =/= hidden],
+    Callbacks = [I ||
+                  I = {{callback, _, _}, _Posn, _NameStr, DocWrapper, _Attr} <- Docs,
+                  DocWrapper =/= hidden],
+    document_category(P, callback, Mod, Specs, Callbacks),
     document_category(P, type, Mod, Specs, Types),
     document_category(P, function, Mod, Specs, Functions),
     P([<<"\n@raisesections\n">>]),
@@ -256,6 +267,8 @@ code_to_typespecs({raw_abstract_v1, AST}) ->
         Acc#{{function, Name, Arity} => I};
        (I = {attribute, _Anno, type, {Name, _AST, Params}}, Acc) ->
         Acc#{{type, Name, length(Params)} => I};
+       (I = {attribute, _Anno, callback, {{Name, Arity}, _}}, Acc) ->
+        Acc#{{callback, Name, Arity} => I};
        (_, Acc) ->
         Acc
     end,
@@ -273,16 +286,15 @@ document_category(P, Category, Mod, Specs, L) ->
     function ->
       Index = <<"@findex ">>,
       Title = <<"Functions">>,
-      AnchorPrefix = <<>>
+      AnchorPrefix = <<>>;
+    callback ->
+      Index = <<"@findex ">>,
+      Title = <<"Callbacks">>,
+      AnchorPrefix = <<"c:">>
   end,
   P([<<"@section ">>, Title, <<"\n@table @strong\n">>]),
   lists:foreach(
     fun({Key = {_, Name, Arity}, _Posn, NameStr, DocWrapper, Attr}) ->
-        Regexp = <<"\\((?<a>\\w+)(\\s*,\\s*(?<b>\\w+))*\\)">>,
-        Arguments = case re:run(NameStr, Regexp, [{capture, all_names, binary}]) of
-                      nomatch -> [];
-                      {match, ArgL} -> lists:join($\ , ArgL)
-                    end,
         FullName = [atom_to_binary(Mod), $:, atom_to_binary(Name), $/, integer_to_list(Arity)],
         P([ <<"@anchor{">>, AnchorPrefix, FullName, <<"}\n">>
           , <<"@item @verb{|">>, NameStr, <<"|}\n">>
@@ -297,8 +309,20 @@ document_category(P, Category, Mod, Specs, L) ->
           #{} ->
             ok
         end,
+        maps:foreach(
+          fun
+            (source_anno, _) ->
+              ok;
+            (exported, Exp) ->
+              Exp orelse P(<<"@emph{Not exported}\n\n">>);
+            (Key, Val) ->
+             P([ <<"@emph{">>, atom_to_binary(Key), <<"}: @code{@verb{|">>
+               , io_lib:format("~p", [Val])
+               , <<"|}}\n\n">>
+               ])
+         end,
+         Attr),
         P(get_documentation(DocWrapper))
-        %%P([<<"@end deffn\n">>])
     end,
     L),
   P([<<"@end table\n">>]).

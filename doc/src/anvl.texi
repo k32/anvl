@@ -21,6 +21,10 @@
   @raisesections
 @end macro
 
+@macro pconf
+  Project configuration:
+@end macro
+
 @c %**end of header
 @copying
 A general-purpose parallel task execution tool.
@@ -64,9 +68,11 @@ Foundation Web site at @url{https://www.gnu.org/licenses/fdl.html}.
 @node ANVL Common
 @chapter Introduction
 
-ANVL a general-purpose task planning and execution tool, that aims to be simple and flexible.
+ANVL a general-purpose task planning and execution tool,
+that aims to be conceptually simple and flexible.
 
-ANVL solves the problem of transitioning the system into a desired state step-by-step, using parallelism when possible.
+ANVL solves the problem of transitioning the system into a desired state step-by-step,
+using parallelism when possible.
 It's meant as an alternative to tools like @code{make} and @code{ansible},
 but it takes a different approach focusing on @i{conditions} and @i{preconditions}, expressed in a simple DSL based on Erlang.
 
