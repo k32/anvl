@@ -27,7 +27,8 @@ A builtin plugin for compiling Erlang applications.
 
 %% API:
 -export([add_pre_compile_hook/1, add_pre_edoc_hook/1]).
--export([app_info/2, escript/3, app_compiled/2, dialyzed/2, module/2, edoc/3, edoc_texi/2]).
+-export([app_info/2, escript/3, app_compiled/2, dialyzed/2, module/2, edoc/3]).
+-export([app_file/1, beam_file/2]).
 
 %% behavior callbacks:
 -export([model/0, project_model/0, init/0, conditions/1]).
@@ -103,6 +104,14 @@ This is a type.
 %%================================================================================
 %% API functions
 %%================================================================================
+
+-spec app_file(context()) -> file:filename().
+app_file(#{app := App, build_dir := BuildDir}) ->
+  filename:join([BuildDir, "ebin", atom_to_list(App) ++ ".app"]).
+
+-spec beam_file(context(), module()) -> file:filename().
+beam_file(#{build_dir := BuildDir}, Module) ->
+  filename:join([BuildDir, "ebin", atom_to_list(Module) ++ ".beam"]).
 
 -doc """
 Add a pre-compile hook. Functions hooked there will run after
@@ -186,136 +195,6 @@ Condition: function has been compiled.
         edoc:application(App, Src, [{includes, IncludeDirs}, {dir, OutputDir} | Options]),
         true
       end).
-
--spec edoc_texi(profile(), nonempty_list(application())) -> anvl_condition:t().
-?MEMO(edoc_texi, Profile, Apps,
-      begin
-        %% FIXME:
-        OutDir = "_anvl_doc/edoc",
-        ok = filelib:ensure_path(OutDir),
-        precondition([app_compiled(Profile, App) || App <- Apps]),
-        lists:foreach(
-          fun(App) ->
-              #{ebin_dir := EbinDir, spec := Spec} = app_info(Profile, App),
-              {application, _, AppKVs} = Spec,
-              Modules = proplists:get_value(modules, AppKVs),
-              {ok, FD} = file:open(filename:join(OutDir, atom_to_list(App) ++ ".texi"), [write]),
-              P = fun(L) -> io:put_chars(FD, L) end,
-              [render_module_texi(P, App, EbinDir, M) || M <- Modules],
-              file:close(FD)
-          end,
-          Apps),
-        true
-      end).
-
-render_module_texi(P, App, EbinDir, Mod) ->
-  %% FIXME, hack. This is needed because we cannot access debug info
-  %% (and by extention doc chunks) in the escript. Build separate doc
-  %% chunks instead (How?)
-  FName = filename:join([EbinDir, "ebin", atom_to_list(Mod)]),
-  logger:notice("Rendering texi for ~p", [Mod]),
-  maybe
-    {ok, {Mod, [{abstract_code, Code}, {documentation, Documenation}]}} ?=
-      beam_lib:chunks(FName, [abstract_code, documentation]),
-    Specs = code_to_typespecs(Code),
-    {docs_v1,
-     Anno,                      % erl_anno:anno(),
-     _BeamLanguage,             % atom(),
-     Format,                    % binary(),
-     MDocWrapper,
-     Metadata,                  % map(),
-     Docs} = Documenation,
-    ModuleDoc = get_documentation(MDocWrapper),
-    true ?= ModuleDoc =/= false,
-    Chapter = <<"api/", (atom_to_binary(App))/binary, "/", (atom_to_binary(Mod))/binary>>,
-    P([<<"@node ">>, Chapter, $\n]),
-    P([<<"@section Module @code{">>, atom_to_binary(Mod), <<"}\n@lowersections\n">>]),
-    P(get_documentation(MDocWrapper)),
-    Functions = [I ||
-                  I = {{function, _, _}, _Posn, _NameStr, DocWrapper, _Attr} <- Docs,
-                  DocWrapper =/= hidden],
-    Types = [I ||
-              I = {{type, _, _}, _Posn, _NameStr, DocWrapper, _Attr} <- Docs,
-              DocWrapper =/= hidden],
-    document_category(P, type, Mod, Specs, Types),
-    document_category(P, function, Mod, Specs, Functions),
-    P([<<"\n@raisesections\n">>]),
-    true
-  else
-    {error,beam_lib, {missing_chunk, _, "Docs"}} ->
-      false;
-    false ->
-      false
-  end.
-
-code_to_typespecs({raw_abstract_v1, AST}) ->
-  lists:foldl(
-    fun(I = {attribute, _Anno, spec, {{Name, Arity}, _}}, Acc) ->
-        Acc#{{function, Name, Arity} => I};
-       (I = {attribute, _Anno, type, {Name, _AST, Params}}, Acc) ->
-        Acc#{{type, Name, length(Params)} => I};
-       (_, Acc) ->
-        Acc
-    end,
-    #{},
-    AST).
-
-document_category(_, _, _, _, []) ->
-  ok;
-document_category(P, Category, Mod, Specs, L) ->
-  case Category of
-    type ->
-      Index = <<"@tindex ">>,
-      Title = <<"Types">>,
-      AnchorPrefix = <<"t:">>;
-    function ->
-      Index = <<"@findex ">>,
-      Title = <<"Functions">>,
-      AnchorPrefix = <<>>
-  end,
-  P([<<"@section ">>, Title, <<"\n@table @strong\n">>]),
-  lists:foreach(
-    fun({Key = {_, Name, Arity}, _Posn, NameStr, DocWrapper, Attr}) ->
-        Regexp = <<"\\((?<a>\\w+)(\\s*,\\s*(?<b>\\w+))*\\)">>,
-        Arguments = case re:run(NameStr, Regexp, [{capture, all_names, binary}]) of
-                      nomatch -> [];
-                      {match, ArgL} -> lists:join($\ , ArgL)
-                    end,
-        FullName = [atom_to_binary(Mod), $:, atom_to_binary(Name), $/, integer_to_list(Arity)],
-        P([ <<"@anchor{">>, AnchorPrefix, FullName, <<"}\n">>
-          , <<"@item @verb{|">>, NameStr, <<"|}\n">>
-          , Index, FullName, $\n
-          ]),
-        case Specs of
-          #{Key := AST} ->
-            P([ <<"@example\n@verbatim\n">>
-              , erl_prettypr:format(AST)
-              , <<"\n@end verbatim\n@end example\n">>
-              ]);
-          #{} ->
-            ok
-        end,
-        P(get_documentation(DocWrapper))
-        %%P([<<"@end deffn\n">>])
-    end,
-    L),
-  P([<<"@end table\n">>]).
-
-fun_ref(Chapter, Name, Arity) ->
-  edoc_ref(<<Chapter/binary, "/f/">>, Name, Arity).
-
-type_ref(Chapter, Name, Arity) ->
-  edoc_ref(<<Chapter/binary, "/t/">>, Name, Arity).
-
-edoc_ref(Chapter, Name, Arity) ->
-  <<Chapter/binary, (atom_to_binary(Name))/binary, "/", (integer_to_binary(Arity))/binary>>.
-
-get_documentation(none) ->
-  [];
-get_documentation(hidden) ->
-  false;
-get_documentation(#{<<"en">> := Doc}) ->
-  [Doc, <<"\n\n">>].
 
 -spec dialyzed(profile(), nonempty_list(application())) -> anvl_condition:t().
 ?MEMO(dialyzed, Profile, Apps,
@@ -804,7 +683,7 @@ copy_includes(#{build_dir := BuildDir, src_root := SrcRoot}) ->
 %% @private Render application specification:
 render_app_spec(AppSrcProperties, Sources, Context) ->
   #{app := App, profile := Profile, project_root := ProjectRoot, build_dir := BuildDir} = Context,
-  AppFile = filename:join([BuildDir, "ebin", atom_to_list(App) ++ ".app"]),
+  AppFile = app_file(Context),
   Modules = [module_of_erl(I) || I <- Sources],
   NewContent0 = {application, App, [{modules, Modules} | AppSrcProperties]},
   NewContent = cfg_app_src_hook(ProjectRoot, Profile, NewContent0),

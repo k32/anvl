@@ -70,6 +70,7 @@ ANVL solves the problem of transitioning the system into a desired state step-by
 It's meant as an alternative to tools like @code{make} and @code{ansible},
 but it takes a different approach focusing on @i{conditions} and @i{preconditions}, expressed in a simple DSL based on Erlang.
 
+@cindex Condition
 The desired state of the system is expressed as a @i{condition}:
 a function that checks if the system is already in the correct state,
 and running arbitrary code to transfer into it there otherwise:
@@ -87,31 +88,52 @@ file_exists(Name) ->
 @end verbatim
 @end example
 
+@section API Reference
+@xref{api/anvl/anvl_condition, Condition API},
+@ref{api/anvl/anvl_hook, hooks},
+@ref{api/anvl/anvl_plugin, plugins},
+@ref{api/anvl/anvl_resource, resource management},
+@ref{api/anvl/anvl_lib, utility functions}
+
 @lee{anvl_plugin,ANVL}
 
 @node ANVL erlc
-@chapter Builtin Plugin @code{anvl_erlc}
+@chapter Builtin Plugin anvl_erlc
 
 @code{anvl_erlc} is a built-in plugin that compiles Erlang applications structured accorging to the
 @url{https://www.erlang.org/doc/system/applications#directory-structure,OTP design principles}.
 It allows ANVL to load other 3rd-party plugins.
 
+@xref{api/anvl/anvl_erlc, API Reference}.
+
 @lee{anvl_erlc,ANVL Erlc}
 
 @node ANVL Plugin Locate
-@chapter Builtin Plugin @code{anvl_locate}
+@chapter Builtin Plugin anvl_locate
 
-@code{anvl_locate} is a built-in plugin that provides a generic discovery mechanism for external dependencies.
+@code{anvl_locate} is a built-in plugin that provides a generic discovery mechanism for resolving external dependencies.
+This plugin doesn't do anything on its own,
+but acts as a broker between dependency resolver plugins (such as @ref{ANVL Plugin Git})
+and dependency consumers.
+
+@xref{api/anvl/anvl_locate, API Reference}.
 
 @node ANVL Plugin Git
-@chapter Builtin Plugin @code{anvl_git}
+@chapter Builtin Plugin anvl_git
 
 @lee{anvl_git,ANVL Git}
 
-@node ANVL Plugin Builder
-@chapter Builtin Plugin @code{anvl_plugin_builder}
+@node ANVL Plugin TexInfo
+@chapter Builtin Plugin anvl_texinfo
 
-@lee{anvl_plugin_builder,ANVL Plugin Builder}
+This builtin plugin contains routines for building documentation in GNU TexInfo format.
+
+ANVL uses it to produce its own documentation,
+as well as documentation for external plugins.
+
+@xref{api/anvl/anvl_texinfo, API Reference}.
+
+@lee{anvl_texinfo,ANVL TexInfo}
 
 @node API Reference
 @chapter API Reference

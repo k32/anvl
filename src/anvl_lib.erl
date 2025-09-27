@@ -112,6 +112,7 @@ template(Pattern, Substitutions0, iolist) ->
   Substitutions = template_normalize_substs(maps:iterator(Substitutions0), #{}),
   Fun = fun(_Whole, [Key]) ->
             case Substitutions of
+              #{Key := Atom} when is_atom(Atom) -> atom_to_binary(Atom);
               #{Key := Val} -> Val;
               _ -> error({"Bad substitution variable", Key, "available:", maps:keys(Substitutions)})
             end

@@ -20,7 +20,7 @@
 -include_lib("anvl.hrl").
 
 plugins(_) ->
-  [anvl_erlc, anvl_git, anvl_plugin_builder].
+  [anvl_erlc, anvl_git, anvl_texinfo].
 
 conditions(_) ->
   [escript, docs, install].
@@ -61,10 +61,9 @@ escript() ->
 ?MEMO(docs,
       begin
         precondition(
-          [ anvl_erlc:edoc(".", default, anvl)
-          , anvl_erlc:edoc_texi(default, [anvl])
-          , anvl_plugin_builder:documented(".", html)
-          , anvl_plugin_builder:documented(".", info)
+          [ anvl_texinfo:erl_doc(default, anvl)
+          , anvl_texinfo:documented(".", html)
+          , anvl_texinfo:documented(".", info)
           ])
       end).
 
@@ -90,7 +89,7 @@ erlc_escripts(#{profile := Profile}) ->
 
 %% Settings related to documentation generation:
 plugin_builder(_) ->
-  [anvl_plugin, anvl_erlc, anvl_git, anvl_locate, anvl_plugin_builder].
+  [anvl_plugin, anvl_erlc, anvl_git, anvl_locate, anvl_texinfo].
 
 plugin_builder_doc(_) ->
   "doc/src/anvl.texi".

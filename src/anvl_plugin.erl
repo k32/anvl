@@ -68,7 +68,7 @@ Condition: @var{Plugin} has been loaded.
           false;
         _ ->
           ?LOG_INFO("Loading ~p", [Plugin]),
-          Changed = if Plugin =:= anvl_erlc; Plugin =:= anvl_locate; Plugin =:= anvl_git; Plugin =:= anvl_plugin_builder ->
+          Changed = if Plugin =:= anvl_erlc; Plugin =:= anvl_locate; Plugin =:= anvl_git; Plugin =:= anvl_texinfo ->
                         %% Don't recompile builtin plugins:
                         false;
                        true ->
