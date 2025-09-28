@@ -22,7 +22,7 @@
 apps() ->
   [anvl_core, anvl_erlc, anvl_git, anvl_texinfo].
 
-plugins(_) ->
+plugins() ->
   [anvl_erlc, anvl_git, anvl_texinfo].
 
 conditions(_) ->

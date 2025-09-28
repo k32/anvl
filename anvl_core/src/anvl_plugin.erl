@@ -33,7 +33,7 @@ An ANVL API for managing plugins.
 %% Internal exports
 -export([start_link/0, metamodel/0, project_metamodel/0]).
 
--export_type([]).
+-export_type([t/0]).
 
 -include_lib("lee/include/lee.hrl").
 -include_lib("typerefl/include/types.hrl").
@@ -43,6 +43,8 @@ An ANVL API for managing plugins.
 %%================================================================================
 %% Type declarations
 %%================================================================================
+
+-type t() :: module().
 
 -callback model() -> lee:model_module().
 
@@ -86,7 +88,7 @@ init() ->
   %% Load builtin plugins:
   _ = precondition([loaded(P) || P <- BuiltinPlugins]),
   %% Load custom plugins:
-  Plugins = anvl_project:conf(anvl_project:root(), [plugins], #{}),
+  Plugins = anvl_project:plugins(anvl_project:root()),
   _ = precondition([loaded(P) || P <- Plugins]),
   %% Load global configuration:
   ok = gen_server:call(?MODULE, load_config).

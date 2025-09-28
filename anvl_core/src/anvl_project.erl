@@ -62,8 +62,18 @@ conditions() ->
                               false -> []
                             end
                         end,
-                        plugins(config_module(root()))),
+                        plugins(root())),
   custom_conditions(AdHoc) ++ AdHoc.
+
+-spec plugins(Project :: dir()) -> [anvl_plugin:t()].
+plugins(Project) ->
+  Module = anvl_config_module(Project),
+  case erlang:function_exported(Module, plugins, 0) of
+    true ->
+      Module:plugins();
+    false ->
+      []
+  end.
 
 %%================================================================================
 %% Lee metatype callbacks
@@ -153,7 +163,7 @@ config_module(ProjectRoot) ->
                     %% Initialize plugins for the child project:
                     precondition(
                       lists:map(fun anvl_plugin:loaded/1,
-                                plugins(Module)))
+                                plugins(Dir)))
                 end,
                 false;
               error ->
@@ -218,14 +228,6 @@ conf_override(ProjectRoot, Function, Args, Result) ->
 
 anvl_config_module(Dir) when is_list(Dir) ->
   list_to_atom("anvl_config##" ++ Dir).
-
-plugins(Module) ->
-  case erlang:function_exported(Module, plugins, 1) of
-    true ->
-      Module:plugins(#{});
-    false ->
-      []
-  end.
 
 custom_conditions(AdHoc) ->
   Invoked = anvl_plugin:conf([custom_conditions]),
