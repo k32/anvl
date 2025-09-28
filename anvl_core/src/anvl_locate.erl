@@ -19,14 +19,10 @@
 
 -module(anvl_locate).
 -moduledoc """
-A universal plugin for managing external dependencies.
-
-This plugin doesn't do much on its own, but it provides a generic
-declarative interface for discovering, downloading and unpacking
-dependencies.
-
-Other plugins (such as @code{anvl_git} or any third-party plugin) can
-hook into @code{anvl_locate}'.
+This module provides a generic discovery mechanism for resolving external dependencies.
+It doesn't do anything on its own,
+but acts as a broker between dependency resolver plugins (such as @ref{ANVL Plugin Git})
+and dependency consumers.
 """.
 
 -behavior(anvl_plugin).

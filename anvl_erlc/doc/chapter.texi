@@ -1,0 +1,8 @@
+@node ANVL erlc
+@chapter Builtin Plugin anvl_erlc
+
+@code{anvl_erlc} is a built-in plugin that compiles Erlang applications structured accorging to the
+@url{https://www.erlang.org/doc/system/applications#directory-structure,OTP design principles}.
+It allows ANVL to load other 3rd-party plugins.
+
+@lee{anvl_erlc,ANVL Erlc}

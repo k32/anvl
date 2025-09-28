@@ -31,7 +31,7 @@ An ANVL API for managing plugins.
 -export([init/1, handle_call/3, handle_cast/2, terminate/2]).
 
 %% Internal exports
--export([model/0, project_model/0, start_link/0, metamodel/0, project_metamodel/0]).
+-export([start_link/0, metamodel/0, project_metamodel/0]).
 
 -export_type([]).
 
@@ -64,7 +64,7 @@ Condition: @var{Plugin} has been loaded.
 -spec loaded(atom()) -> anvl_condition:t().
 ?MEMO(loaded, Plugin,
       case Plugin of
-        ?MODULE ->
+        anvl_core ->
           false;
         _ ->
           ?LOG_INFO("Loading ~p", [Plugin]),
@@ -105,79 +105,6 @@ List global configuration for a key.
 list_conf(Key) ->
   lee:list(?conf_storage, Key).
 
--doc false.
-model() ->
-  #{ log =>
-       #{ global_level =>
-            {[value, os_env, cli_param, logger_level],
-             #{ oneliner    => "Minimum severity of log messages"
-              , default     => notice
-              , type        => lee_logger:level()
-              , cli_operand => "log-level"
-              }}
-        , default_handler_level =>
-            {[value, os_env, logger_level],
-             #{ oneliner       => "Log level for the default handler"
-              , type           => lee_logger:level()
-              , default_ref    => [log, global_level]
-              , logger_handler => default
-              }}
-        }
-   , custom_conditions =>
-       {[value, cli_positional],
-        #{ oneliner         => "List of conditions to satisfy"
-         , type             => typerefl:list(atom())
-         , cli_arg_position => rest
-         }}
-   , shell =>
-       {[value, cli_param],
-        #{ oneliner    => "Start Erlang shell after running the tasks"
-         , type        => boolean()
-         , cli_operand => "shell"
-         , default     => false
-         }}
-   , top =>
-       #{ n_time =>
-            {[value, cli_param, os_env],
-             #{ oneliner    => "Display top N slowest jobs"
-              , type        => union(non_neg_integer(), true)
-              , cli_operand => "top-time"
-              , default     => 0
-              }}
-        , n_reds =>
-           {[value, cli_param, os_env],
-            #{ oneliner    => "Displey top N jobs by reductions"
-             , type        => union(non_neg_integer(), true)
-             , cli_operand => "top-reds"
-             , default     => 0
-             }}
-        }
-   , help =>
-       #{ run =>
-            {[value, cli_param],
-             #{ oneliner    => "Get help"
-              , type        => boolean()
-              , default     => false
-              , cli_operand => "help"
-              }}
-        }
-   }.
-
--doc false.
-project_model() ->
-   #{ plugins =>
-       {[pcfg],
-        #{ type => [module()]
-         , function => plugins
-         }}
-    , custom_conditions =>
-        {[pcfg],
-         #{ type => [atom()]
-          , function => conditions
-          , default => []
-          }}
-    }.
-
 %%================================================================================
 %% gen_server callbacks:
 %%================================================================================
@@ -197,7 +124,7 @@ start_link() ->
 init([]) ->
   S = #s{},
   lee_storage:new(lee_persistent_term_storage, anvl_conf_storage),
-  do_load_model(?MODULE, S).
+  do_load_model(anvl_core, S).
 
 -doc false.
 handle_call(load_config, _From, S = #s{m = Model}) ->

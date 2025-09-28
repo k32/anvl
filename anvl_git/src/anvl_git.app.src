@@ -1,0 +1,6 @@
+%% -*- mode:erlang -*-
+{application, anvl_git,
+ [ {description, "ANVL plugin for cloning Git repositories"}
+ , {vsn, "0.0.1"}
+ , {applications, [kernel, anvl_core]}
+ ]}.

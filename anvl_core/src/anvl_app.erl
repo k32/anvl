@@ -44,7 +44,7 @@ main(["--help" | _]) ->
 main(CLIArgs) ->
   set_logger_conf(),
   application:set_env(anvl, cli_args, CLIArgs),
-  {ok, _} = application:ensure_all_started(anvl),
+  {ok, _} = application:ensure_all_started(anvl_core),
   anvl_plugin:init(),
   case anvl_project:conditions() of
     [] ->
@@ -73,10 +73,11 @@ halt(ExitCode) ->
 %% Internal exports
 %%================================================================================
 
-%% @hidden Used internally to bootstrap ANVL
+-doc false.
+%% Used internally to bootstrap ANVL
 bootstrap() ->
   {ok, _} = ?MODULE:start(normal, []),
-  application:set_env(anvl, include_dir, "include"),
+  application:set_env(anvl_core, include_dir, "anvl_core/include"),
   anvl_plugin:init(),
   _ = precondition(anvl_erlc:escript(anvl_project:root(), stage2, anvl)),
   ok.

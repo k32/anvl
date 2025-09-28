@@ -25,13 +25,13 @@ A plugin for creating and compiling @url{https://www.gnu.org/software/texinfo/, 
 -behavior(anvl_plugin).
 
 %% API
--export([documented/2, lee_model_doc/1, erl_doc/2, erl_module_doc/3]).
+-export([documented/2, anvl_plugin_documented/1, erl_doc/2, erl_module_doc/3]).
 
 %% behavior callbacks:
 -export([init/0, model/0, project_model/0, conditions/1]).
 
 -include_lib("typerefl/include/types.hrl").
--include("anvl.hrl").
+-include_lib("anvl_core/include/anvl.hrl").
 
 %%================================================================================
 %% Type declarations
@@ -64,7 +64,7 @@ model() ->
            {[value, cli_param],
             #{ oneliner => "Output directory for the plugin documentation"
              , type => typerefl:filename_all()
-             , default => "_anvl_doc"
+             , default => filename:join("_anvl_build", "doc")
              , cli_operand => "anvl-doc-dir"
              }}
        , document =>
@@ -110,16 +110,17 @@ conditions(ProjectRoot) ->
             Keys).
 
 -doc """
-Extract documentation from the model and output it to texinfo files that can be included into a main file.
+Condition: documentation for the @var{Plugin} has been extracted.
+
+This condition is specific for ANVL plugins.
 """.
-?MEMO(lee_model_doc, Plugin,
+?MEMO(anvl_plugin_documented, Plugin,
       begin
         _ = precondition(anvl_plugin:loaded(Plugin)),
         Dir = doc_dir(Plugin),
-        %% Check if the extracted documents should be rebuilt:
-        %% Beam = list_to_binary(code:which(Plugin)),
-        %% anvl_lib:newer(Beam, filename:join(Dir, "cli_param.texi")) or
-        %%   anvl_lib:newer(Beam, filename:join(Dir, "value.texi")) andalso
+        %% Render API reference:
+        _ = precondition(erl_doc(default, Plugin)),
+        %% Render model documentation:
         erlang:function_exported(Plugin, model, 0) andalso
           begin
             case lee_model:compile(anvl_plugin:metamodel(), [Plugin:model()]) of
@@ -150,13 +151,14 @@ Extract documentation from the model and output it to texinfo files that can be 
           Format ->
             Output = DocTarget = filename:join(Dir, Name ++ "." ++ atom_to_list(Format))
         end,
-        precondition([lee_model_doc(I) || I <- cfg_plugins(ProjectRoot)]) or
+        precondition([anvl_plugin_documented(I) || I <- cfg_plugins(ProjectRoot)]) or
           newer(DocSrc, DocTarget) andalso
           begin
             filelib:ensure_dir(DocTarget),
             ?LOG_NOTICE("Creating ~s", [DocTarget]),
             anvl_lib:exec("texi2any", [ "-c", "INFO_JS_DIR=js"
                                       , "-I", Dir
+                                      , "-I", ProjectRoot
                                       , "--" ++ atom_to_list(Format)
                                       , "-o", Output
                                       , DocSrc
@@ -170,23 +172,22 @@ Render documentation for an Erlang application @var{App} compiled in profile @va
 -spec erl_doc(Profile :: anvl_erlc:profile(), App :: anvl_erc:application()) -> anvl_condition:t().
 ?MEMO(erl_doc, Profile, App,
       begin
-        %% FIXME:
-        DocRootDir = "_anvl_doc/edoc",
-        OutDir = filename:join(DocRootDir, atom_to_list(App)),
-        OutFile = OutDir ++ ".texi",
-        ok = filelib:ensure_path(OutDir),
+        OutDir = filename:join(anvl_plugin:conf([anvl_texinfo, doc_dir]),
+                               atom_to_list(App)),
+        ModulesDir = filename:join(OutDir, "mod"),
+        OutFile = filename:join(OutDir, "app.texi"),
         #{spec := Spec} = Ctx = anvl_erlc:app_info(Profile, App),
         {application, _, AppKVs} = Spec,
         Modules = proplists:get_value(modules, AppKVs),
         newer(anvl_erlc:app_file(Ctx), OutFile) or
-        precondition([erl_module_doc(OutDir, Ctx, I) || I <- Modules]) andalso
+        precondition([erl_module_doc(ModulesDir, Ctx, I) || I <- Modules]) andalso
           begin
-            {ok, FD} = file:open(OutDir ++ ".texi", [write]),
+            {ok, FD} = file:open(OutFile, [write]),
             lists:foreach(
               fun(Mod) ->
                   io:put_chars(FD, [ <<"@include ">>
-                                   , erl_module_doc_fn(OutDir, Mod)
-                                   , $\n
+                                   , filename:join(ModulesDir, atom_to_list(Mod))
+                                   , <<".texi\n">>
                                    ])
               end,
               Modules),
@@ -195,6 +196,9 @@ Render documentation for an Erlang application @var{App} compiled in profile @va
           end
       end).
 
+-doc """
+Render documentation for an Erlang module.
+""".
 -spec erl_module_doc(
         OutputDir :: file:filename(),
         AppInfo :: anvl_erc:app_info(),
@@ -294,7 +298,7 @@ document_category(P, Category, Mod, Specs, L) ->
   end,
   P([<<"@section ">>, Title, <<"\n@table @strong\n">>]),
   lists:foreach(
-    fun({Key = {_, Name, Arity}, _Posn, NameStr, DocWrapper, Attr}) ->
+    fun({Key = {_, Name, Arity}, _Posn, NameStr, DocWrapper, Attrs}) ->
         FullName = [atom_to_binary(Mod), $:, atom_to_binary(Name), $/, integer_to_list(Arity)],
         P([ <<"@anchor{">>, AnchorPrefix, FullName, <<"}\n">>
           , <<"@item @verb{|">>, NameStr, <<"|}\n">>
@@ -315,13 +319,13 @@ document_category(P, Category, Mod, Specs, L) ->
               ok;
             (exported, Exp) ->
               Exp orelse P(<<"@emph{Not exported}\n\n">>);
-            (Key, Val) ->
-             P([ <<"@emph{">>, atom_to_binary(Key), <<"}: @code{@verb{|">>
+            (Attr, Val) ->
+             P([ <<"@emph{">>, atom_to_binary(Attr), <<"}: @code{@verb{|">>
                , io_lib:format("~p", [Val])
                , <<"|}}\n\n">>
                ])
          end,
-         Attr),
+         Attrs),
         P(get_documentation(DocWrapper))
     end,
     L),

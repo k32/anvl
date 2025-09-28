@@ -24,8 +24,6 @@ API for managing the hooks.
 Plugins can declare hook points and inject code into other plugin's hook points.
 """.
 
--behavior(lee_metatype).
-
 -export([init/0, add/2, add/3, list/1, foreach/2, flatmap/2, first_match/2]).
 
 %%================================================================================

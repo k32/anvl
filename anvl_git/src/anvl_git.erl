@@ -28,7 +28,7 @@ A builtin plugin for cloning Git repositories.
 -export([model/0, init/0]).
 
 -include_lib("typerefl/include/types.hrl").
--include("anvl.hrl").
+-include_lib("anvl_core/include/anvl.hrl").
 
 -type options() :: #{ repo := string() | binary()
                     , ref := string()

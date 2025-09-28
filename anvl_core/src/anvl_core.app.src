@@ -1,7 +1,7 @@
 %% -*- mode:erlang -*-
-{application, anvl,
+{application, anvl_core,
  [ {description, "A parallel general-purpose task scheduling tool"}
  , {vsn, "0.0.1"}
- , {applications, [kernel, compiler, lee]}
+ , {applications, [kernel, lee]}
  , {mod, {anvl_app, []}}
  ]}.

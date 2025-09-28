@@ -1,0 +1,6 @@
+%% -*- mode:erlang -*-
+{application, anvl_texinfo,
+ [ {description, "ANVL plugin for processing TexInfo documentation"}
+ , {vsn, "0.0.1"}
+ , {applications, [kernel, anvl_core]}
+ ]}.

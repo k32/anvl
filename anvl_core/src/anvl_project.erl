@@ -2,7 +2,7 @@
 %% This file is part of anvl, a parallel general-purpose task
 %% execution tool.
 %%
-%% Copyright (C) 2024 k32
+%% Copyright (C) 2024-2025 k32
 %%
 %% This program is free software: you can redistribute it and/or
 %% modify it under the terms of the GNU Lesser General Public License
@@ -254,7 +254,7 @@ custom_conditions(AdHoc) ->
   end.
 
 include_dir() ->
-  case application:get_env(anvl, include_dir) of
+  case application:get_env(anvl_core, include_dir) of
     undefined ->
       filename:join(anvl_app:prefix(), "share/anvl/include");
     {ok, Dir} ->

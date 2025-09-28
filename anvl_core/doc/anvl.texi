@@ -19,6 +19,12 @@
   @lowersections
     @include \DIR\/value.texi
   @raisesections
+
+  @node \PREFIX\ API Reference
+  @section API Reference
+  @lowersections
+    @include \DIR\/app.texi
+  @raisesections
 @end macro
 
 @macro pconf
@@ -65,7 +71,7 @@ Foundation Web site at @url{https://www.gnu.org/licenses/fdl.html}.
 @insertcopying
 @end ifnottex
 
-@node ANVL Common
+@node Introduction
 @chapter Introduction
 
 ANVL a general-purpose task planning and execution tool,
@@ -94,56 +100,11 @@ file_exists(Name) ->
 @end verbatim
 @end example
 
-@section API Reference
-@xref{api/anvl/anvl_condition, Condition API},
-@ref{api/anvl/anvl_hook, hooks},
-@ref{api/anvl/anvl_plugin, plugins},
-@ref{api/anvl/anvl_resource, resource management},
-@ref{api/anvl/anvl_lib, utility functions}
+@lee{anvl_core,ANVL}
 
-@lee{anvl_plugin,ANVL}
-
-@node ANVL erlc
-@chapter Builtin Plugin anvl_erlc
-
-@code{anvl_erlc} is a built-in plugin that compiles Erlang applications structured accorging to the
-@url{https://www.erlang.org/doc/system/applications#directory-structure,OTP design principles}.
-It allows ANVL to load other 3rd-party plugins.
-
-@xref{api/anvl/anvl_erlc, API Reference}.
-
-@lee{anvl_erlc,ANVL Erlc}
-
-@node ANVL Plugin Locate
-@chapter Builtin Plugin anvl_locate
-
-@code{anvl_locate} is a built-in plugin that provides a generic discovery mechanism for resolving external dependencies.
-This plugin doesn't do anything on its own,
-but acts as a broker between dependency resolver plugins (such as @ref{ANVL Plugin Git})
-and dependency consumers.
-
-@xref{api/anvl/anvl_locate, API Reference}.
-
-@node ANVL Plugin Git
-@chapter Builtin Plugin anvl_git
-
-@lee{anvl_git,ANVL Git}
-
-@node ANVL Plugin TexInfo
-@chapter Builtin Plugin anvl_texinfo
-
-This builtin plugin contains routines for building documentation in GNU TexInfo format.
-
-ANVL uses it to produce its own documentation,
-as well as documentation for external plugins.
-
-@xref{api/anvl/anvl_texinfo, API Reference}.
-
-@lee{anvl_texinfo,ANVL TexInfo}
-
-@node API Reference
-@chapter API Reference
-@include edoc/anvl.texi
+@include anvl_erlc/doc/chapter.texi
+@include anvl_git/doc/chapter.texi
+@include anvl_texinfo/doc/chapter.texi
 
 @node Index
 @unnumbered Index

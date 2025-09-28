@@ -37,7 +37,7 @@ A builtin plugin for compiling Erlang applications.
 
 -include_lib("typerefl/include/types.hrl").
 -include_lib("kernel/include/logger.hrl").
--include("anvl.hrl").
+-include_lib("anvl_core/include/anvl.hrl").
 
 %%================================================================================
 %% Type declarations

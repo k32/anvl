@@ -19,6 +19,9 @@
 
 -include("anvl.hrl").
 
+apps() ->
+  [anvl_core, anvl_erlc, anvl_git, anvl_texinfo].
+
 plugins(_) ->
   [anvl_erlc, anvl_git, anvl_texinfo].
 
@@ -31,7 +34,7 @@ conditions(_) ->
         precondition([escript(), docs()]) or
           install_includes(Prefix) or
           install(Prefix, "${prefix}/bin/anvl", "anvl") or
-          install(Prefix, "${prefix}/share/anvl/info/anvl.info", "_anvl_doc/anvl.info")
+          install(Prefix, "${prefix}/share/anvl/info/anvl.info", "_anvl_build/doc/anvl.info")
       end).
 
 install_includes(Prefix) ->
@@ -60,9 +63,9 @@ escript() ->
 
 ?MEMO(docs,
       begin
+        precondition([anvl_texinfo:anvl_plugin_documented(I) || I <- apps()]),
         precondition(
-          [ anvl_texinfo:erl_doc(default, anvl)
-          , anvl_texinfo:documented(".", html)
+          [ anvl_texinfo:documented(".", html)
           , anvl_texinfo:documented(".", info)
           ])
       end).
@@ -70,26 +73,28 @@ escript() ->
 erlc_profiles(_) ->
   [default, stage2, test, perf].
 
-erlc_deps(#{app := anvl}) ->
-  ".";
-erlc_deps(_) ->
-  "vendor/${dep}".
+erlc_deps(#{app := A}) ->
+  %% Derive application src root path:
+  case lists:member(A, apps()) of
+    true -> "${dep}";
+    false -> "vendor/${dep}"
+  end.
 
 erlc_escripts(#{profile := Profile}) ->
   CommonArgs = "-dist_listen false -escript main anvl_app",
   EmuArgs = case Profile of
-              stage2 -> "-anvl include_dir \"include\" " ++ CommonArgs;
+              stage2 -> "-anvl_core include_dir \"anvl_core/include\" " ++ CommonArgs;
               perf -> "+JPperf true " ++ CommonArgs;
               _ -> CommonArgs
             end,
   #{anvl =>
-      #{ apps => [anvl, lee, typerefl]
+      #{ apps => [anvl_core, anvl_erlc, anvl_git, anvl_texinfo, lee, typerefl]
        , emu_args => EmuArgs
        }}.
 
 %% Settings related to documentation generation:
 plugin_builder(_) ->
-  [anvl_plugin, anvl_erlc, anvl_git, anvl_locate, anvl_texinfo].
+  [anvl_erlc, anvl_git, anvl_texinfo].
 
 plugin_builder_doc(_) ->
-  "doc/src/anvl.texi".
+  "anvl_core/doc/anvl.texi".

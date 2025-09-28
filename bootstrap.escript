@@ -5,7 +5,7 @@
 %% This file is part of anvl, a parallel general-purpose task
 %% execution tool.
 %%
-%% Copyright (C) 2024 k32
+%% Copyright (C) 2024-2025 k32
 %%
 %% This program is free software: you can redistribute it and/or
 %% modify it under the terms of the GNU Lesser General Public License
@@ -27,7 +27,7 @@ main(_Args) ->
   ok = filelib:ensure_dir(filename:join(Dir, "anvl")),
   code:add_path(Dir),
   Opts = [ {outdir, Dir}
-         , {i, "include"}
+         , {i, "anvl_core/include"}
          , {i, "vendor"}
          , {i, "vendor/erlang_qq/include"}
          , {i, "vendor/typerefl/include"}
@@ -37,7 +37,7 @@ main(_Args) ->
           , "vendor/typerefl/src/typerefl_trans.erl"
           , "vendor/typerefl/src/typerefl.erl"
           ] ++ filelib:wildcard("vendor/lee/src/*/*.erl")
-            ++ filelib:wildcard("src/*.erl"),
+            ++ filelib:wildcard("anvl_*/src/*.erl"),
   up_to_date = make:files(Files, Opts),
   io:format("===================~n Bootstrap stage 2~n===================~n", []),
   %% Load stage1 files:
