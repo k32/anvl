@@ -133,7 +133,8 @@ init() ->
 %% Internal functions
 %%================================================================================
 
-builtin(#{dep := App, kind := erlc_deps}) when App =:= anvl; App =:= lee; App =:= typerefl;
+builtin(#{dep := App, kind := erlc_deps}) when App =:= anvl_core; App =:= avnl_git; App =:= anvl_erlc; App =:= anvl_texinfo;
+                                               App =:= lee; App =:= typerefl;
                                                App =:= snabbkaffe; App =:= anvl_git;
                                                App =:= erlang_qq ->
   ?LOG_INFO("Using ANVL-builtin version of ~p", [App]),
