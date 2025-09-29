@@ -174,7 +174,7 @@ Condition: function has been compiled.
         COpts0 = cfg_compile_options(SrcRoot, Profile),
         IncludePatterns = cfg_include_dirs(SrcRoot, Profile),
         SrcPatterns = cfg_sources(SrcRoot, Profile),
-        BDeps = cfg_bdeps(SrcRoot, Profile),
+        BDeps = cfg_bdeps(SrcRoot, Profile, App),
         logger:warning(#{a => App, bd => BDeps}),
         AppSrcProperties = app_src(App, SrcRoot),
         Dependencies = non_otp_apps(BDeps ++ proplists:get_value(applications, AppSrcProperties, [])),
@@ -219,8 +219,8 @@ Condition: function has been compiled.
 -spec edoc(file:filename_all(), profile(), application()) -> anvl_condition:t().
 ?MEMO(edoc, ProjectRoot, Profile, App,
       begin
-        OutputDir = cfg_edoc_output_dir(ProjectRoot, Profile, App),
-        Options = cfg_edoc_options(ProjectRoot, Profile, App),
+        OutputDir = cfg_edoc_output_dir(ProjectRoot, Profile),
+        Options = cfg_edoc_options(ProjectRoot, Profile),
         ok = filelib:ensure_path(OutputDir),
         #{src_root := Src, includes := IncludeDirs} = AppInfo = app_info(Profile, App),
         ok = anvl_hook:foreach(erlc_pre_edoc_hook, AppInfo),
@@ -385,11 +385,11 @@ project_model() ->
           #{ type => [anvl_lib:filename_pattern()]
            , default => default_include_dirs()
            }}
-     , bdeps =>
-         {[value],
-          #{ type => [application()]
-           , default => []
-           }}
+     %% , bdeps =>
+     %%     {[value],
+     %%      #{ type => [application()]
+     %%       , default => []
+     %%       }}
      , sources =>
          {[value],
           #{ type => [anvl_lib:filename_pattern()]
@@ -400,6 +400,19 @@ project_model() ->
           #{ type => list()
            , default => [debug_info]
            }}
+     , edoc =>
+         #{ output_dir =>
+              {[value],
+               #{ type => string()
+                , default => "doc"
+                },
+               maps:merge(Profile, App)}
+          , options =>
+              {[value],
+               #{ type => list()
+                , default => [{preprocess, true}]
+                }}
+          }
      },
   Overrides = lee_model:map_vals(
                 fun(Key, {MTs, Attrs0}) ->
@@ -420,6 +433,14 @@ project_model() ->
                   #{ type => atom()
                    }}
              }}
+       , bdeps =>
+           {[pcfg],
+            #{ type => [application()]
+             , function => erlc_bdeps
+             , default => []
+             },
+            maps:merge(Profile, App)
+            }
        , deps =>
            {[pcfg],
             #{ type => anvl_locate:spec()
@@ -456,20 +477,6 @@ project_model() ->
              , function => erlc_escript_extra_files
              , default => []
              }}
-       , edoc_output_dir =>
-           {[pcfg],
-            #{ type => string()
-             , function => erlc_edoc_dir
-             , default => "doc"
-             },
-            maps:merge(Profile, App)}
-       , edoc_options =>
-           {[pcfg],
-            #{ type => list()
-             , function => erlc_edoc_options
-             , default => [{preprocess, true}]
-             },
-            maps:merge(Profile, App)}
        }}.
 
 -doc false.
@@ -823,8 +830,8 @@ cfg_app_src_hook(ProjectRoot, Profile, AppSpec) ->
   anvl_project:conf(ProjectRoot, erlc_app_spec_hook, [Args], AppSpec,
                     application_spec()).
 
-cfg_bdeps(ProjectRoot, Profile) ->
-  anvl_project:nuconf(ProjectRoot, [erlc, overrides, {Profile}, bdeps]).
+cfg_bdeps(ProjectRoot, Profile, App) ->
+  anvl_project:conf(ProjectRoot, [erlc, bdeps], #{profile => Profile, app => App}).
 
 cfg_escript_files(ProjectRoot, Profile, App) ->
   anvl_project:conf(ProjectRoot, [erlc, escript_files], #{profile => Profile, app => App}).
@@ -832,13 +839,11 @@ cfg_escript_files(ProjectRoot, Profile, App) ->
 cfg_escript_extra_files(ProjectRoot, Profile, Escript) ->
   anvl_project:conf(ProjectRoot, [erlc, escript_extra_files], #{profile => Profile, escript => Escript}).
 
-%% These options are not used during bootstrap, it's not necessary to
-%% mock them:
-cfg_edoc_output_dir(ProjectRoot, Profile, App) ->
-  anvl_project:conf(ProjectRoot, [erlc, edoc_output_dir], #{profile => Profile, app => App}).
+cfg_edoc_output_dir(ProjectRoot, Profile) ->
+  anvl_project:nuconf(ProjectRoot, [erlc, overrides, {Profile}, edoc, output_dir]).
 
-cfg_edoc_options(ProjectRoot, Profile, App) ->
-  anvl_project:conf(ProjectRoot, [erlc, edoc_options], #{profile => Profile, app => App}).
+cfg_edoc_options(ProjectRoot, Profile) ->
+  anvl_project:nuconf(ProjectRoot, [erlc, overrides, {Profile}, edoc, options]).
 
 default_escript_files() ->
   [ "priv/**"
