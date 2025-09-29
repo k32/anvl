@@ -25,10 +25,10 @@ A plugin for creating and compiling @url{https://www.gnu.org/software/texinfo/, 
 -behavior(anvl_plugin).
 
 %% API
--export([documented/2, anvl_plugin_documented/1, erl_doc/2, erl_module_doc/3]).
+-export([compiled/2, anvl_plugin_documented/1, erl_doc/2, erl_module_doc/3]).
 
 %% behavior callbacks:
--export([init/0, model/0, project_model/0, conditions/1]).
+-export([init/0, model/0, project_model/0]).
 
 -include_lib("typerefl/include/types.hrl").
 -include_lib("anvl_core/include/anvl.hrl").
@@ -86,28 +86,7 @@ model() ->
 
 -doc false.
 project_model() ->
-  #{anvl_project_builder =>
-      #{ plugins =>
-           {[pcfg],
-            #{ type => list(module())
-             , function => plugin_builder
-             }}
-       , documentation =>
-           {[pcfg],
-            #{ type => typerefl:filename_all()
-             , function => plugin_builder_doc
-             }}
-       }}.
-
--doc false.
-conditions(ProjectRoot) ->
-  Keys = anvl_plugin:list_conf([anvl_texinfo, document, {}]),
-  lists:map(fun(Key) ->
-                documented(
-                  ProjectRoot,
-                  anvl_plugin:conf(Key ++ [format]))
-            end,
-            Keys).
+  #{}.
 
 -doc """
 Condition: documentation for the @var{Plugin} has been extracted.
@@ -139,9 +118,8 @@ This condition is specific for ANVL plugins.
           end
       end).
 
-?MEMO(documented, ProjectRoot, Format,
+?MEMO(compiled, DocSrc, Format,
       begin
-        DocSrc = cfg_documentation(anvl_project:root()),
         Dir = anvl_plugin:conf([anvl_texinfo, doc_dir]),
         Name = filename:rootname(filename:basename(DocSrc)),
         case Format of
@@ -151,14 +129,13 @@ This condition is specific for ANVL plugins.
           Format ->
             Output = DocTarget = filename:join(Dir, Name ++ "." ++ atom_to_list(Format))
         end,
-        precondition([anvl_plugin_documented(I) || I <- cfg_plugins(ProjectRoot)]) or
-          newer(DocSrc, DocTarget) andalso
+        %% TODO: check dependencies
+        newer(DocSrc, DocTarget) or true andalso
           begin
             filelib:ensure_dir(DocTarget),
             ?LOG_NOTICE("Creating ~s", [DocTarget]),
             anvl_lib:exec("texi2any", [ "-c", "INFO_JS_DIR=js"
                                       , "-I", Dir
-                                      , "-I", ProjectRoot
                                       , "--" ++ atom_to_list(Format)
                                       , "-o", Output
                                       , DocSrc
@@ -340,9 +317,3 @@ get_documentation(#{<<"en">> := Doc}) ->
 
 doc_dir(Plugin) ->
   filename:join([anvl_plugin:conf([anvl_texinfo, doc_dir]), Plugin]).
-
-cfg_plugins(ProjectRoot) ->
-  anvl_project:conf(ProjectRoot, [anvl_project_builder, plugins], #{}).
-
-cfg_documentation(ProjectRoot) ->
-  anvl_project:conf(ProjectRoot, [anvl_project_builder, documentation], #{}).

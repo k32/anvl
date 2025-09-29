@@ -28,6 +28,13 @@ plugins() ->
 conditions(_) ->
   [escript, docs, install].
 
+conf() ->
+  #{ plugins => plugins()
+   , erlc =>
+       #{ profiles => erlc_profiles(1)
+        }
+   }.
+
 ?MEMO(install,
       begin
         Prefix = filename:join(os:getenv("HOME"), ".local"),
@@ -64,9 +71,10 @@ escript() ->
 ?MEMO(docs,
       begin
         precondition([anvl_texinfo:anvl_plugin_documented(I) || I <- apps()]),
+        Main = "anvl_core/doc/anvl.texi",
         precondition(
-          [ anvl_texinfo:documented(".", html)
-          , anvl_texinfo:documented(".", info)
+          [ anvl_texinfo:compiled(Main, html)
+          , anvl_texinfo:compiled(Main, info)
           ])
       end).
 
@@ -91,10 +99,6 @@ erlc_escripts(#{profile := Profile}) ->
       #{ apps => [anvl_core, anvl_erlc, anvl_git, anvl_texinfo, lee, typerefl]
        , emu_args => EmuArgs
        }}.
-
-%% Settings related to documentation generation:
-plugin_builder(_) ->
-  [anvl_erlc, anvl_git, anvl_texinfo].
 
 plugin_builder_doc(_) ->
   "anvl_core/doc/anvl.texi".

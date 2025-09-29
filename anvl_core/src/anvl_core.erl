@@ -85,8 +85,9 @@ model() ->
 -doc false.
 project_model() ->
    #{ plugins =>
-       {[pcfg],
-        #{ type => [module()]
+       {[value, pcfg],
+        #{ type => [anvl_plugin:t()]
+         , default => []
          , function => plugins
          }}
     , custom_conditions =>

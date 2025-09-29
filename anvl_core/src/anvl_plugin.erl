@@ -33,7 +33,7 @@ An ANVL API for managing plugins.
 %% Internal exports
 -export([start_link/0, metamodel/0, project_metamodel/0]).
 
--export_type([t/0]).
+-reflect_type([t/0]).
 
 -include_lib("lee/include/lee.hrl").
 -include_lib("typerefl/include/types.hrl").
@@ -69,8 +69,7 @@ Condition: @var{Plugin} has been loaded.
         anvl_core ->
           false;
         _ ->
-          ?LOG_INFO("Loading ~p", [Plugin]),
-          Changed = if Plugin =:= anvl_erlc; Plugin =:= anvl_locate; Plugin =:= anvl_git; Plugin =:= anvl_texinfo ->
+          Changed = if Plugin =:= anvl_erlc; Plugin =:= anvl_git; Plugin =:= anvl_texinfo ->
                         %% Don't recompile builtin plugins:
                         false;
                        true ->
@@ -84,7 +83,7 @@ Condition: @var{Plugin} has been loaded.
 -doc false.
 init() ->
   ok = anvl_sup:init_plugins(),
-  BuiltinPlugins = [anvl_locate, anvl_erlc, anvl_git],
+  BuiltinPlugins = [anvl_erlc, anvl_git, anvl_texinfo],
   %% Load builtin plugins:
   _ = precondition([loaded(P) || P <- BuiltinPlugins]),
   %% Load custom plugins:
@@ -125,7 +124,7 @@ start_link() ->
 -doc false.
 init([]) ->
   S = #s{},
-  lee_storage:new(lee_persistent_term_storage, anvl_conf_storage),
+  lee_storage:new(lee_persistent_term_storage, ?tool_conf_storage_token),
   do_load_model(anvl_core, S).
 
 -doc false.
@@ -225,6 +224,9 @@ metamodel() ->
 
 project_metamodel() ->
   [ lee_metatype:create(lee_undocumented)
+  , lee_metatype:create(lee_value)
+  , lee_metatype:create(lee_pointer)
+  , lee_metatype:create(lee_map)
   , lee_metatype:create(anvl_project)
   ].
 

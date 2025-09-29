@@ -19,7 +19,7 @@
 
 -module(anvl_project).
 
--export([root/0, conf/3, conditions/0, plugins/1]).
+-export([root/0, conf/3, nuconf/2, conditions/0, plugins/1]).
 
 %% Internal exports
 -export([conf/5, parse_transform/2]).
@@ -154,17 +154,12 @@ config_module(ProjectRoot) ->
               {ok, Module, Binary} ->
                 {module, Module} = code:load_binary(Module, ConfFile, Binary),
                 anvl_condition:set_result(#conf_module_of_dir{directory = Dir}, Module),
-                case root() of
-                  Dir ->
-                    %% Plugins for the root project are initialized at
-                    %% startup:
-                    ok;
-                  _ ->
-                    %% Initialize plugins for the child project:
-                    precondition(
-                      lists:map(fun anvl_plugin:loaded/1,
-                                plugins(Dir)))
-                end,
+                Conf = lee_storage:new(lee_persistent_term_storage, ?proj_conf_storage_token(Dir)),
+                load_project_conf(Dir, Module, Conf),
+                precondition(
+                  lists:map(fun anvl_plugin:loaded/1,
+                            plugins(Dir))) andalso
+                  load_project_conf(ConfFile, Module, Conf),
                 false;
               error ->
                 ?UNSAT("Failed to compile anvl config file for ~s.", [Dir])
@@ -261,4 +256,109 @@ include_dir() ->
       filename:join(anvl_app:prefix(), "share/anvl/include");
     {ok, Dir} ->
       Dir
+  end.
+
+load_project_conf(ProjectDir, Module, Storage) ->
+  %% FIXME: hack
+  Model = persistent_term:get(?project_model),
+  Patch = read_patch(Model, Module),
+  lee_storage:patch(Storage, Patch),
+  case read_override(ProjectDir) of
+    []       -> ok;
+    Override -> lee_storage:patch(Storage, Override)
+  end,
+  case lee:validate(Model, Storage) of
+    {ok, Warnings} ->
+      [logger:warning(I) || I <- Warnings],
+      ok;
+    {error, Errors, Warnings} ->
+      [logger:critical(E) || E <- Errors],
+      [logger:warning(W) || W <- Warnings],
+      ?UNSAT("Invalid project configuration ~p", [ProjectDir])
+  end.
+
+read_patch(Model, Module) ->
+  case erlang:function_exported(Module, conf, 0) of
+    true ->
+      tree_to_patch(Model, Module:conf());
+    false ->
+      []
+  end.
+
+tree_to_patch(Model, Tree) ->
+  MKeys = [lee_model:full_split_key(K) || K <- lee_model:get_metatype_index(value, Model)],
+  tree_to_patch(Model, [], Tree, MKeys).
+
+tree_to_patch(Model, Parent, Tree, MKeys) ->
+  ParentModelKey = lee_model:get_model_key(Parent),
+  lists:foldl(
+    fun([Key | Rest], Acc) ->
+        case tree_get(Key, Tree) of
+          undefined ->
+            Acc;
+          {ok, Value} when Rest =:= [] ->
+            [{set, Parent ++ Key, Value} | Acc];
+          {ok, SubTrees} ->
+            lists:foldl(
+              fun(SubTree, Acc1) ->
+                  InstKey = make_inst_key(Model, ParentModelKey, Key, SubTree),
+                  tree_to_patch(Model, Parent ++ Key ++ [InstKey], SubTree, Rest) ++ Acc1
+              end,
+              Acc,
+              SubTrees)
+        end
+    end,
+    [],
+    MKeys).
+
+make_inst_key(Model, ParentModelKey, MapKey, Conf) ->
+  #mnode{metaparams = MAttrs} = lee_model:get(
+                                  ParentModelKey ++ MapKey,
+                                  Model),
+  KeyElems = [case tree_get(I, Conf) of
+                {ok, Val} ->
+                  Val;
+                undefined ->
+                  %% TODO: handle defaults
+                  error({ParentModelKey, MapKey, I})
+              end
+              || I <- ?m_attr(map, ?key_elements, MAttrs, [])],
+  list_to_tuple(KeyElems).
+
+tree_get(Key, Conf) when is_list(Key), is_map(Conf) ->
+  case Conf of
+    #{Key := Val} ->
+      {ok, Val};
+    _ ->
+      case Key of
+        [Tail] when is_atom(Tail) ->
+          case Conf of
+            #{Tail := Val} ->
+              {ok, Val};
+            _ ->
+              undefined
+          end;
+        [Head | Tail] when is_atom(Head) ->
+          case Conf of
+            #{Head := Children} ->
+              tree_get(Tail, Children);
+            _ ->
+              undefined
+          end
+      end
+  end.
+
+read_override(Dir) ->
+  Root = root(),
+  case Dir =:= Root of
+    true ->
+      [];
+    false ->
+      Module = anvl_config_module(root()),
+      case erlang:function_exported(Module, conf_override, 1) of
+        true ->
+          Module:conf_override(Dir);
+        false ->
+          []
+      end
   end.

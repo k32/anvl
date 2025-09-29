@@ -211,9 +211,7 @@ split_key(K) ->
 %%        [[foo, ?children], [bar, baz, {[1]}], [quux]]'''
 -spec full_split_key(lee:key()) -> [lee:key()].
 full_split_key(Key) ->
-    Pred = fun(T) when is_tuple(T) -> false;
-              (_)                  -> true
-           end,
+    Pred = fun(T) -> not is_tuple(T) end,
     lee_lib:splitl(Pred, Key).
 
 -spec all_metatypes(lee:model()) -> [lee:metatype()].

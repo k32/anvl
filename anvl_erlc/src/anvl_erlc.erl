@@ -389,7 +389,7 @@ project_model() ->
          },
   #{erlc =>
       #{ profiles =>
-           {[pcfg],
+           {[value, pcfg],
             #{ type => list(profile())
              , function => erlc_profiles
              , default => [default, test]

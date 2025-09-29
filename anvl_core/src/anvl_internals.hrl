@@ -2,7 +2,7 @@
 %% This file is part of anvl, a parallel general-purpose task
 %% execution tool.
 %%
-%% Copyright (C) 2024 k32
+%% Copyright (C) 2024-2025 k32
 %%
 %% This program is free software: you can redistribute it and/or
 %% modify it under the terms of the GNU Lesser General Public License
@@ -22,7 +22,12 @@
 
 -include_lib("lee/include/lee.hrl").
 
--define(conf_storage, ?lee_persistent_term_storage(anvl_conf_storage)).
+
+-define(tool_conf_storage_token, anvl_conf_storage).
+-define(conf_storage, ?lee_persistent_term_storage(?tool_conf_storage_token)).
+
+-define(proj_conf_storage_token(PROJECT), {anvl_conf_storage, PROJECT}).
+-define(proj_conf_storage(PROJECT), ?lee_persistent_term_storage(?proj_conf_storage_token(PROJECT))).
 
 -define(project_model, anvl_project_model).
 
