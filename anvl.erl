@@ -47,16 +47,6 @@ conf() ->
         }
    }.
 
-%% conf_override(Dir) ->
-%%   case filename:basename(Dir) of
-%%     "typerefl" ->
-%%       [{set, [erlc, bdeps], [erlang_qq]}];
-%%     "lee" ->
-%%       [{set, [erlc, bdeps], [erlang_qq, typerefl]}];
-%%     _ ->
-%%       []
-%%   end.
-
 ?MEMO(install,
       begin
         Prefix = filename:join(os:getenv("HOME"), ".local"),

@@ -101,37 +101,10 @@ This is a type.
 
 -reflect_type([profile/0, source_location_ret/0, compile_options/0, escripts_ret/0, context/0, application_spec/0, archive_file/0]).
 
--define(default_include_dirs, ["${src_root}/include", "${src_root}/src"]).
--doc """
-@pconf Search path for include files.
-""".
--doc #{default => ?default_include_dirs}.
--callback erlc_include_dirs(profile(), application()) -> [anvl_lib:filename_pattern()].
-
--define(default_sources, ["${src_root}/src/*.erl", "${src_root}/src/*/*.erl"]).
--doc """
-@pconf Wildcard patterns matching source files.
-""".
--doc #{default => ?default_sources}.
--callback erlc_sources(profile(), application()) -> [anvl_lib:filename_pattern()].
-
--doc """
-@pconf Build-time dependencies of an Erlang application.
-""".
--doc #{default => []}.
--callback erlc_bdeps(profile(), application()) -> [application()].
-
 -doc """
 @pconf @ref{t:anvl_locate:spec/0,Locate spec} for the application.
 """.
 -callback erlc_deps(profile(), application()) -> anvl_locate:spec().
-
--define(default_compile_options, [debug_info]).
--doc """
-@pconf Additional options passed to erlang compiler.
-""".
--doc #{default => ?default_compile_options}.
--callback erlc_compile_options(profile()) -> list().
 
 %%================================================================================
 %% API functions
@@ -174,8 +147,7 @@ Condition: function has been compiled.
         COpts0 = cfg_compile_options(SrcRoot, Profile),
         IncludePatterns = cfg_include_dirs(SrcRoot, Profile),
         SrcPatterns = cfg_sources(SrcRoot, Profile),
-        BDeps = cfg_bdeps(SrcRoot, Profile, App),
-        logger:warning(#{a => App, bd => BDeps}),
+        BDeps = cfg_bdeps(SrcRoot, Profile),
         AppSrcProperties = app_src(App, SrcRoot),
         Dependencies = non_otp_apps(BDeps ++ proplists:get_value(applications, AppSrcProperties, [])),
         BuildRoot = binary_to_list(filename:join([?BUILD_ROOT, <<"erlc">>, anvl_lib:hash(COpts0)])),
@@ -376,17 +348,17 @@ project_model() ->
     #{ includes =>
          {[value],
           #{ type => [anvl_lib:filename_pattern()]
-           , default => default_include_dirs()
+           , default => ["${src_root}/include", "${src_root}/src"]
            }}
-     %% , bdeps =>
-     %%     {[value],
-     %%      #{ type => [application()]
-     %%       , default => []
-     %%       }}
+     , bdeps =>
+         {[value],
+          #{ type => [application()]
+           , default => []
+           }}
      , sources =>
          {[value],
           #{ type => [anvl_lib:filename_pattern()]
-           , default => default_sources()
+           , default => ["${src_root}/src/*.erl", "${src_root}/src/*/*.erl"]
            }}
      , compile_options =>
          {[value],
@@ -426,14 +398,6 @@ project_model() ->
                   #{ type => atom()
                    }}
              }}
-       , bdeps =>
-           {[pcfg],
-            #{ type => [application()]
-             , function => erlc_bdeps
-             , default => []
-             },
-            maps:merge(Profile, App)
-            }
        , deps =>
            {[pcfg],
             #{ type => anvl_locate:spec()
@@ -460,7 +424,7 @@ project_model() ->
              , files =>
                  {[value],
                   #{ type => [anvl_lib:filename_pattern()]
-                   , default => default_escript_files()
+                   , default => ["priv/**", "ebin/**"]
                    }}
              , profile =>
                  {[value],
@@ -478,12 +442,6 @@ project_model() ->
                  {[funarg],
                   #{ type => application_spec()
                    }}
-             }}
-       , escript_extra_files =>
-           {[pcfg],
-            #{ type => [archive_file()]
-             , function => erlc_escript_extra_files
-             , default => []
              }}
        }}.
 
@@ -840,22 +798,11 @@ cfg_app_src_hook(ProjectRoot, Profile, AppSpec) ->
   anvl_project:conf(ProjectRoot, erlc_app_spec_hook, [Args], AppSpec,
                     application_spec()).
 
-cfg_bdeps(ProjectRoot, Profile, App) ->
-  anvl_project:conf(ProjectRoot, [erlc, bdeps], #{profile => Profile, app => App}).
+cfg_bdeps(ProjectRoot, Profile) ->
+  anvl_project:nuconf(ProjectRoot, [erlc, overrides, {Profile}, bdeps]).
 
 cfg_edoc_output_dir(ProjectRoot, Profile) ->
   anvl_project:nuconf(ProjectRoot, [erlc, overrides, {Profile}, edoc, output_dir]).
 
 cfg_edoc_options(ProjectRoot, Profile) ->
   anvl_project:nuconf(ProjectRoot, [erlc, overrides, {Profile}, edoc, options]).
-
-default_escript_files() ->
-  [ "priv/**"
-  , "ebin/**"
-  ].
-
-default_sources() ->
-  ?default_sources.
-
-default_include_dirs() ->
-  ?default_include_dirs.

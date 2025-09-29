@@ -271,7 +271,7 @@ include_dir() ->
 load_project_conf(ProjectDir, Module, Storage) ->
   Model = persistent_term:get(?project_model),
   Patch = read_patch(Model, Module),
-  ?LOG_WARNING(#{load_config => ProjectDir, patch => Patch, module => Module}),
+  ?LOG_DEBUG(#{load_project_config => ProjectDir, patch => Patch, module => Module}),
   lee_storage:patch(Storage, Patch),
   case read_override(ProjectDir) of
     []       -> ok;
@@ -290,9 +290,7 @@ load_project_conf(ProjectDir, Module, Storage) ->
 read_patch(Model, Module) ->
   case erlang:function_exported(Module, conf, 0) of
     true ->
-      Raw = Module:conf(),
-      ?LOG_WARNING(#{rc => Module, raw => Raw}),
-      tree_to_patch(Model, Raw);
+      tree_to_patch(Model, Module:conf());
     false ->
       []
   end.
