@@ -29,8 +29,21 @@ conditions(_) ->
   [escript, docs, install].
 
 conf() ->
+  EmuArgs = "-dist_listen false -escript main anvl_app",
+  Escript = #{apps => [anvl_core, anvl_erlc, anvl_git, anvl_texinfo, lee, typerefl]},
   #{ erlc =>
        #{ bdeps => []
+        , escript =>
+            [ Escript
+              #{ name => anvl
+               , emu_args => EmuArgs
+               }
+            , Escript
+              #{ name => stage2
+               , profile => stage2
+               , emu_args => EmuArgs ++ " -anvl_core include_dir \"anvl_core/include\""
+               }
+            ]
         }
    }.
 
@@ -75,7 +88,7 @@ install(Prefix, Template, Src) ->
     end.
 
 escript() ->
-  anvl_erlc:escript(".", default, anvl).
+  anvl_erlc:escript(".", anvl).
 
 ?MEMO(docs,
       begin

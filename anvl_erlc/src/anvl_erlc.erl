@@ -27,7 +27,7 @@ A builtin plugin for compiling Erlang applications.
 
 %% API:
 -export([add_pre_compile_hook/1, add_pre_edoc_hook/1]).
--export([app_info/2, escript/3, app_compiled/2, dialyzed/2, module/2, edoc/3]).
+-export([app_info/2, escript/2, app_compiled/2, dialyzed/2, module/2, edoc/3]).
 -export([app_file/1, beam_file/2]).
 
 %% behavior callbacks:
@@ -270,15 +270,10 @@ module(Profile, Module) ->
   anvl_condition:speculative({erlang_module_compiled, Profile, Module}).
 
 -doc "Condition: escript has been built.".
--spec escript(file:filename_all(), profile(), string()) -> anvl_condition:t().
-?MEMO(escript, ProjectRoot, Profile, EscriptName,
+-spec escript(file:filename_all(), string()) -> anvl_condition:t().
+?MEMO(escript, ProjectRoot, EscriptName,
       begin
-        case cfg_escript_specs(ProjectRoot, Profile) of
-          #{EscriptName := #{apps := Apps, emu_args := EmuArgs}} ->
-            escript(ProjectRoot, Profile, EscriptName, Apps, EmuArgs);
-          _ ->
-            ?UNSAT("Couldn't find specification for escript '~p' in profile ~p", [EscriptName, Profile])
-        end
+        do_escript(ProjectRoot, EscriptName)
       end).
 
 -doc """
@@ -324,8 +319,6 @@ model() ->
                    , default => []
                    , cli_arg_position => rest
                    }}
-             , profile =>
-                 Profile
              }}
        , jobs =>
            {[value, cli_param, os_env, anvl_resource],
@@ -447,12 +440,34 @@ project_model() ->
              , function => erlc_deps
              },
             Profile}
-       , escripts =>
-           {[pcfg],
-            #{ type => escripts_ret()
-             , function => erlc_escripts
+       , escript =>
+           {[map],
+            #{ key_elements => [[name]]
              },
-            Profile}
+            #{ name =>
+                 {[value],
+                  #{ type => escript_name()
+                   }}
+             , apps =>
+                 {[value],
+                  #{ type => [application()]
+                   }}
+             , emu_args =>
+                 {[value],
+                  #{ type => string()
+                   , default => ""
+                   }}
+             , files =>
+                 {[value],
+                  #{ type => [anvl_lib:filename_pattern()]
+                   , default => default_escript_files()
+                   }}
+             , profile =>
+                 {[value],
+                  #{ type => profile()
+                   , default => default
+                   }}
+             }}
        , app_src_hook =>
            {[pcfg],
             #{ type => application_spec()
@@ -464,13 +479,6 @@ project_model() ->
                   #{ type => application_spec()
                    }}
              }}
-       , escript_files =>
-           {[pcfg],
-            #{ type => [string()]
-             , function => erlc_escript_files
-             , default => default_escript_files()
-             },
-            maps:merge(Profile, App)}
        , escript_extra_files =>
            {[pcfg],
             #{ type => [archive_file()]
@@ -492,7 +500,13 @@ conditions(ProjectRoot) ->
 %% Condition implementations
 %%================================================================================
 
-escript(ProjectRoot, Profile, EscriptName, Apps, EmuFlags) ->
+do_escript(ProjectRoot, EscriptName) ->
+  Cfg = fun(Key) ->
+            anvl_project:nuconf(ProjectRoot, [erlc, escript, {EscriptName}] ++ Key)
+        end,
+  Profile = Cfg([profile]),
+  FilePatterns = Cfg([files]),
+  Apps = Cfg([apps]),
   Filename = filename:join([?BUILD_ROOT, Profile, EscriptName]),
   %% Satisfy dependencies:
   ChangedP = precondition([app_compiled(Profile, App) || App <- Apps]),
@@ -502,12 +516,11 @@ escript(ProjectRoot, Profile, EscriptName, Apps, EmuFlags) ->
                    #{ebin_dir := EbinDir} = app_info(Profile, App),
                    [{ filename:join(EbinDir, RelPath)
                     , filename:join(App, RelPath)
-                    } || Pattern <- cfg_escript_files(ProjectRoot, Profile, App),
+                    } || Pattern <- FilePatterns,
                          RelPath <- filelib:wildcard(Pattern, EbinDir)]
                end,
                Apps),
-  ExtraFiles = cfg_escript_extra_files(ProjectRoot, Profile, EscriptName),
-  Files = ExtraFiles ++ AppFiles,
+  Files = AppFiles,
   {Sources, _} = lists:unzip(Files),
   %% Create the escript:
   ChangedP or newer(Sources, Filename) andalso
@@ -528,7 +541,7 @@ escript(ProjectRoot, Profile, EscriptName, Apps, EmuFlags) ->
                     , {uncompress, {add, [".beam", ".app"]}}
                     ],
       Sections = [ shebang
-                 , {emu_args, EmuFlags}
+                 , {emu_args, Cfg([emu_args])}
                  , {archive, Bins, ArchiveOpts}
                  ],
       case escript:create(Filename, Sections) of
@@ -669,7 +682,7 @@ get_escripts(ProjectRoot) ->
                       []       -> Escripts = maps:keys(cfg_escript_specs(ProjectRoot, Profile));
                       Escripts -> ok
                     end,
-                    [escript(ProjectRoot, Profile, I) || I <- Escripts]
+                    [escript(ProjectRoot, I) || I <- Escripts]
                 end,
                 Keys).
 
@@ -807,9 +820,6 @@ ensure_string(L) when is_list(L) ->
 %% Configuration:
 %%================================================================================
 
-profiles(ProjectRoot) ->
-  anvl_project:nuconf(ProjectRoot, [erlc, profiles]).
-
 cfg_include_dirs(ProjectRoot, Profile) ->
   anvl_project:nuconf(ProjectRoot, [erlc, overrides, {Profile}, includes]).
 
@@ -832,12 +842,6 @@ cfg_app_src_hook(ProjectRoot, Profile, AppSpec) ->
 
 cfg_bdeps(ProjectRoot, Profile, App) ->
   anvl_project:conf(ProjectRoot, [erlc, bdeps], #{profile => Profile, app => App}).
-
-cfg_escript_files(ProjectRoot, Profile, App) ->
-  anvl_project:conf(ProjectRoot, [erlc, escript_files], #{profile => Profile, app => App}).
-
-cfg_escript_extra_files(ProjectRoot, Profile, Escript) ->
-  anvl_project:conf(ProjectRoot, [erlc, escript_extra_files], #{profile => Profile, escript => Escript}).
 
 cfg_edoc_output_dir(ProjectRoot, Profile) ->
   anvl_project:nuconf(ProjectRoot, [erlc, overrides, {Profile}, edoc, output_dir]).

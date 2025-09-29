@@ -79,7 +79,7 @@ bootstrap() ->
   {ok, _} = ?MODULE:start(normal, []),
   application:set_env(anvl_core, include_dir, "anvl_core/include"),
   anvl_plugin:init(),
-  _ = precondition(anvl_erlc:escript(anvl_project:root(), stage2, anvl)),
+  _ = precondition(anvl_erlc:escript(anvl_project:root(), stage2)),
   ok.
 
 prefix() ->

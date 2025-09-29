@@ -19,7 +19,7 @@
 
 -module(anvl_project).
 
--export([root/0, conf/3, nuconf/2, conditions/0, plugins/1]).
+-export([root/0, conf/3, nuconf/2, list_conf/2, conditions/0, plugins/1]).
 
 %% Internal exports
 -export([conf/5, parse_transform/2]).
@@ -42,7 +42,13 @@
 
 -spec nuconf(dir(), lee:model_key()) -> _Result.
 nuconf(ProjectRoot, Key) ->
+  _ = config_module(ProjectRoot),
   lee:get(persistent_term:get(?project_model), ?proj_conf_storage(ProjectRoot), Key).
+
+-spec list_conf(dir(), lee:model_key()) -> list().
+list_conf(ProjectRoot, Key) ->
+  _ = config_module(ProjectRoot),
+  lee:list(persistent_term:get(?project_model), ?proj_conf_storage(ProjectRoot), Key).
 
 -spec conf(dir(), lee:model_key(), map()) -> _Result.
 conf(ProjectRoot, Key, Args) ->
@@ -292,8 +298,19 @@ read_patch(Model, Module) ->
   end.
 
 tree_to_patch(Model, Tree) ->
-  MKeys = [lee_model:full_split_key(K) || K <- lee_model:get_metatype_index(value, Model)],
+  Fun = fun(I) -> not is_tuple(I) end,
+  MKeys = [key_parts(K) || K <- lee_model:get_metatype_index(value, Model)],
   tree_to_patch(Model, [], Tree, MKeys).
+
+key_parts(L) ->
+  key_parts(L, []).
+
+key_parts([], Acc) ->
+  [lists:reverse(Acc)];
+key_parts([?children | Rest], Acc) ->
+  [lists:reverse(Acc) | key_parts(Rest)];
+key_parts([A|Rest], Acc) ->
+  key_parts(Rest, [A | Acc]).
 
 tree_to_patch(Model, Parent, Tree, MKeys) ->
   ParentModelKey = lee_model:get_model_key(Parent),
@@ -308,7 +325,7 @@ tree_to_patch(Model, Parent, Tree, MKeys) ->
             lists:foldl(
               fun(SubTree, Acc1) ->
                   InstKey = make_inst_key(Model, ParentModelKey, Key, SubTree),
-                  tree_to_patch(Model, Parent ++ Key ++ [InstKey], SubTree, Rest) ++ Acc1
+                  tree_to_patch(Model, Parent ++ Key ++ [InstKey], SubTree, [Rest]) ++ Acc1
               end,
               Acc,
               SubTrees)
@@ -337,14 +354,14 @@ tree_get(Key, Conf) when is_list(Key), is_map(Conf) ->
       {ok, Val};
     _ ->
       case Key of
-        [Tail] when is_atom(Tail) ->
+        [Tail] ->
           case Conf of
             #{Tail := Val} ->
               {ok, Val};
             _ ->
               undefined
           end;
-        [Head | Tail] when is_atom(Head) ->
+        [Head | Tail] ->
           case Conf of
             #{Head := Children} ->
               tree_get(Tail, Children);
