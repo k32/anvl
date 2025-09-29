@@ -54,7 +54,7 @@ An ANVL API for managing plugins.
 
 -callback init() -> ok.
 
--optional_callbacks([conditions/1, model/0, project_model/0]).
+-optional_callbacks([conditions/1]).
 
 %%================================================================================
 %% API functions
@@ -179,36 +179,25 @@ do_load_model(Module, S0) ->
   {ok, S}.
 
 load_project_model(Module, S = #s{project_model = PM0}) ->
-  case function_exported(Module, project_model, 0) of
-    true ->
-      PM = [Module:project_model() | PM0],
-      case lee_model:compile(project_metamodel(), PM) of
-        {ok, ProjectModel} ->
-          persistent_term:put(?project_model, ProjectModel),
-          S#s{project_model = PM};
-        {error, Errors} ->
-          logger:critical("Project model is invalid! (Likely caused by a plugin)"),
-          [logger:critical(E) || E <- Errors],
-          error(badmodel)
-      end;
-    false ->
-      S
+  PM = [Module:project_model() | PM0],
+  case lee_model:compile(project_metamodel(), PM) of
+    {ok, ProjectModel} ->
+      persistent_term:put(?project_model, ProjectModel),
+      S#s{project_model = PM};
+    {error, Errors} ->
+      [logger:critical(E) || E <- Errors],
+      ?UNSAT("Project model is invalid! (Likely caused by a plugin)", [])
   end.
 
 load_configuration_model(Module, S = #s{model = M0}) ->
-  case function_exported(Module, model, 0) of
-    true ->
-      M = [Module:model() | M0],
-      case lee_model:compile(metamodel(), M) of
-        {ok, Model} ->
-          S#s{m = Model, model = M};
-        {error, Errors} ->
-          logger:critical("Configuration model is invalid! (Likely caused by a plugin)"),
-          [logger:critical(E) || E <- Errors],
-          error(badmodel)
-      end;
-    false ->
-      S
+  M = [Module:model() | M0],
+  case lee_model:compile(metamodel(), M) of
+    {ok, Model} ->
+      S#s{m = Model, model = M};
+    {error, Errors} ->
+      logger:critical("Configuration model is invalid! (Likely caused by a plugin)"),
+      [logger:critical(E) || E <- Errors],
+      error(badmodel)
   end.
 
 metamodel() ->
@@ -227,12 +216,7 @@ project_metamodel() ->
   , lee_metatype:create(lee_value)
   , lee_metatype:create(lee_pointer)
   , lee_metatype:create(lee_map)
-  , lee_metatype:create(anvl_project)
   ].
 
 cli_args_getter() ->
   application:get_env(anvl, cli_args, []).
-
-function_exported(Module, Fun, Arity) ->
-  %% This will trigger code loading:
-  lists:member({Fun, Arity}, Module:module_info(exports)).

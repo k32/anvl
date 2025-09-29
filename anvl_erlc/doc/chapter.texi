@@ -5,4 +5,19 @@
 @url{https://www.erlang.org/doc/system/applications#directory-structure,OTP design principles}.
 It allows ANVL to load other 3rd-party plugins.
 
+@macro erlc-app-paths
+  @cindex Umbrella Project
+  This configuration is relevant for Erlang projects containing multiple OTP applications,
+  or so called ``umbrella projects''.
+
+  Application search path is a list of directories relative to the project root
+  where source code for an OTP application can be located.
+
+  If multiple directories are present in the list,
+  then the first existing directory is selected.
+
+  Template variable @code{$@{app@}} is substituted with the application name.
+
+@end macro
+
 @lee{anvl_erlc,ANVL Erlc}

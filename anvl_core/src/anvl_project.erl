@@ -19,12 +19,11 @@
 
 -module(anvl_project).
 
--export([root/0, conf/3, nuconf/2, conditions/0, plugins/1]).
+-export([root/0, conf/2, maybe_conf/2, list_conf/2, conditions/0, plugins/1, known_projects/0]).
 
 %% Internal exports
--export([conf/5, parse_transform/2]).
+-export([parse_transform/2]).
 
--export([names/1, metaparams/1, meta_validate_node/4]).
 -include_lib("lee/include/lee.hrl").
 
 -include("anvl.hrl").
@@ -40,16 +39,32 @@
 %% API
 %%================================================================================
 
--spec conf(dir(), lee:model_key(), map()) -> _Result.
-conf(ProjectRoot, Key, Args) ->
-  Model = persistent_term:get(?project_model),
-  #mnode{metaparams = Attrs} = lee_model:get(Key, Model),
-  case Attrs of
-    #{type := Type, default := Default, function := Fun} ->
-      conf(ProjectRoot, Fun, Args, Default, Type);
-    #{type := Type, function := Fun} ->
-      conf(ProjectRoot, Fun, Args, Type)
+-spec conf(dir(), lee:model_key()) -> _Result.
+conf(ProjectRoot, Key) ->
+  _ = config_module(ProjectRoot),
+  lee:get(persistent_term:get(?project_model), ?proj_conf_storage(ProjectRoot), Key).
+
+-spec maybe_conf(dir(), lee:model_key()) -> {ok, _Result} | undefined.
+maybe_conf(ProjectRoot, Key) ->
+  try
+    Val = conf(ProjectRoot, Key),
+    {ok, Val}
+  catch
+    error:{missing_data, _} ->
+      undefined
   end.
+
+-spec list_conf(dir(), lee:model_key()) -> list().
+list_conf(ProjectRoot, Key) ->
+  _ = config_module(ProjectRoot),
+  lee:list(persistent_term:get(?project_model), ?proj_conf_storage(ProjectRoot), Key).
+
+-spec known_projects() -> [dir()].
+known_projects() ->
+  Root = root(),
+  %% FIXME:
+  Others = [],
+  [Root | Others].
 
 root() ->
   {ok, CWD} = file:get_cwd(),
@@ -74,49 +89,6 @@ plugins(Project) ->
     false ->
       []
   end.
-
-%%================================================================================
-%% Lee metatype callbacks
-%%================================================================================
-
-%% @hidden
-names(_Config) ->
-  [hook, pcfg, funarg].
-
-%% @hidden
-metaparams(hook) ->
-  [ {mandatory, type, typerefl:term()}
-  , {mandatory, name, typerefl:atom()}
-  | lee_doc:documented()
-  ];
-metaparams(pcfg) ->
-  [ {optional, default, typerefl:term()}
-  , {mandatory, function, typerefl:atom()}
-  | lee_doc:documented()
-  ];
-metaparams(funarg) ->
-  %% funarg is used for documentation purposes only
-  [ {mandatory, type, typerefl:term()}
-  | lee_doc:documented()
-  ].
-
-%% @hidden
-meta_validate_node(pcfg, _Model, _Key, #mnode{metaparams = Attrs}) ->
-  case Attrs of
-    #{type := Type, default := Default} ->
-      case typerefl:typecheck(Type, Default) of
-        ok ->
-          {[], []};
-        {error, Err} ->
-          Str = "Mistyped default value. " ++
-            lee_lib:format_typerefl_error(Err),
-          {[Str], []}
-      end;
-    _ ->
-      {[], []}
-  end;
-meta_validate_node(_MT, _Model, _Key, _Mnode) ->
-  {[], []}.
 
 %%================================================================================
 %% Internal functions
@@ -165,8 +137,8 @@ config_module(ProjectRoot) ->
                 ?UNSAT("Failed to compile anvl config file for ~s.", [Dir])
             end;
           {false, false} ->
-            ?LOG_INFO("Directory ~s doesn't contain 'anvl.erl' file. "
-                      "Using the top level project's config (\"umbrella\" mode).", [Dir]),
+            ?LOG_WARNING("Directory ~s doesn't contain 'anvl.erl' file. "
+                         "Falling back to top level project's config.", [Dir]),
             anvl_condition:set_result(#conf_module_of_dir{directory = Dir}, config_module(root())),
             false;
           {false, true} ->
@@ -174,63 +146,17 @@ config_module(ProjectRoot) ->
         end
       end).
 
-%% @hidden
--spec conf(dir(), atom(), map(), Result, typerefl:type()) -> Result.
-conf(ProjectRoot, Function, Args, Default, ExpectedType) ->
-  Module = config_module(ProjectRoot),
-  case lists:member({Function, 1}, Module:module_info(exports)) of
-    true ->
-      conf(ProjectRoot, Function, Args, ExpectedType);
-    false ->
-      conf_override(ProjectRoot, Function, Args, Default)
-  end.
-
--spec conf(dir(), atom(), map(), typerefl:type()) -> _Result.
-conf(ProjectRoot, Function, Args, ExpectedType) ->
-  Module = config_module(ProjectRoot),
-  try apply(Module, Function, [Args]) of
-    Val ->
-      case typerefl:typecheck(ExpectedType, Val) of
-        ok ->
-          conf_override(ProjectRoot, Function, Args, Val);
-        {error, #{expected := Expected, got := Got}} ->
-          ?LOG_CRITICAL("Invalid return value of ~p:~p:~nExpected type: ~s~nGot: ~p",
-                        [Module, Function, Expected, Got]),
-          exit(unsat)
-      end
-  catch
-    EC:Err:Stack ->
-      ?LOG_CRITICAL("Failed to get configuration ~p:~p~n"
-                    "Args: ~p~n"
-                    "Error: ~p:~p~n"
-                    "Stacktrace: ~p",
-                    [Module, Function, Args, EC, Err, Stack]),
-      exit(unsat)
-  end.
-
-conf_override(ProjectRoot, Function, Args, Result) ->
-  OverrideFun = list_to_atom(atom_to_list(Function) ++ "_override"),
-  Module = config_module(root()),
-  case lists:member({Function, 3}, Module:module_info(exports)) of
-    true ->
-      Module:OverrideFun( ProjectRoot
-                        , Args
-                        , Result
-                        );
-    false ->
-      Result
-  end.
-
 anvl_config_module(Dir) when is_list(Dir) ->
   list_to_atom("anvl_config##" ++ Dir).
 
 custom_conditions(AdHoc) ->
   Invoked = anvl_plugin:conf([custom_conditions]),
-  Defined = conf(root(), [custom_conditions], #{}),
+  Mod = config_module(root()),
+  Defined = anvl_project:conf(root(), [conditions]),
   Funs = case {Invoked, Defined} of
-           {[], All} when AdHoc =:= [] ->
-             ?LOG_NOTICE("No explicit condition was given. Running all custom conditions."),
-             All;
+           {[], [First | _]} when AdHoc =:= [] ->
+             ?LOG_NOTICE("No explicit condition was given. Running first custom condition (~p).", [First]),
+             [First];
            _ ->
              case Invoked -- Defined of
                [] ->
@@ -241,7 +167,6 @@ custom_conditions(AdHoc) ->
              end,
              Invoked
          end,
-  Mod = config_module(root()),
   case [Fun || Fun <- Funs, not erlang:function_exported(Mod, Fun, 0)] of
     [] ->
       [Mod:Fun() || Fun <- Funs];
@@ -259,9 +184,9 @@ include_dir() ->
   end.
 
 load_project_conf(ProjectDir, Module, Storage) ->
-  %% FIXME: hack
   Model = persistent_term:get(?project_model),
   Patch = read_patch(Model, Module),
+  ?LOG_DEBUG(#{load_project_config => ProjectDir, patch => Patch, module => Module}),
   lee_storage:patch(Storage, Patch),
   case read_override(ProjectDir) of
     []       -> ok;
@@ -286,8 +211,18 @@ read_patch(Model, Module) ->
   end.
 
 tree_to_patch(Model, Tree) ->
-  MKeys = [lee_model:full_split_key(K) || K <- lee_model:get_metatype_index(value, Model)],
+  MKeys = [key_parts(K) || K <- lee_model:get_metatype_index(value, Model)],
   tree_to_patch(Model, [], Tree, MKeys).
+
+key_parts(L) ->
+  key_parts(L, []).
+
+key_parts([], Acc) ->
+  [lists:reverse(Acc)];
+key_parts([?children | Rest], Acc) ->
+  [lists:reverse(Acc) | key_parts(Rest)];
+key_parts([A|Rest], Acc) ->
+  key_parts(Rest, [A | Acc]).
 
 tree_to_patch(Model, Parent, Tree, MKeys) ->
   ParentModelKey = lee_model:get_model_key(Parent),
@@ -302,7 +237,7 @@ tree_to_patch(Model, Parent, Tree, MKeys) ->
             lists:foldl(
               fun(SubTree, Acc1) ->
                   InstKey = make_inst_key(Model, ParentModelKey, Key, SubTree),
-                  tree_to_patch(Model, Parent ++ Key ++ [InstKey], SubTree, Rest) ++ Acc1
+                  tree_to_patch(Model, Parent ++ Key ++ [InstKey], SubTree, [Rest]) ++ Acc1
               end,
               Acc,
               SubTrees)
@@ -331,14 +266,14 @@ tree_get(Key, Conf) when is_list(Key), is_map(Conf) ->
       {ok, Val};
     _ ->
       case Key of
-        [Tail] when is_atom(Tail) ->
+        [Tail] ->
           case Conf of
             #{Tail := Val} ->
               {ok, Val};
             _ ->
               undefined
           end;
-        [Head | Tail] when is_atom(Head) ->
+        [Head | Tail] ->
           case Conf of
             #{Head := Children} ->
               tree_get(Tail, Children);

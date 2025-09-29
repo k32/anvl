@@ -103,18 +103,25 @@ template("Foo = ${foo}, bar = ${bar}", #{foo => <<"1">>, <<"bar">> => <<"2">>}, 
 """.
 -spec template(iodata(), template_vars(), list) -> string();
               (iodata(), template_vars(), binary) -> binary();
-              (iodata(), template_vars(), iolist) -> iodata().
+              (iodata(), template_vars(), iolist) -> iodata();
+              (iodata(), template_vars(), path) -> file:filename().
 template(Pattern, Substitutions, binary) ->
   iolist_to_binary(template(Pattern, Substitutions, iolist));
 template(Pattern, Substitutions, list) ->
   binary_to_list(template(Pattern, Substitutions, binary));
+template(Pattern, Substitutions, path) ->
+  filename:nativename(template(Pattern, Substitutions, binary));
 template(Pattern, Substitutions0, iolist) ->
   Substitutions = template_normalize_substs(maps:iterator(Substitutions0), #{}),
   Fun = fun(_Whole, [Key]) ->
             case Substitutions of
-              #{Key := Atom} when is_atom(Atom) -> atom_to_binary(Atom);
-              #{Key := Val} -> Val;
-              _ -> error({"Bad substitution variable", Key, "available:", maps:keys(Substitutions)})
+              #{Key := Val} ->
+                  if is_binary(Val); is_list(Val) -> Val;
+                     is_atom(Val) -> atom_to_binary(Val);
+                     true -> error({"Bad type", Key, Val})
+                  end;
+              _ ->
+                error({"Bad substitution variable", Key, "available:", maps:keys(Substitutions)})
             end
         end,
   re:replace(Pattern, "\\$\\{([^}]*)\\}", Fun, [global, {return, iodata}]).

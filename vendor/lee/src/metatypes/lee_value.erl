@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2022-2024 k32 All Rights Reserved.
+%% Copyright (c) 2022-2025 k32 All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -109,10 +109,14 @@ meta_validate_node(value, Model, _Key, #mnode{metaparams = Attrs}) ->
 
 %% @private
 description(value, Model, Options) ->
-    [{[], Global} | Rest] = lists:sort(maps:to_list(lee_model:fold(fun mk_doc_tree/4, #{}, {false, []}, Model))),
-    mk_doc(Options, Model, [], Global) ++
-        [document_map(Options, Model, Parent, Children)
-         || {Parent, Children} <- Rest].
+    case lists:sort(maps:to_list(lee_model:fold(fun mk_doc_tree/4, #{}, {false, []}, Model))) of
+        [{[], Global} | Rest] ->
+            mk_doc(Options, Model, [], Global) ++
+            [document_map(Options, Model, Parent, Children)
+             || {Parent, Children} <- Rest];
+        [] ->
+            []
+    end.
 
 %%================================================================================
 %% Internal functions

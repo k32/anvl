@@ -25,13 +25,38 @@ apps() ->
 plugins() ->
   [anvl_erlc, anvl_git, anvl_texinfo].
 
-conditions(_) ->
-  [escript, docs, install].
-
 conf() ->
-  #{ plugins => plugins()
+  EmuArgs = "-dist_listen false -escript main anvl_app",
+  Escript = #{apps => [anvl_core, anvl_erlc, anvl_git, anvl_texinfo, lee, typerefl]},
+  #{ conditions => [install, escript, docs]
    , erlc =>
-       #{ profiles => erlc_profiles(1)
+       #{ deps =>
+            [ #{ app => typerefl
+               , at => "vendor/typerefl"
+               }
+            , #{ app => lee
+               , at => "vendor/lee"
+               }
+            , #{ app => erlang_qq
+               , at => "vendor/erlang_qq"
+               }
+            , #{ app => snabbkaffe
+               , at => "vendor/snabbkaffe"
+               }
+            ]
+        , app_paths =>
+            ["${app}"]
+        , escript =>
+            [ Escript
+              #{ name => anvl
+               , emu_args => EmuArgs
+               }
+            , Escript
+              #{ name => stage2
+               , profile => stage2
+               , emu_args => EmuArgs ++ " -anvl_core include_dir \"anvl_core/include\""
+               }
+            ]
         }
    }.
 
@@ -66,7 +91,7 @@ install(Prefix, Template, Src) ->
     end.
 
 escript() ->
-  anvl_erlc:escript(".", default, anvl).
+  anvl_erlc:escript(".", anvl).
 
 ?MEMO(docs,
       begin
@@ -78,27 +103,9 @@ escript() ->
           ])
       end).
 
-erlc_profiles(_) ->
-  [default, stage2, test, perf].
-
 erlc_deps(#{app := A}) ->
   %% Derive application src root path:
   case lists:member(A, apps()) of
     true -> "${dep}";
     false -> "vendor/${dep}"
   end.
-
-erlc_escripts(#{profile := Profile}) ->
-  CommonArgs = "-dist_listen false -escript main anvl_app",
-  EmuArgs = case Profile of
-              stage2 -> "-anvl_core include_dir \"anvl_core/include\" " ++ CommonArgs;
-              perf -> "+JPperf true " ++ CommonArgs;
-              _ -> CommonArgs
-            end,
-  #{anvl =>
-      #{ apps => [anvl_core, anvl_erlc, anvl_git, anvl_texinfo, lee, typerefl]
-       , emu_args => EmuArgs
-       }}.
-
-plugin_builder_doc(_) ->
-  "anvl_core/doc/anvl.texi".

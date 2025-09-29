@@ -24,7 +24,7 @@ API for managing the hooks.
 Plugins can declare hook points and inject code into other plugin's hook points.
 """.
 
--export([init/0, add/2, add/3, list/1, foreach/2, flatmap/2, first_match/2]).
+-export([init/0, add/2, add/3, traverse/3, fold/2, foreach/2, flatmap/2, first_match/2]).
 
 %%================================================================================
 %% Type declarations
@@ -36,13 +36,15 @@ Plugins can declare hook points and inject code into other plugin's hook points.
 
 -define(hooks_tab, anvl_hooks_tab).
 
+-define(max_prio, 16#ffffffff).
+
 %%================================================================================
 %% API functions
 %%================================================================================
 
 -doc false.
 init() ->
-  _ = ets:new(?hooks_tab, [public, bag, named_table, {read_concurrency, true}]),
+  _ = ets:new(?hooks_tab, [public, ordered_set, named_table, {read_concurrency, true}]),
   ok.
 
 -spec add(hookpoint(), hook()) -> ok.
@@ -50,42 +52,59 @@ add(HookPoint, Fun) ->
   add(HookPoint, 0, Fun).
 
 -spec add(hookpoint(), integer(), hook()) -> ok.
-add(HookPoint, Priority, Fun) ->
-  ets:insert(?hooks_tab, {HookPoint, -Priority, Fun}),
+add(HookPoint, Priority, Fun) when Priority < ?max_prio ->
+  ets:insert(?hooks_tab, {{HookPoint, -Priority, Fun}}),
   ok.
 
--spec list(hookpoint()) -> [hook()].
-list(HookPoint) ->
-  MS = {{HookPoint, '$1', '$2'}, [], [{{'$1', '$2'}}]},
-  {_, L} = lists:unzip(lists:sort(ets:select(?hooks_tab, [MS]))),
-  L.
+-spec traverse(fun((hook(), Acc) -> {boolean(), Acc}), Acc, hookpoint()) -> Acc.
+traverse(Fun, Acc, HookPoint) ->
+  traverse(Fun, Acc, HookPoint, {HookPoint, -?max_prio, 0}).
 
--spec foreach(hookpoint(), term()) -> ok.
+-spec fold(hookpoint(), Acc) -> Acc.
+fold(HookPoint, Acc0) ->
+  Fun = fun(Hook, Acc) ->
+            {true, Hook(Acc)}
+        end,
+  traverse(Fun, Acc0, HookPoint).
+
+-spec foreach(hookpoint(), term()) -> boolean().
 foreach(HookPoint, Args) ->
-  lists:foreach( fun(Fun) -> Fun(Args) end
-               , list(HookPoint)
-               ).
+  Fun = fun(Hook, Acc) ->
+            {true, Hook(Args) or Acc}
+        end,
+  traverse(Fun, false, HookPoint).
 
 -spec flatmap(hookpoint(), term()) -> [term()].
-flatmap(Hookpoint, Args) ->
-  lists:flatmap( fun(Fun) -> Fun(Args) end
-               , list(Hookpoint)
-               ).
+flatmap(HookPoint, Args) ->
+  Fun = fun(Hook, Acc) ->
+            {true, Hook(Args) ++ Acc}
+        end,
+  traverse(Fun, [], HookPoint).
 
 -spec first_match(hookpoint(), term()) -> {ok, term()} | undefined.
-first_match(Hookpoint, Args) ->
-  do_first_match(list(Hookpoint), Args).
+first_match(HookPoint, Args) ->
+  Fun = fun(Hook, _) ->
+            case Hook(Args) of
+              {true, Ret} ->
+                {false, {ok, Ret}};
+              false ->
+                {true, undefined}
+            end
+        end,
+  traverse(Fun, undefined, HookPoint).
 
 %%================================================================================
 %% Internal functions
 %%================================================================================
 
-do_first_match([], _) ->
-  undefined;
-do_first_match([Hook | Rest], Args) ->
-  case Hook(Args) of
-    {true, Ret} ->
-      {ok, Ret};
-    false ->
-      do_first_match(Rest, Args)
+traverse(Fun, Acc0, HookPoint, Key0) ->
+  case ets:next(?hooks_tab, Key0) of
+    Key = {HookPoint, _Prio, Hook} ->
+      {Continue, Acc} = Fun(Hook, Acc0),
+      case Continue of
+        true -> traverse(Fun, Acc, HookPoint, Key);
+        false -> Acc
+      end;
+    _ ->
+      Acc0
   end.

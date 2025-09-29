@@ -100,23 +100,38 @@ This condition is specific for ANVL plugins.
         %% Render API reference:
         _ = precondition(erl_doc(default, Plugin)),
         %% Render model documentation:
-        erlang:function_exported(Plugin, model, 0) andalso
-          begin
-            case lee_model:compile(anvl_plugin:metamodel(), [Plugin:model()]) of
-              {ok, Model} ->
-                ExtractorConfig = #{ output_dir => Dir
-                                   , extension => ".texi"
-                                   , formatter => fun lee_doc:texinfo/3
-                                   , metatypes => [cli_param, value, os_env]
-                                   },
-                _ = lee_doc:make_docs(Model, ExtractorConfig),
-                true;
-              {error, Errors} ->
-                [logger:critical(E) || E <- Errors],
-                ?UNSAT("Failed to compile model", [])
-             end
-          end
+        with_model(
+          anvl_plugin:metamodel(),
+          #{ output_dir => Dir
+           , extension => ".texi"
+           , formatter => fun lee_doc:texinfo/3
+           , metatypes => [cli_param, value, os_env]
+           },
+          Plugin,
+          model),
+        with_model(
+          anvl_plugin:project_metamodel(),
+          #{ output_dir => Dir
+           , extension => ".proj.texi"
+           , formatter => fun lee_doc:texinfo/3
+           , metatypes => [value]
+           },
+          Plugin,
+          project_model)
       end).
+
+with_model(Metamodel, ExtractorConfig, Plugin, ModelCB) ->
+  erlang:function_exported(Plugin, ModelCB, 0) andalso
+    begin
+      case lee_model:compile(Metamodel, [Plugin:ModelCB()]) of
+        {ok, Model} ->
+          _ = lee_doc:make_docs(Model, ExtractorConfig),
+          true;
+        {error, Errors} ->
+          [logger:critical(E) || E <- Errors],
+          ?UNSAT("Failed to compile ~p", [ModelCB])
+      end
+    end.
 
 ?MEMO(compiled, DocSrc, Format,
       begin

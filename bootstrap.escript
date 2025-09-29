@@ -1,4 +1,5 @@
 #!/usr/bin/env escript
+%%! -config bootstrap.config
 %% -*- mode:erlang -*-
 
 %%================================================================================
@@ -47,7 +48,7 @@ main(_Args) ->
   ok = anvl_app:bootstrap(),
   io:format("===================~n Bootstrap stage 3~n===================~n", []),
   %% Use escript produced at stage2 to recompile the code into the final binary:
-  Port = erlang:open_port({spawn_executable, "_anvl_build/stage2/anvl"}, [exit_status, nouse_stdio, {cd, "."}]),
+  Port = erlang:open_port({spawn_executable, "_anvl_build/stage2/stage2"}, [exit_status, nouse_stdio, {cd, "."}]),
   receive
     {Port, {exit_status, E}} -> halt(E)
   end.
