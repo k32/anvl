@@ -1,4 +1,2 @@
-erlc_bdeps(#{app := lee}) ->
-  [typerefl, snabbkaffe];
-erlc_bdeps(_) ->
-  [].
+conf() ->
+  #{erlc => #{bdeps => [typerefl, snabbkaffe]}}.

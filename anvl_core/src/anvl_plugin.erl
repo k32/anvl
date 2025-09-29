@@ -187,9 +187,8 @@ load_project_model(Module, S = #s{project_model = PM0}) ->
           persistent_term:put(?project_model, ProjectModel),
           S#s{project_model = PM};
         {error, Errors} ->
-          logger:critical("Project model is invalid! (Likely caused by a plugin)"),
           [logger:critical(E) || E <- Errors],
-          error(badmodel)
+          ?UNSAT("Project model is invalid! (Likely caused by a plugin)", [])
       end;
     false ->
       S

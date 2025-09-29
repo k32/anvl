@@ -101,13 +101,6 @@ This is a type.
 
 -reflect_type([profile/0, source_location_ret/0, compile_options/0, escripts_ret/0, context/0, application_spec/0, archive_file/0]).
 
--define(default_profiles, [default, test]).
--doc """
-@pconf List of profiles.
-""".
--doc #{default => ?default_profiles}.
--callback erlc_profiles() -> [profile()].
-
 -define(default_include_dirs, ["${src_root}/include", "${src_root}/src"]).
 -doc """
 @pconf Search path for include files.
@@ -178,11 +171,11 @@ Condition: function has been compiled.
         ?LOG_INFO("Compiling ~p", [App]),
         SrcRoot = src_root(Profile, App),
         _ = precondition(sources_discovered(SrcRoot, Profile, App)),
-        COpts0 = cfg_compile_options(SrcRoot, Profile, App),
-        IncludePatterns = cfg_include_dirs(SrcRoot, Profile, App),
-        SrcPatterns = cfg_sources(SrcRoot, Profile, App),
-        BDeps = cfg_bdeps(SrcRoot, Profile, App),
-
+        COpts0 = cfg_compile_options(SrcRoot, Profile),
+        IncludePatterns = cfg_include_dirs(SrcRoot, Profile),
+        SrcPatterns = cfg_sources(SrcRoot, Profile),
+        BDeps = cfg_bdeps(SrcRoot, Profile),
+        logger:warning(#{a => App, bd => BDeps}),
         AppSrcProperties = app_src(App, SrcRoot),
         Dependencies = non_otp_apps(BDeps ++ proplists:get_value(applications, AppSrcProperties, [])),
         BuildRoot = binary_to_list(filename:join([?BUILD_ROOT, <<"erlc">>, anvl_lib:hash(COpts0)])),
@@ -303,9 +296,8 @@ app_info(Profile, App) ->
 
 -doc false.
 model() ->
-  Profiles = profiles(anvl_project:root()),
   Profile = {[value, cli_param],
-             #{ type => typerefl:union(Profiles)
+             #{ type => atom()
               , default_ref => [anvl_erlc, profile]
               , cli_operand => "profile"
               , cli_short => $p
@@ -314,8 +306,8 @@ model() ->
       #{ profile =>
            {[value, cli_param, os_env],
              #{ oneliner => "Build profile"
-              , type => typerefl:union(Profiles)
-              , default => hd(Profiles)
+              , type => atom()
+              , default => default
               , cli_operand => "erlc-profile"
               , os_env => "ERLC_PROFILE"
               }}
@@ -387,42 +379,47 @@ project_model() ->
               #{ type => application()
                }}
          },
+  BaseModel =
+    #{ includes =>
+         {[value],
+          #{ type => [anvl_lib:filename_pattern()]
+           , default => default_include_dirs()
+           }}
+     , bdeps =>
+         {[value],
+          #{ type => [application()]
+           , default => []
+           }}
+     , sources =>
+         {[value],
+          #{ type => [anvl_lib:filename_pattern()]
+           , default => default_sources()
+           }}
+     , compile_options =>
+         {[value],
+          #{ type => list()
+           , default => [debug_info]
+           }}
+     },
+  Overrides = lee_model:map_vals(
+                fun(Key, {MTs, Attrs0}) ->
+                    Attrs = maps:remove(default, Attrs0#{default_ref => [erlc | Key]}),
+                    {MTs, Attrs}
+                end,
+                BaseModel),
   #{erlc =>
-      #{ profiles =>
-           {[value, pcfg],
-            #{ type => list(profile())
-             , function => erlc_profiles
-             , default => [default, test]
+      BaseModel
+      #{ overrides =>
+           {[map],
+             #{ oneliner => "Overrides for profiles"
+              , key_elements => [[profile]]
+              },
+            Overrides
+            #{ profile =>
+                 {[value],
+                  #{ type => atom()
+                   }}
              }}
-       , bdeps =>
-           {[pcfg],
-            #{ type => [application()]
-             , function => erlc_bdeps
-             , default => []
-             },
-            maps:merge(Profile, App)
-            }
-       , includes =>
-           {[pcfg],
-            #{ type => [anvl_lib:filename_pattern()]
-             , function => erlc_include_dirs
-             , default => default_include_dirs()
-             },
-            maps:merge(Profile, App)}
-       , sources =>
-           {[pcfg],
-            #{ type => [anvl_lib:filename_pattern()]
-             , function => erlc_sources
-             , default => default_sources()
-             },
-            maps:merge(Profile, App)}
-       , compile_options =>
-           {[pcfg],
-            #{ type => list()
-             , function => erlc_compile_options
-             , default => [debug_info]
-             },
-            Profile}
        , deps =>
            {[pcfg],
             #{ type => anvl_locate:spec()
@@ -804,16 +801,16 @@ ensure_string(L) when is_list(L) ->
 %%================================================================================
 
 profiles(ProjectRoot) ->
-  anvl_project:conf(ProjectRoot, [erlc, profiles], #{}).
+  anvl_project:nuconf(ProjectRoot, [erlc, profiles]).
 
-cfg_include_dirs(ProjectRoot, Profile, App) ->
-  anvl_project:conf(ProjectRoot, [erlc, includes], #{profile => Profile, app => App}).
+cfg_include_dirs(ProjectRoot, Profile) ->
+  anvl_project:nuconf(ProjectRoot, [erlc, overrides, {Profile}, includes]).
 
-cfg_sources(ProjectRoot, Profile, App) ->
-  anvl_project:conf(ProjectRoot, [erlc, sources], #{profile => Profile, app => App}).
+cfg_sources(ProjectRoot, Profile) ->
+  anvl_project:nuconf(ProjectRoot, [erlc, overrides, {Profile}, sources]).
 
-cfg_compile_options(ProjectRoot, Profile, App) ->
-  anvl_project:conf(ProjectRoot, [erlc, compile_options], #{profile => Profile, app => App}).
+cfg_compile_options(ProjectRoot, Profile) ->
+  anvl_project:nuconf(ProjectRoot, [erlc, overrides, {Profile}, compile_options]).
 
 cfg_escript_specs(ProjectRoot, Profile) ->
   anvl_project:conf(ProjectRoot, [erlc, escripts], #{profile => Profile}).
@@ -826,8 +823,8 @@ cfg_app_src_hook(ProjectRoot, Profile, AppSpec) ->
   anvl_project:conf(ProjectRoot, erlc_app_spec_hook, [Args], AppSpec,
                     application_spec()).
 
-cfg_bdeps(ProjectRoot, Profile, App) ->
-  anvl_project:conf(ProjectRoot, [erlc, bdeps], #{profile => Profile, app => App}).
+cfg_bdeps(ProjectRoot, Profile) ->
+  anvl_project:nuconf(ProjectRoot, [erlc, overrides, {Profile}, bdeps]).
 
 cfg_escript_files(ProjectRoot, Profile, App) ->
   anvl_project:conf(ProjectRoot, [erlc, escript_files], #{profile => Profile, app => App}).

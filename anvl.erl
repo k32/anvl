@@ -29,11 +29,20 @@ conditions(_) ->
   [escript, docs, install].
 
 conf() ->
-  #{ plugins => plugins()
-   , erlc =>
-       #{ profiles => erlc_profiles(1)
+  #{ erlc =>
+       #{ bdeps => []
         }
    }.
+
+%% conf_override(Dir) ->
+%%   case filename:basename(Dir) of
+%%     "typerefl" ->
+%%       [{set, [erlc, bdeps], [erlang_qq]}];
+%%     "lee" ->
+%%       [{set, [erlc, bdeps], [erlang_qq, typerefl]}];
+%%     _ ->
+%%       []
+%%   end.
 
 ?MEMO(install,
       begin

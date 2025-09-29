@@ -40,6 +40,10 @@
 %% API
 %%================================================================================
 
+-spec nuconf(dir(), lee:model_key()) -> _Result.
+nuconf(ProjectRoot, Key) ->
+  lee:get(persistent_term:get(?project_model), ?proj_conf_storage(ProjectRoot), Key).
+
 -spec conf(dir(), lee:model_key(), map()) -> _Result.
 conf(ProjectRoot, Key, Args) ->
   Model = persistent_term:get(?project_model),
@@ -259,9 +263,9 @@ include_dir() ->
   end.
 
 load_project_conf(ProjectDir, Module, Storage) ->
-  %% FIXME: hack
   Model = persistent_term:get(?project_model),
   Patch = read_patch(Model, Module),
+  ?LOG_WARNING(#{load_config => ProjectDir, patch => Patch, module => Module}),
   lee_storage:patch(Storage, Patch),
   case read_override(ProjectDir) of
     []       -> ok;
@@ -280,7 +284,9 @@ load_project_conf(ProjectDir, Module, Storage) ->
 read_patch(Model, Module) ->
   case erlang:function_exported(Module, conf, 0) of
     true ->
-      tree_to_patch(Model, Module:conf());
+      Raw = Module:conf(),
+      ?LOG_WARNING(#{rc => Module, raw => Raw}),
+      tree_to_patch(Model, Raw);
     false ->
       []
   end.
