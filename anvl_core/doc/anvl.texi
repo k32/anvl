@@ -20,6 +20,12 @@
     @include \DIR\/value.texi
   @raisesections
 
+  @node \PREFIX\ Project Configuration
+  @section Project Configuration
+  @lowersections
+    @include \DIR\/value.proj.texi
+  @raisesections
+
   @node \PREFIX\ API Reference
   @section API Reference
   @lowersections

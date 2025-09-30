@@ -333,30 +333,20 @@ model() ->
 
 -doc false.
 project_model() ->
-  Profile = #{ profile =>
-                 {[funarg],
-                  #{ type => profile()
-                   }}
-             },
-  App = #{ app =>
-             {[funarg],
-              #{ type => application()
-               }}
-         },
   BaseModel =
     #{ includes =>
          {[value],
-          #{ type => [anvl_lib:filename_pattern()]
+          #{ type => list(anvl_lib:filename_pattern())
            , default => ["${src_root}/include", "${src_root}/src"]
            }}
      , bdeps =>
          {[value],
-          #{ type => [application()]
+          #{ type => list(application())
            , default => []
            }}
      , sources =>
          {[value],
-          #{ type => [anvl_lib:filename_pattern()]
+          #{ type => list(anvl_lib:filename_pattern())
            , default => ["${src_root}/src/*.erl", "${src_root}/src/*/*.erl"]
            }}
      , compile_options =>
@@ -369,8 +359,7 @@ project_model() ->
               {[value],
                #{ type => string()
                 , default => "doc"
-                },
-               maps:merge(Profile, App)}
+                }}
           , options =>
               {[value],
                #{ type => list()
@@ -399,7 +388,7 @@ project_model() ->
              }}
        , app_search_paths =>
            {[value],
-            #{ type => [anvl_lib:filename_pattern()]
+            #{ type => list(anvl_lib:filename_pattern())
              , default => ["apps/${dep}"]
              }}
        , deps =>
@@ -425,7 +414,7 @@ project_model() ->
                    }}
              , apps =>
                  {[value],
-                  #{ type => [application()]
+                  #{ type => list(application())
                    }}
              , emu_args =>
                  {[value],
@@ -434,24 +423,13 @@ project_model() ->
                    }}
              , files =>
                  {[value],
-                  #{ type => [anvl_lib:filename_pattern()]
+                  #{ type => list(anvl_lib:filename_pattern())
                    , default => ["priv/**", "ebin/**"]
                    }}
              , profile =>
                  {[value],
                   #{ type => profile()
                    , default => default
-                   }}
-             }}
-       , app_src_hook =>
-           {[pcfg],
-            #{ type => application_spec()
-             , function => erlc_app_spec_hook
-             },
-            Profile
-            #{ spec =>
-                 {[funarg],
-                  #{ type => application_spec()
                    }}
              }}
        }}.

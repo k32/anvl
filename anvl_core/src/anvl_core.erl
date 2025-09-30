@@ -85,15 +85,13 @@ model() ->
 -doc false.
 project_model() ->
    #{ plugins =>
-       {[value, pcfg],
-        #{ type => [anvl_plugin:t()]
+       {[value],
+        #{ type => list(anvl_plugin:t())
          , default => []
-         , function => plugins
          }}
-    , custom_conditions =>
-        {[pcfg],
-         #{ type => [atom()]
-          , function => conditions
+    , conditions =>
+        {[value],
+         #{ type => list(atom())
           , default => []
           }}
     }.

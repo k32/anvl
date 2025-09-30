@@ -25,8 +25,6 @@ but acts as a broker between dependency resolver plugins (such as @ref{ANVL Plug
 and dependency consumers.
 """.
 
--behavior(anvl_plugin).
-
 %% API:
 -export([located/2, dir/2, add_hook/2, add_hook/1]).
 

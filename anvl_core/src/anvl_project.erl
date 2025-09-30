@@ -24,7 +24,6 @@
 %% Internal exports
 -export([parse_transform/2]).
 
--export([names/1, metaparams/1, meta_validate_node/4]).
 -include_lib("lee/include/lee.hrl").
 
 -include("anvl.hrl").
@@ -80,49 +79,6 @@ plugins(Project) ->
     false ->
       []
   end.
-
-%%================================================================================
-%% Lee metatype callbacks
-%%================================================================================
-
-%% @hidden
-names(_Config) ->
-  [hook, pcfg, funarg].
-
-%% @hidden
-metaparams(hook) ->
-  [ {mandatory, type, typerefl:term()}
-  , {mandatory, name, typerefl:atom()}
-  | lee_doc:documented()
-  ];
-metaparams(pcfg) ->
-  [ {optional, default, typerefl:term()}
-  , {mandatory, function, typerefl:atom()}
-  | lee_doc:documented()
-  ];
-metaparams(funarg) ->
-  %% funarg is used for documentation purposes only
-  [ {mandatory, type, typerefl:term()}
-  | lee_doc:documented()
-  ].
-
-%% @hidden
-meta_validate_node(pcfg, _Model, _Key, #mnode{metaparams = Attrs}) ->
-  case Attrs of
-    #{type := Type, default := Default} ->
-      case typerefl:typecheck(Type, Default) of
-        ok ->
-          {[], []};
-        {error, Err} ->
-          Str = "Mistyped default value. " ++
-            lee_lib:format_typerefl_error(Err),
-          {[Str], []}
-      end;
-    _ ->
-      {[], []}
-  end;
-meta_validate_node(_MT, _Model, _Key, _Mnode) ->
-  {[], []}.
 
 %%================================================================================
 %% Internal functions
@@ -186,13 +142,10 @@ anvl_config_module(Dir) when is_list(Dir) ->
 custom_conditions(AdHoc) ->
   Invoked = anvl_plugin:conf([custom_conditions]),
   Mod = config_module(root()),
-  Defined = case erlang:function_exported(Mod, conditions, 0) of
-              true -> Mod:conditions();
-              false -> []
-            end,
+  Defined = anvl_project:conf(root(), [conditions]),
   Funs = case {Invoked, Defined} of
            {[], [First | _]} when AdHoc =:= [] ->
-             ?LOG_NOTICE("No explicit condition was given. Running first custom condition."),
+             ?LOG_NOTICE("No explicit condition was given. Running first custom condition (~p).", [First]),
              [First];
            _ ->
              case Invoked -- Defined of
@@ -248,7 +201,6 @@ read_patch(Model, Module) ->
   end.
 
 tree_to_patch(Model, Tree) ->
-  Fun = fun(I) -> not is_tuple(I) end,
   MKeys = [key_parts(K) || K <- lee_model:get_metatype_index(value, Model)],
   tree_to_patch(Model, [], Tree, MKeys).
 

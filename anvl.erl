@@ -25,13 +25,11 @@ apps() ->
 plugins() ->
   [anvl_erlc, anvl_git, anvl_texinfo].
 
-conditions() ->
-  [install, escript, docs].
-
 conf() ->
   EmuArgs = "-dist_listen false -escript main anvl_app",
   Escript = #{apps => [anvl_core, anvl_erlc, anvl_git, anvl_texinfo, lee, typerefl]},
-  #{ erlc =>
+  #{ conditions => [install, escript, docs]
+   , erlc =>
        #{ app_search_paths =>
             ["${dep}", "vendor/${dep}"]
         , escript =>
