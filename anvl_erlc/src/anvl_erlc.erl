@@ -142,11 +142,10 @@ Condition: function has been compiled.
       begin
         ?LOG_INFO("Compiling ~p", [App]),
         SrcRoot = src_root(Profile, App),
-        _ = precondition(sources_discovered(SrcRoot, Profile, App)),
-        COpts0 = cfg_compile_options(SrcRoot, Profile),
-        IncludePatterns = cfg_include_dirs(SrcRoot, Profile),
-        SrcPatterns = cfg_sources(SrcRoot, Profile),
-        BDeps = cfg_bdeps(SrcRoot, Profile),
+        COpts0 = pcfg(SrcRoot, Profile, [compile_options]),
+        IncludePatterns = pcfg(SrcRoot, Profile, [includes]),
+        SrcPatterns = pcfg(SrcRoot, Profile, [sources]),
+        BDeps = pcfg(SrcRoot, Profile, [bdeps]),
         AppSrcProperties = app_src(App, SrcRoot),
         Dependencies = non_otp_apps(BDeps ++ proplists:get_value(applications, AppSrcProperties, [])),
         BuildRoot = binary_to_list(filename:join([?BUILD_ROOT, <<"erlc">>, anvl_lib:hash(COpts0)])),
@@ -174,13 +173,13 @@ Condition: function has been compiled.
         ok = filelib:ensure_path(filename:join(BuildDir, "ebin")),
         ok = filelib:ensure_path(filename:join(BuildDir, "include")),
         ok = filelib:ensure_path(filename:join(BuildDir, "anvl_deps")),
-        Hook = anvl_hook:foreach(erlc_pre_compile_hook, Context),
+        CompHook = anvl_hook:foreach(erlc_pre_compile_hook, Context),
         %% TODO: this is a hack, should be done by dependency manager:
         EbinDir = filename:join(BuildDir, "ebin"),
         true = code:add_patha(EbinDir),
         ?LOG_INFO("Added ~p to the erlang load path (~s)", [App, code:lib_dir(App)]),
         %% Build BEAM files:
-        Hook or
+        CompHook or
           precondition([beam(Src, CRef) || Src <- Sources]) or
           clean_orphans(Sources, Context) or
           copy_includes(Context) or
@@ -191,8 +190,8 @@ Condition: function has been compiled.
 -spec edoc(file:filename_all(), profile(), application()) -> anvl_condition:t().
 ?MEMO(edoc, ProjectRoot, Profile, App,
       begin
-        OutputDir = cfg_edoc_output_dir(ProjectRoot, Profile),
-        Options = cfg_edoc_options(ProjectRoot, Profile),
+        OutputDir = pcfg(ProjectRoot, Profile, [edoc, output_dir]),
+        Options = pcfg(ProjectRoot, Profile, [edoc, options]),
         ok = filelib:ensure_path(OutputDir),
         #{src_root := Src, includes := IncludeDirs} = AppInfo = app_info(Profile, App),
         Hook = anvl_hook:foreach(erlc_pre_edoc_hook, AppInfo),
@@ -615,13 +614,13 @@ Precondition: module defined in the same application is compiled and loaded.
 %% Internal functions
 %%================================================================================
 
--spec sources_discovered(file:filename_all(), profile(), application()) -> anvl_condition:t().
-sources_discovered(_ProjectDir, _Profile, App) ->
+-spec sources_discovered(application()) -> anvl_condition:t().
+sources_discovered(App) ->
   anvl_locate:located(?MODULE, App).
 
 -spec src_root(profile(), application()) -> file:filename_all() | builtin.
-src_root(Profile, App) ->
-  _ = precondition(sources_discovered(anvl_project:root(), Profile, App)),
+src_root(_Profile, App) ->
+  _ = precondition(sources_discovered(App)),
   anvl_locate:dir(?MODULE, App).
 
 -spec app_context(profile(), application()) -> context().
@@ -767,24 +766,5 @@ ensure_string(Bin) when is_binary(Bin) ->
 ensure_string(L) when is_list(L) ->
   L.
 
-%%================================================================================
-%% Configuration:
-%%================================================================================
-
-cfg_include_dirs(ProjectRoot, Profile) ->
-  anvl_project:conf(ProjectRoot, [erlc, overrides, {Profile}, includes]).
-
-cfg_sources(ProjectRoot, Profile) ->
-  anvl_project:conf(ProjectRoot, [erlc, overrides, {Profile}, sources]).
-
-cfg_compile_options(ProjectRoot, Profile) ->
-  anvl_project:conf(ProjectRoot, [erlc, overrides, {Profile}, compile_options]).
-
-cfg_bdeps(ProjectRoot, Profile) ->
-  anvl_project:conf(ProjectRoot, [erlc, overrides, {Profile}, bdeps]).
-
-cfg_edoc_output_dir(ProjectRoot, Profile) ->
-  anvl_project:conf(ProjectRoot, [erlc, overrides, {Profile}, edoc, output_dir]).
-
-cfg_edoc_options(ProjectRoot, Profile) ->
-  anvl_project:conf(ProjectRoot, [erlc, overrides, {Profile}, edoc, options]).
+pcfg(ProjectRoot, Profile, Key) ->
+  anvl_project:conf(ProjectRoot, [erlc, overrides, {Profile} | Key]).
