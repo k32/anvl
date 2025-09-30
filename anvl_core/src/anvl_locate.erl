@@ -158,7 +158,7 @@ do_find_spec(_, []) ->
   undefined;
 do_find_spec(Dep, [Project | Rest]) ->
   try
-    Spec = anvl_project:nuconf(Project, Dep),
+    Spec = anvl_project:conf(Project, Dep),
     {ok, Spec}
   catch
     error:{missing_data, _} ->

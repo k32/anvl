@@ -19,10 +19,10 @@
 
 -module(anvl_project).
 
--export([root/0, conf/3, nuconf/2, list_conf/2, conditions/0, plugins/1, known_projects/0]).
+-export([root/0, conf/2, list_conf/2, conditions/0, plugins/1, known_projects/0]).
 
 %% Internal exports
--export([conf/5, parse_transform/2]).
+-export([parse_transform/2]).
 
 -export([names/1, metaparams/1, meta_validate_node/4]).
 -include_lib("lee/include/lee.hrl").
@@ -40,8 +40,8 @@
 %% API
 %%================================================================================
 
--spec nuconf(dir(), lee:model_key()) -> _Result.
-nuconf(ProjectRoot, Key) ->
+-spec conf(dir(), lee:model_key()) -> _Result.
+conf(ProjectRoot, Key) ->
   _ = config_module(ProjectRoot),
   lee:get(persistent_term:get(?project_model), ?proj_conf_storage(ProjectRoot), Key).
 
@@ -56,17 +56,6 @@ known_projects() ->
   %% FIXME:
   Others = [],
   [Root | Others].
-
--spec conf(dir(), lee:model_key(), map()) -> _Result.
-conf(ProjectRoot, Key, Args) ->
-  Model = persistent_term:get(?project_model),
-  #mnode{metaparams = Attrs} = lee_model:get(Key, Model),
-  case Attrs of
-    #{type := Type, default := Default, function := Fun} ->
-      conf(ProjectRoot, Fun, Args, Default, Type);
-    #{type := Type, function := Fun} ->
-      conf(ProjectRoot, Fun, Args, Type)
-  end.
 
 root() ->
   {ok, CWD} = file:get_cwd(),
@@ -191,63 +180,20 @@ config_module(ProjectRoot) ->
         end
       end).
 
-%% @hidden
--spec conf(dir(), atom(), map(), Result, typerefl:type()) -> Result.
-conf(ProjectRoot, Function, Args, Default, ExpectedType) ->
-  Module = config_module(ProjectRoot),
-  case lists:member({Function, 1}, Module:module_info(exports)) of
-    true ->
-      conf(ProjectRoot, Function, Args, ExpectedType);
-    false ->
-      conf_override(ProjectRoot, Function, Args, Default)
-  end.
-
--spec conf(dir(), atom(), map(), typerefl:type()) -> _Result.
-conf(ProjectRoot, Function, Args, ExpectedType) ->
-  Module = config_module(ProjectRoot),
-  try apply(Module, Function, [Args]) of
-    Val ->
-      case typerefl:typecheck(ExpectedType, Val) of
-        ok ->
-          conf_override(ProjectRoot, Function, Args, Val);
-        {error, #{expected := Expected, got := Got}} ->
-          ?LOG_CRITICAL("Invalid return value of ~p:~p:~nExpected type: ~s~nGot: ~p",
-                        [Module, Function, Expected, Got]),
-          exit(unsat)
-      end
-  catch
-    EC:Err:Stack ->
-      ?LOG_CRITICAL("Failed to get configuration ~p:~p~n"
-                    "Args: ~p~n"
-                    "Error: ~p:~p~n"
-                    "Stacktrace: ~p",
-                    [Module, Function, Args, EC, Err, Stack]),
-      exit(unsat)
-  end.
-
-conf_override(ProjectRoot, Function, Args, Result) ->
-  OverrideFun = list_to_atom(atom_to_list(Function) ++ "_override"),
-  Module = config_module(root()),
-  case lists:member({Function, 3}, Module:module_info(exports)) of
-    true ->
-      Module:OverrideFun( ProjectRoot
-                        , Args
-                        , Result
-                        );
-    false ->
-      Result
-  end.
-
 anvl_config_module(Dir) when is_list(Dir) ->
   list_to_atom("anvl_config##" ++ Dir).
 
 custom_conditions(AdHoc) ->
   Invoked = anvl_plugin:conf([custom_conditions]),
-  Defined = conf(root(), [custom_conditions], #{}),
+  Mod = config_module(root()),
+  Defined = case erlang:function_exported(Mod, conditions, 0) of
+              true -> Mod:conditions();
+              false -> []
+            end,
   Funs = case {Invoked, Defined} of
-           {[], All} when AdHoc =:= [] ->
-             ?LOG_NOTICE("No explicit condition was given. Running all custom conditions."),
-             All;
+           {[], [First | _]} when AdHoc =:= [] ->
+             ?LOG_NOTICE("No explicit condition was given. Running first custom condition."),
+             [First];
            _ ->
              case Invoked -- Defined of
                [] ->
@@ -258,7 +204,6 @@ custom_conditions(AdHoc) ->
              end,
              Invoked
          end,
-  Mod = config_module(root()),
   case [Fun || Fun <- Funs, not erlang:function_exported(Mod, Fun, 0)] of
     [] ->
       [Mod:Fun() || Fun <- Funs];

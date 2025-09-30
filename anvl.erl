@@ -25,7 +25,7 @@ apps() ->
 plugins() ->
   [anvl_erlc, anvl_git, anvl_texinfo].
 
-conditions(_) ->
+conditions() ->
   [install, escript, docs].
 
 conf() ->

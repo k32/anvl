@@ -27,7 +27,7 @@ A builtin plugin for compiling Erlang applications.
 -behavior(anvl_locate).
 
 %% API:
--export([add_pre_compile_hook/1, add_pre_edoc_hook/1]).
+-export([add_pre_compile_hook/1, add_app_spec_hook/1, add_pre_edoc_hook/1]).
 -export([app_info/2, escript/2, app_compiled/2, dialyzed/2, module/2, edoc/3]).
 -export([app_file/1, beam_file/2]).
 
@@ -62,11 +62,6 @@ This is a type.
 
 -type escript_name() :: atom().
 
--type escript_spec() ::
-        #{ apps := [application()]
-         , emu_args := string()
-         }.
-
 -type context() ::
         #{ app := atom()
          , src_root := file:filename_all()
@@ -96,12 +91,10 @@ This is a type.
 
 -type archive_file() :: {file:filename_all(), file:filename_all()}.
 
--type escripts_ret() :: #{escript_name() => escript_spec()}.
-
 -define(app_info(PROFILE, APP), {?MODULE, app_info, PROFILE, APP}).
 -define(context(PROFILE, APP), {?MODULE, context, PROFILE, APP}).
 
--reflect_type([profile/0, source_location_ret/0, compile_options/0, escripts_ret/0, context/0, application_spec/0, archive_file/0]).
+-reflect_type([profile/0, source_location_ret/0, compile_options/0, escript_name/0, context/0, application_spec/0, archive_file/0]).
 
 -doc """
 @pconf @ref{t:anvl_locate:spec/0,Locate spec} for the application.
@@ -120,12 +113,16 @@ app_file(#{app := App, build_dir := BuildDir}) ->
 beam_file(#{build_dir := BuildDir}, Module) ->
   filename:join([BuildDir, "ebin", atom_to_list(Module) ++ ".beam"]).
 
+-spec add_app_spec_hook(fun((application_spec()) -> application_spec())) -> ok.
+add_app_spec_hook(Hook) ->
+  anvl_hook:add(erlc_app_spec_hook, Hook).
+
 -doc """
 Add a pre-compile hook. Functions hooked there will run after
 dependencies are satisfied, but before building the application
 itself.
 """.
--spec add_pre_compile_hook(fun((context()) -> _)) -> ok.
+-spec add_pre_compile_hook(fun((context()) -> boolean())) -> ok.
 add_pre_compile_hook(Fun) ->
   anvl_hook:add(erlc_pre_compile_hook, Fun).
 
@@ -133,7 +130,7 @@ add_pre_compile_hook(Fun) ->
 Add a pre-edoc hook. Functions hooked there will run before
 building the documentation for the app.
 """.
--spec add_pre_edoc_hook(fun((app_info()) -> _)) -> ok.
+-spec add_pre_edoc_hook(fun((app_info()) -> boolean())) -> ok.
 add_pre_edoc_hook(Fun) ->
   anvl_hook:add(erlc_pre_edoc_hook, Fun).
 
@@ -177,13 +174,14 @@ Condition: function has been compiled.
         ok = filelib:ensure_path(filename:join(BuildDir, "ebin")),
         ok = filelib:ensure_path(filename:join(BuildDir, "include")),
         ok = filelib:ensure_path(filename:join(BuildDir, "anvl_deps")),
-        ok = anvl_hook:foreach(erlc_pre_compile_hook, Context),
+        Hook = anvl_hook:foreach(erlc_pre_compile_hook, Context),
         %% TODO: this is a hack, should be done by dependency manager:
         EbinDir = filename:join(BuildDir, "ebin"),
         true = code:add_patha(EbinDir),
         ?LOG_INFO("Added ~p to the erlang load path (~s)", [App, code:lib_dir(App)]),
         %% Build BEAM files:
-        precondition([beam(Src, CRef) || Src <- Sources]) or
+        Hook or
+          precondition([beam(Src, CRef) || Src <- Sources]) or
           clean_orphans(Sources, Context) or
           copy_includes(Context) or
           render_app_spec(AppSrcProperties, Sources, Context)
@@ -197,9 +195,9 @@ Condition: function has been compiled.
         Options = cfg_edoc_options(ProjectRoot, Profile),
         ok = filelib:ensure_path(OutputDir),
         #{src_root := Src, includes := IncludeDirs} = AppInfo = app_info(Profile, App),
-        ok = anvl_hook:foreach(erlc_pre_edoc_hook, AppInfo),
+        Hook = anvl_hook:foreach(erlc_pre_edoc_hook, AppInfo),
         edoc:application(App, Src, [{includes, IncludeDirs}, {dir, OutputDir} | Options]),
-        true
+        Hook
       end).
 
 -spec dialyzed(profile(), nonempty_list(application())) -> anvl_condition:t().
@@ -274,7 +272,7 @@ model() ->
   #{anvl_erlc =>
       #{ profile =>
            {[value, cli_param, os_env],
-             #{ oneliner => "Build profile"
+             #{ oneliner => "Default profile used by eligible Erlang-related targets"
               , type => atom()
               , default => default
               , cli_operand => "erlc-profile"
@@ -283,14 +281,13 @@ model() ->
        , escript =>
            {[map, cli_action],
             #{ oneliner => "Build an escript"
-             , key_elements => [[name]]
+             , key_elements => [[names]]
              , cli_operand => "escript"
              },
-            #{ name =>
+            #{ names =>
                  {[value, cli_positional],
                   #{ oneliner => "Names of the escripts to build"
-                   , type => list(atom())
-                   , default => []
+                   , type => nonempty_list(escript_name())
                    , cli_arg_position => rest
                    }}
              }}
@@ -473,7 +470,7 @@ locate_spec_key(App) ->
 
 locate_search_paths(ProjectDir) ->
   [ filename:join([anvl_project:root(), "_checkouts", "${dep}"])
-  | anvl_project:nuconf(ProjectDir, [erlc, app_search_paths])
+  | anvl_project:conf(ProjectDir, [erlc, app_search_paths])
   ].
 
 %%================================================================================
@@ -482,7 +479,7 @@ locate_search_paths(ProjectDir) ->
 
 do_escript(ProjectRoot, EscriptName) ->
   Cfg = fun(Key) ->
-            anvl_project:nuconf(ProjectRoot, [erlc, escript, {EscriptName}] ++ Key)
+            anvl_project:conf(ProjectRoot, [erlc, escript, {EscriptName}] ++ Key)
         end,
   Profile = Cfg([profile]),
   FilePatterns = Cfg([files]),
@@ -655,16 +652,12 @@ app_context(Profile, App) ->
   persistent_term:get(?context(Profile, App)).
 
 get_escripts(ProjectRoot) ->
-  Keys = anvl_plugin:list_conf([anvl_erlc, escript, {}]),
-  lists:flatmap(fun(Key) ->
-                    Profile = anvl_plugin:conf(Key ++ [profile]),
-                    case anvl_plugin:conf(Key ++ [name]) of
-                      []       -> Escripts = maps:keys(cfg_escript_specs(ProjectRoot, Profile));
-                      Escripts -> ok
-                    end,
-                    [escript(ProjectRoot, I) || I <- Escripts]
-                end,
-                Keys).
+  Escripts =
+    case anvl_plugin:list_conf([anvl_erlc, escript, {}]) of
+      [] -> [];
+      [Key] -> anvl_plugin:conf(Key ++ [names])
+    end,
+  [escript(ProjectRoot, I) || I <- Escripts].
 
 get_compile_apps(_ProjectRoot) ->
   Keys = anvl_plugin:list_conf([anvl_erlc, compile, {}]),
@@ -722,7 +715,7 @@ render_app_spec(AppSrcProperties, Sources, Context) ->
   AppFile = app_file(Context),
   Modules = [module_of_erl(I) || I <- Sources],
   NewContent0 = {application, App, [{modules, Modules} | AppSrcProperties]},
-  NewContent = cfg_app_src_hook(ProjectRoot, Profile, NewContent0),
+  NewContent = anvl_hook:fold(erlc_app_spec_hook, NewContent0),
   anvl_condition:set_result(?app_info(Profile, App),
                             Context
                             #{ ebin_dir => BuildDir
@@ -801,30 +794,19 @@ ensure_string(L) when is_list(L) ->
 %%================================================================================
 
 cfg_include_dirs(ProjectRoot, Profile) ->
-  anvl_project:nuconf(ProjectRoot, [erlc, overrides, {Profile}, includes]).
+  anvl_project:conf(ProjectRoot, [erlc, overrides, {Profile}, includes]).
 
 cfg_sources(ProjectRoot, Profile) ->
-  anvl_project:nuconf(ProjectRoot, [erlc, overrides, {Profile}, sources]).
+  anvl_project:conf(ProjectRoot, [erlc, overrides, {Profile}, sources]).
 
 cfg_compile_options(ProjectRoot, Profile) ->
-  anvl_project:nuconf(ProjectRoot, [erlc, overrides, {Profile}, compile_options]).
-
-cfg_escript_specs(ProjectRoot, Profile) ->
-  anvl_project:conf(ProjectRoot, [erlc, escripts], #{profile => Profile}).
-
-cfg_edoc(ProjectRoot, Profile) ->
-  anvl_project:conf(ProjectRoot, [erlc, edoc], #{profile => Profile}).
-
-cfg_app_src_hook(ProjectRoot, Profile, AppSpec) ->
-  Args = #{profile => Profile, spec => AppSpec},
-  anvl_project:conf(ProjectRoot, erlc_app_spec_hook, [Args], AppSpec,
-                    application_spec()).
+  anvl_project:conf(ProjectRoot, [erlc, overrides, {Profile}, compile_options]).
 
 cfg_bdeps(ProjectRoot, Profile) ->
-  anvl_project:nuconf(ProjectRoot, [erlc, overrides, {Profile}, bdeps]).
+  anvl_project:conf(ProjectRoot, [erlc, overrides, {Profile}, bdeps]).
 
 cfg_edoc_output_dir(ProjectRoot, Profile) ->
-  anvl_project:nuconf(ProjectRoot, [erlc, overrides, {Profile}, edoc, output_dir]).
+  anvl_project:conf(ProjectRoot, [erlc, overrides, {Profile}, edoc, output_dir]).
 
 cfg_edoc_options(ProjectRoot, Profile) ->
-  anvl_project:nuconf(ProjectRoot, [erlc, overrides, {Profile}, edoc, options]).
+  anvl_project:conf(ProjectRoot, [erlc, overrides, {Profile}, edoc, options]).
