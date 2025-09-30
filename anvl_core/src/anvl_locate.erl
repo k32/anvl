@@ -46,6 +46,8 @@ and dependency consumers.
 
 -callback locate_spec_key(dep()) -> lee:key().
 
+-callback locate_search_paths(anvl_project:dir()) -> [file:filename()].
+
 -type dep() :: term().
 -type spec() :: file:filename_all() | {atom(), term()} | undefined.
 
@@ -65,23 +67,29 @@ Condition: external dependency @var{Dep} has been located.
 """.
 -spec located(Consumer :: module(), Dep :: dep()) -> anvl_condition:t().
 ?MEMO(located, Consumer, Dep,
-      case find_spec(Consumer, Dep) of
+      case find_in_dir(Consumer, Dep) of
+        {ok, Dir} ->
+          set_dir(Consumer, Dep, Dir),
+          false;
         undefined ->
-          ?UNSAT("No recipe to locate ~p", [Dep]);
-        {ok, Spec} ->
-          IsLiteral = io_lib:char_list(Spec),
-          case Spec of
-            _ when IsLiteral ->
-              Substs = #{dep => Dep},
-              set_dir(Consumer, Dep, anvl_lib:template(Spec, Substs, list)),
-              false;
-            _ ->
-              case anvl_hook:first_match(locate, #{dep => Dep, spec => Spec}) of
-                {Changed, Dir} ->
-                  set_dir(Consumer, Dep, Dir),
-                  Changed;
-                undefined ->
-                  ?UNSAT("Failed to locate ~p", [Dep])
+          case find_spec(Consumer, Dep) of
+            undefined ->
+              ?UNSAT("No recipe to locate ~p", [Dep]);
+            {ok, Spec} ->
+              IsLiteral = io_lib:char_list(Spec),
+              case Spec of
+                _ when IsLiteral ->
+                  Substs = #{dep => Dep},
+                  set_dir(Consumer, Dep, anvl_lib:template(Spec, Substs, list)),
+                  false;
+                _ ->
+                  case anvl_hook:first_match(locate, #{dep => Dep, spec => Spec}) of
+                    {Changed, Dir} ->
+                      set_dir(Consumer, Dep, Dir),
+                      Changed;
+                    undefined ->
+                      ?UNSAT("Failed to locate ~p", [Dep])
+                  end
               end
           end
       end).
@@ -120,6 +128,27 @@ init() ->
 %%================================================================================
 %% Internal functions
 %%================================================================================
+
+find_in_dir(Consumer, Dep) ->
+  find_in_dir(Consumer, Dep, [], anvl_project:known_projects()).
+
+find_in_dir(_Consumer, _Dep, [], []) ->
+  undefined;
+find_in_dir(Consumer, Dep, [], [Project | Rest]) ->
+  find_in_dir(
+    Consumer,
+    Dep,
+    Consumer:locate_search_paths(Project),
+    Rest);
+find_in_dir(Consumer, Dep, [Template | Rest], Projects) ->
+  Substs = #{dep => Dep},
+  Dir = anvl_lib:template(Template, Substs, list),
+  case filelib:is_dir(Dir) of
+    true ->
+      {ok, Dir};
+    false ->
+      find_in_dir(Consumer, Dep, Rest, Projects)
+  end.
 
 find_spec(Consumer, Dep) ->
   SpecKey = Consumer:locate_spec_key(Dep),

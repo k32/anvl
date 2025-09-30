@@ -32,32 +32,8 @@ conf() ->
   EmuArgs = "-dist_listen false -escript main anvl_app",
   Escript = #{apps => [anvl_core, anvl_erlc, anvl_git, anvl_texinfo, lee, typerefl]},
   #{ erlc =>
-       #{ deps =>
-            [ #{ app => anvl_core
-               , at => "anvl_core"
-               }
-            , #{ app => anvl_erlc
-               , at => "anvl_erlc"
-               }
-            , #{ app => anvl_git
-               , at => "anvl_git"
-               }
-            , #{ app => anvl_texinfo
-               , at => "anvl_texinfo"
-               }
-            , #{ app => lee
-               , at => "vendor/lee"
-               }
-            , #{ app => typerefl
-               , at => "vendor/typerefl"
-               }
-            , #{ app => erlang_qq
-               , at => "vendor/erlang_qq"
-               }
-            , #{ app => snabbkaffe
-               , at => "vendor/snabbkaffe"
-               }
-            ]
+       #{ app_search_paths =>
+            ["${dep}", "vendor/${dep}"]
         , escript =>
             [ Escript
               #{ name => anvl

@@ -33,7 +33,7 @@ A builtin plugin for compiling Erlang applications.
 
 %% behavior callbacks:
 -export([model/0, project_model/0, init/0, conditions/1]).
--export([locate_spec_key/1]).
+-export([locate_spec_key/1, locate_search_paths/1]).
 
 -export_type([app_info/0]).
 
@@ -400,6 +400,11 @@ project_model() ->
                   #{ type => atom()
                    }}
              }}
+       , app_search_paths =>
+           {[value],
+            #{ type => [anvl_lib:filename_pattern()]
+             , default => ["apps/${dep}"]
+             }}
        , deps =>
            {[map],
             #{ key_elements => [[app]]
@@ -465,6 +470,11 @@ conditions(ProjectRoot) ->
 
 locate_spec_key(App) ->
   [erlc, deps, {App}, at].
+
+locate_search_paths(ProjectDir) ->
+  [ filename:join([anvl_project:root(), "_checkouts", "${dep}"])
+  | anvl_project:nuconf(ProjectDir, [erlc, app_search_paths])
+  ].
 
 %%================================================================================
 %% Condition implementations
