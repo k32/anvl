@@ -24,6 +24,7 @@ A builtin plugin for compiling Erlang applications.
 """.
 
 -behavior(anvl_plugin).
+-behavior(anvl_locate).
 
 %% API:
 -export([add_pre_compile_hook/1, add_pre_edoc_hook/1]).
@@ -32,6 +33,7 @@ A builtin plugin for compiling Erlang applications.
 
 %% behavior callbacks:
 -export([model/0, project_model/0, init/0, conditions/1]).
+-export([locate_spec_key/1]).
 
 -export_type([app_info/0]).
 
@@ -399,11 +401,18 @@ project_model() ->
                    }}
              }}
        , deps =>
-           {[pcfg],
-            #{ type => anvl_locate:spec()
-             , function => erlc_deps
+           {[map],
+            #{ key_elements => [[app]]
              },
-            Profile}
+           #{ app =>
+                {[value],
+                 #{ type => application()
+                  }}
+            , at =>
+                {[value],
+                 #{ type => anvl_locate:spec()
+                  }}
+            }}
        , escript =>
            {[map],
             #{ key_elements => [[name]]
@@ -453,6 +462,9 @@ init() ->
 -doc false.
 conditions(ProjectRoot) ->
   get_compile_apps(ProjectRoot) ++ get_escripts(ProjectRoot) ++ get_dialyzer(ProjectRoot).
+
+locate_spec_key(App) ->
+  [erlc, deps, {App}, at].
 
 %%================================================================================
 %% Condition implementations
@@ -619,13 +631,13 @@ Precondition: module defined in the same application is compiled and loaded.
 %%================================================================================
 
 -spec sources_discovered(file:filename_all(), profile(), application()) -> anvl_condition:t().
-sources_discovered(ProjectDir, Profile, App) ->
-  anvl_locate:located(erlc_deps, ProjectDir, App, #{profile => Profile, app => App}).
+sources_discovered(_ProjectDir, _Profile, App) ->
+  anvl_locate:located(?MODULE, App).
 
 -spec src_root(profile(), application()) -> file:filename_all() | builtin.
 src_root(Profile, App) ->
   _ = precondition(sources_discovered(anvl_project:root(), Profile, App)),
-  anvl_locate:dir(erlc_deps, App, #{profile => Profile, app => App}).
+  anvl_locate:dir(?MODULE, App).
 
 -spec app_context(profile(), application()) -> context().
 app_context(Profile, App) ->

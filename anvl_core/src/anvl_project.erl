@@ -19,7 +19,7 @@
 
 -module(anvl_project).
 
--export([root/0, conf/3, nuconf/2, list_conf/2, conditions/0, plugins/1]).
+-export([root/0, conf/3, nuconf/2, list_conf/2, conditions/0, plugins/1, known_projects/0]).
 
 %% Internal exports
 -export([conf/5, parse_transform/2]).
@@ -49,6 +49,13 @@ nuconf(ProjectRoot, Key) ->
 list_conf(ProjectRoot, Key) ->
   _ = config_module(ProjectRoot),
   lee:list(persistent_term:get(?project_model), ?proj_conf_storage(ProjectRoot), Key).
+
+-spec known_projects() -> [dir()].
+known_projects() ->
+  Root = root(),
+  %% FIXME:
+  Others = [],
+  [Root | Others].
 
 -spec conf(dir(), lee:model_key(), map()) -> _Result.
 conf(ProjectRoot, Key, Args) ->

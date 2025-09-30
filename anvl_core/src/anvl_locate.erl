@@ -28,7 +28,7 @@ and dependency consumers.
 -behavior(anvl_plugin).
 
 %% API:
--export([located/4, dir/3, add_hook/2, add_hook/1]).
+-export([located/2, dir/2, add_hook/2, add_hook/1]).
 
 %% behavior callbacks:
 -export([init/0]).
@@ -44,66 +44,54 @@ and dependency consumers.
 %% Type declarations
 %%================================================================================
 
--type spec_getter_fun() :: atom().
--type kind() :: atom().
--type dep() :: atom().
+-callback locate_spec_key(dep()) -> lee:key().
+
+-type dep() :: term().
 -type spec() :: file:filename_all() | {atom(), term()} | undefined.
 
 -type hook_ret() :: {true, file:filename_all()} | false.
--type locate_hook() :: fun((#{kind := kind(), dep := dep(), spec := spec()}) -> hook_ret()).
+-type locate_hook() :: fun((#{dep := dep(), spec := spec()}) -> hook_ret()).
 
--reflect_type([kind/0, dep/0, spec/0, hook_ret/0]).
+-reflect_type([dep/0, spec/0, hook_ret/0]).
 
--record(?MODULE, {kind :: kind(), dep :: dep(), args}).
+-record(?MODULE, {consumer :: module(), dep :: dep()}).
 
 %%================================================================================
 %% API functions
 %%================================================================================
 
 -doc """
-Condition: external dependency @var{Dep} of kind @var{Getter} has been located.
-
-@emph{Arguments}:
-@itemize
-@item @var{Kind}: project configuration function that returns discovery specifiction.
-For example, @code{erlc_deps}.
-
-@item @var{ProjectDir}: directory that contains project configuration (and `anvl.erl' file).
-Project configuration should contain function with name referred by @var{Getter} variable.
-
-@item @var{Dep}: identifier of the entity being located.
-
-@item @var{Args}: additional parameters for discovery.
-@end itemize
+Condition: external dependency @var{Dep} has been located.
 """.
--spec located(Kind :: spec_getter_fun(), ProjectDir :: file:filename(), Dep :: dep(), Args :: term()) -> anvl_condition:t().
-?MEMO(located, Getter, ProjectDir, Dep, Args,
-      anvl_condition:has_result(#?MODULE{kind = Getter, dep = Dep, args = Args}) orelse
-      begin
-        Spec = anvl_project:conf(ProjectDir, Getter, Args, undefined, spec()),
-        IsLiteral = io_lib:char_list(Spec),
-        Dir = case Spec of
-                _ when IsLiteral ->
-                  Subs = #{kind => atom_to_binary(Getter), dep => atom_to_binary(Dep)},
-                  anvl_lib:template(Spec, Subs, list);
-                _ ->
-                  case anvl_hook:first_match(locate, #{kind => Getter, dep => Dep, spec => Spec}) of
-                    {ok, Result} ->
-                      Result;
-                    undefined ->
-                      ?UNSAT("Failed to locate ~p (~p)", [Dep, Args])
-                  end
-              end,
-        anvl_condition:set_result(#?MODULE{kind = Getter, dep = Dep, args = Args}, Dir),
-        false
+-spec located(Consumer :: module(), Dep :: dep()) -> anvl_condition:t().
+?MEMO(located, Consumer, Dep,
+      case find_spec(Consumer, Dep) of
+        undefined ->
+          ?UNSAT("No recipe to locate ~p", [Dep]);
+        {ok, Spec} ->
+          IsLiteral = io_lib:char_list(Spec),
+          case Spec of
+            _ when IsLiteral ->
+              Substs = #{dep => Dep},
+              set_dir(Consumer, Dep, anvl_lib:template(Spec, Substs, list)),
+              false;
+            _ ->
+              case anvl_hook:first_match(locate, #{dep => Dep, spec => Spec}) of
+                {Changed, Dir} ->
+                  set_dir(Consumer, Dep, Dir),
+                  Changed;
+                undefined ->
+                  ?UNSAT("Failed to locate ~p", [Dep])
+              end
+          end
       end).
 
 -doc """
 Return a directory that contains located dependency.
 """.
--spec dir(spec_getter_fun(), dep(), _Args) -> file:filename().
-dir(Getter, Dep, Args) ->
-  anvl_condition:get_result(#?MODULE{kind = Getter, dep = Dep, args = Args}).
+-spec dir(module(), dep()) -> file:filename().
+dir(Consumer, Dep) ->
+  anvl_condition:get_result(#?MODULE{consumer = Consumer, dep = Dep}).
 
 -doc """
 Equivalent to @code{add_hook(Fun, 0)}.
@@ -132,6 +120,21 @@ init() ->
 %%================================================================================
 %% Internal functions
 %%================================================================================
+
+find_spec(Consumer, Dep) ->
+  SpecKey = Consumer:locate_spec_key(Dep),
+  do_find_spec(SpecKey, anvl_project:known_projects()).
+
+do_find_spec(_, []) ->
+  undefined;
+do_find_spec(Dep, [Project | Rest]) ->
+  try
+    Spec = anvl_project:nuconf(Project, Dep),
+    {ok, Spec}
+  catch
+    error:{missing_data, _} ->
+      do_find_spec(Dep, Rest)
+  end.
 
 builtin(#{dep := App, kind := erlc_deps}) when App =:= anvl_core; App =:= avnl_git; App =:= anvl_erlc; App =:= anvl_texinfo;
                                                App =:= lee; App =:= typerefl;
@@ -182,3 +185,6 @@ extract_self(Dir) ->
 self_hash() ->
   %% TODO: calculate hash of the escript
   "FIXME-anvl-hash".
+
+set_dir(Consumer, Dep, Dir) ->
+  anvl_condition:set_result(#?MODULE{consumer = Consumer, dep = Dep}, Dir).
