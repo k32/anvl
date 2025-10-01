@@ -94,11 +94,6 @@ This is a type.
 
 -reflect_type([profile/0, source_location_ret/0, compile_options/0, escript_name/0, context/0, application_spec/0, archive_file/0]).
 
--doc """
-@pconf @ref{t:anvl_locate:spec/0,Locate spec} for the application.
-""".
--callback erlc_deps(profile(), application()) -> anvl_locate:spec().
-
 %%================================================================================
 %% API functions
 %%================================================================================
@@ -116,9 +111,9 @@ add_app_spec_hook(Hook) ->
   anvl_hook:add(erlc_app_spec_hook, Hook).
 
 -doc """
-Add a pre-compile hook. Functions hooked there will run after
-dependencies are satisfied, but before building the application
-itself.
+Add a pre-compile hook.
+Functions hooked there will run after the dependencies are satisfied,
+but before building the application itself.
 """.
 -spec add_pre_compile_hook(fun((context()) -> boolean())) -> ok.
 add_pre_compile_hook(Fun) ->
@@ -133,7 +128,7 @@ add_pre_edoc_hook(Fun) ->
   anvl_hook:add(erlc_pre_edoc_hook, Fun).
 
 -doc """
-Condition: function has been compiled.
+Condition: OTP application has been compiled with the given profile.
 """.
 -spec app_compiled(profile(), application()) -> anvl_condition:t().
 ?MEMO(app_compiled, Profile, App,
@@ -366,15 +361,15 @@ project_model() ->
      },
   Overrides = lee_model:map_vals(
                 fun(Key, {MTs, Attrs0}) ->
-                    Attrs = maps:remove(default, Attrs0#{default_ref => [erlc | Key]}),
+                    Attrs = maps:remove(default, Attrs0#{default_ref => [erlang | Key]}),
                     {MTs, Attrs}
                 end,
                 BaseModel),
-  #{erlc =>
+  #{erlang =>
       BaseModel
       #{ overrides =>
            {[map],
-             #{ oneliner => "Overrides for profiles"
+             #{ oneliner => "Profile overrides"
               , key_elements => [[profile]]
               },
             Overrides
@@ -386,48 +381,57 @@ project_model() ->
        , app_paths =>
            {[value],
             #{ oneliner => "Application search path within the project"
-             , doc => "@erlc-app-paths"
+             , doc => "@erlang-app-paths"
              , type => list(anvl_lib:filename_pattern())
              , default => ["apps/${app}", "."]
              }}
        , deps =>
            {[map],
-            #{ key_elements => [[app]]
+            #{ oneliner => "External dependencies"
+             , key_elements => [[app]]
              },
            #{ app =>
                 {[value],
-                 #{ type => application()
+                 #{ oneliner => "Name of the external OTP application"
+                  , type => application()
                   }}
             , at =>
                 {[value],
-                 #{ type => anvl_locate:spec()
+                 #{ oneliner => "Recipe for locating the external project"
+                  , type => anvl_locate:spec()
                   }}
             }}
        , escript =>
            {[map],
-            #{ key_elements => [[name]]
+            #{ oneliner => "Define an escript"
+             , key_elements => [[name]]
              },
             #{ name =>
                  {[value],
-                  #{ type => escript_name()
+                  #{ oneliner => "Escript name"
+                   , type => escript_name()
                    }}
              , apps =>
                  {[value],
-                  #{ type => list(application())
+                  #{ oneliner => "OTP applications included in the escript"
+                   , type => list(application())
                    }}
              , emu_args =>
                  {[value],
-                  #{ type => string()
+                  #{ oneliner => "BEAM emulator flags"
+                   , type => string()
                    , default => ""
                    }}
              , files =>
                  {[value],
-                  #{ type => list(anvl_lib:filename_pattern())
+                  #{ oneliner => "Patterns of files included in the escript"
+                   , type => list(anvl_lib:filename_pattern())
                    , default => ["priv/**", "ebin/**"]
                    }}
              , profile =>
                  {[value],
-                  #{ type => profile()
+                  #{ oneliner => "Profile used to compile applications"
+                   , type => profile()
                    , default => default
                    }}
              }}
@@ -436,11 +440,12 @@ project_model() ->
 -doc false.
 init() ->
   ok = anvl_resource:declare(erlc, 1),
+  anvl_erlc_builtin:init(),
   ok.
 
 -doc false.
 conditions(ProjectRoot) ->
-  get_compile_apps(ProjectRoot) ++ get_escripts(ProjectRoot) ++ get_dialyzer(ProjectRoot).
+  get_compile_apps(ProjectRoot) ++ get_escripts(ProjectRoot).
 
 %%================================================================================
 %% Condition implementations
@@ -448,7 +453,7 @@ conditions(ProjectRoot) ->
 
 do_escript(ProjectRoot, EscriptName) ->
   Cfg = fun(Key) ->
-            anvl_project:conf(ProjectRoot, [erlc, escript, {EscriptName}] ++ Key)
+            anvl_project:conf(ProjectRoot, [erlang, escript, {EscriptName}] ++ Key)
         end,
   Profile = Cfg([profile]),
   FilePatterns = Cfg([files]),
@@ -612,30 +617,19 @@ app_context(Profile, App) ->
   persistent_term:get(?context(Profile, App)).
 
 get_escripts(ProjectRoot) ->
-  Escripts =
-    case anvl_plugin:list_conf([anvl_erlc, escript, {}]) of
-      [] -> [];
-      [Key] -> anvl_plugin:conf(Key ++ [names])
-    end,
-  [escript(ProjectRoot, I) || I <- Escripts].
+  [begin
+      Escripts = anvl_plugin:conf(Key ++ [names]),
+      [escript(ProjectRoot, I) || I <- Escripts]
+   end
+   || Key <- anvl_plugin:list_conf([anvl_erlc, escript, {}])].
 
 get_compile_apps(_ProjectRoot) ->
-  Keys = anvl_plugin:list_conf([anvl_erlc, compile, {}]),
-  lists:flatmap(fun(Key) ->
-                    Profile = anvl_plugin:conf(Key ++ [profile]),
-                    Apps = anvl_plugin:conf(Key ++ [apps]),
-                    [anvl_erlc:app_compiled(Profile, I) || I <- Apps]
-                end,
-                Keys).
-
-get_dialyzer(_ProjectRoot) ->
-  Keys = anvl_plugin:list_conf([anvl_erlc, dialyzer, {}]),
-  lists:map(fun(Key) ->
-                Profile = anvl_plugin:conf(Key ++ [profile]),
-                Apps = anvl_plugin:conf(Key ++ [apps]),
-                anvl_erlc:dialyzed(Profile, Apps)
-            end,
-            Keys).
+  [begin
+     Profile = anvl_plugin:conf(Key ++ [profile]),
+     Apps = anvl_plugin:conf(Key ++ [apps]),
+     [anvl_erlc:app_compiled(Profile, I) || I <- Apps]
+   end
+   || Key <- anvl_plugin:list_conf([anvl_erlc, compile, {}])].
 
 -doc "Clean ebin directory of files that don't have sources".
 clean_orphans(Sources, Context) ->
@@ -691,14 +685,18 @@ render_app_spec(AppSrcProperties, Sources, Context) ->
       true
   end.
 
-app_src(App, SrcRoot) ->
-  File = filename:join([SrcRoot, "src", atom_to_list(App) ++ ".app.src"]),
+app_src(App, AppRoot) ->
+  File = app_src_path(AppRoot, App),
   case file:consult(File) of
     {ok, [{application, App, Properties}]} when is_list(Properties) ->
       Properties;
-    _Error ->
-      ?UNSAT("Malformed or missing ~s file", [File])
+    Error ->
+      ?UNSAT("Malformed or missing ~s file ~p", [File, Error])
   end.
+
+-spec app_src_path(anvl_project:dir(), application()) -> file:filename().
+app_src_path(AppRoot, App) ->
+  template("${root}/src/${app}.app.src", #{app => App, root => AppRoot}, path).
 
 module_of_erl(Src) ->
   list_to_atom(filename:basename(Src, ".erl")).
@@ -762,7 +760,7 @@ src_root(_Profile, App) ->
           [fun() -> locate_dependency(Project, App) end || Project <- anvl_project:known_projects()],
         case traverse_locate_methods(L) of
           undefined ->
-            ?UNSAT("Could not find sources for application ~p", [App]);
+            ?UNSAT("Could not find sources for OTP application ~p", [App]);
           {Changed, Project, SrcRoot} ->
             set_app_location(App, Project, SrcRoot),
             Changed
@@ -770,7 +768,7 @@ src_root(_Profile, App) ->
       end).
 
 locate_dependency(ParentProject, App) ->
-  case anvl_project:maybe_conf(ParentProject, [erlc, deps, {App}, at]) of
+  case anvl_project:maybe_conf(ParentProject, [erlang, deps, {App}, at]) of
     {ok, Spec} ->
       Changed = precondition(anvl_locate:located(?MODULE, App, Spec)),
       ChildProject = anvl_locate:dir(?MODULE, App),
@@ -787,10 +785,12 @@ locate_dependency(ParentProject, App) ->
 locate_in_project(Project, App) ->
   traverse_locate_methods(
     [fun() ->
-         Dir = filename:join(Project, template(Template, #{app => App}, path)),
-         case filelib:is_dir(Dir) of
+         AppRoot = filename:join(
+                     Project,
+                     template(Template, #{app => App}, path)),
+         case filelib:is_file(app_src_path(AppRoot, App)) of
            true ->
-             {false, Project, Dir};
+             {false, Project, AppRoot};
            false ->
              undefined
          end
@@ -828,7 +828,7 @@ ensure_string(L) when is_list(L) ->
   L.
 
 pcfg(ProjectRoot, Key) ->
-  anvl_project:conf(ProjectRoot, [erlc | Key]).
+  anvl_project:conf(ProjectRoot, [erlang | Key]).
 
 pcfg(ProjectRoot, Profile, Key) ->
-  anvl_project:conf(ProjectRoot, [erlc, overrides, {Profile} | Key]).
+  anvl_project:conf(ProjectRoot, [erlang, overrides, {Profile} | Key]).

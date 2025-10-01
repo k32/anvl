@@ -18,6 +18,9 @@
 %%================================================================================
 
 -module(anvl_project).
+-moduledoc """
+Handler of ANVL project configurations.
+""".
 
 -export([root/0, conf/2, maybe_conf/2, list_conf/2, conditions/0, plugins/1, known_projects/0]).
 
@@ -35,6 +38,87 @@
 
 -type dir() :: file:filename_all().
 
+-doc """
+Return list of plugins that should be loaded before initialization of the project.
+""".
+-callback plugins() -> [anvl_plugin:t()].
+
+-type conf_tree() :: #{atom() | [atom()] => conf_tree() | [conf_tree()] | term()}.
+
+-doc """
+Return project configuration as a tree.
+
+For example:
+@example erlang
+@verbatim
+conf() ->
+  #{ erlang =>
+       #{ app_paths => ["."]
+        , includes => ["include", "src"]
+        , ...
+        }
+   , [erlang, deps] => []
+   , ...
+   }.
+@end verbatim
+@end example
+
+Note: notation @code{#@{[foo, bar, ...] => quux@}} can be used as a shortcut for
+@code{@verb{|#{foo => #{bar => #{... => quux ...}}}|}}.
+
+Groups of values (or ``maps'' in Lee terminology) are represented in the tree using lists,
+where each element is a child config tree.
+
+Example:
+@example erlang
+@verbatim
+#{erlang =>
+    #{ deps =>
+         %% `erlang.deps` is a map. Children:
+         [ #{ app => typerefl
+            , at => "vendor/typerefl"
+            }
+         , #{ app => lee
+            , at => "vendor/lee"
+            }
+         , ...
+         ]
+     }}
+@end verbatim
+@end example
+""".
+-callback conf() -> conf_tree().
+
+-doc """
+This callback allows the root project to override project configuration of child projects.
+
+The return value is a configuration patch:
+a list of operations setting or un-setting keys in the configuration:
+
+@example erlang
+@verbatim
+config_override(Dir) ->
+  case filename:basename(Dir) of
+    "some_project" ->
+      Key1 = [erlang, bdeps],
+      Val1 = [some_app],
+      Key2 = [erlang, escript, {some_escript}],
+      [ {set, Key1, Val1}
+      , {rm, Key2}
+      , ...
+      ];
+    _ ->
+      []
+  end.
+@end verbatim
+@end example
+""".
+-callback conf_override(dir()) -> lee:patch().
+
+-optional_callbacks([conf/0, conf_override/1, plugins/0]).
+
+-export_type([dir/0, conf_tree/0]).
+
 %%================================================================================
 %% API
 %%================================================================================
@@ -42,7 +126,7 @@
 -spec conf(dir(), lee:model_key()) -> _Result.
 conf(ProjectRoot, Key) ->
   _ = config_module(ProjectRoot),
-  lee:get(persistent_term:get(?project_model), ?proj_conf_storage(ProjectRoot), Key).
+  lee:get(project_model(), ?proj_conf_storage(ProjectRoot), Key).
 
 -spec maybe_conf(dir(), lee:model_key()) -> {ok, _Result} | undefined.
 maybe_conf(ProjectRoot, Key) ->
@@ -57,7 +141,7 @@ maybe_conf(ProjectRoot, Key) ->
 -spec list_conf(dir(), lee:model_key()) -> list().
 list_conf(ProjectRoot, Key) ->
   _ = config_module(ProjectRoot),
-  lee:list(persistent_term:get(?project_model), ?proj_conf_storage(ProjectRoot), Key).
+  lee:list(project_model(), ?proj_conf_storage(ProjectRoot), Key).
 
 -spec known_projects() -> [dir()].
 known_projects() ->
@@ -66,35 +150,36 @@ known_projects() ->
   Others = [],
   [Root | Others].
 
+-doc """
+Return directory of the root project.
+Root project is the one where @command{anvl} was called.
+""".
+-spec root() -> dir().
 root() ->
   {ok, CWD} = file:get_cwd(),
   CWD.
 
 conditions() ->
+  Plugins = plugins(root()),
   AdHoc = lists:flatmap(fun(Plugin) ->
                             case erlang:function_exported(Plugin, conditions, 1) of
                               true -> Plugin:conditions(anvl_project:root());
                               false -> []
                             end
                         end,
-                        plugins(root())),
-  custom_conditions(AdHoc) ++ AdHoc.
+                        Plugins),
+  custom_conditions(AdHoc) ++ lists:append(AdHoc).
 
 -spec plugins(Project :: dir()) -> [anvl_plugin:t()].
 plugins(Project) ->
-  Module = anvl_config_module(Project),
-  case erlang:function_exported(Module, plugins, 0) of
-    true ->
-      Module:plugins();
-    false ->
-      []
-  end.
+  conf(Project, [plugins]).
 
 %%================================================================================
 %% Internal functions
 %%================================================================================
 
-%% @hidden Simple parse transform that replaces (or adds) -module attribute
+-doc false.
+%% Simple parse transform that replaces (or adds) -module attribute
 parse_transform(Forms, Opts) ->
   [{d, 'PROJECT', Module} | _] = Opts,
   case Forms of
@@ -128,9 +213,12 @@ config_module(ProjectRoot) ->
                 anvl_condition:set_result(#conf_module_of_dir{directory = Dir}, Module),
                 Conf = lee_storage:new(lee_persistent_term_storage, ?proj_conf_storage_token(Dir)),
                 load_project_conf(Dir, Module, Conf),
+                %% Load the plugins needed for the project. If new
+                %% plugins have been added, reload the configuration:
+                Plugins = lee:get(project_model(), Conf, [plugins]),
                 precondition(
                   lists:map(fun anvl_plugin:loaded/1,
-                            plugins(Dir))) andalso
+                            Plugins)) andalso
                   load_project_conf(ConfFile, Module, Conf),
                 false;
               error ->
@@ -184,7 +272,7 @@ include_dir() ->
   end.
 
 load_project_conf(ProjectDir, Module, Storage) ->
-  Model = persistent_term:get(?project_model),
+  Model = project_model(),
   Patch = read_patch(Model, Module),
   ?LOG_DEBUG(#{load_project_config => ProjectDir, patch => Patch, module => Module}),
   lee_storage:patch(Storage, Patch),
@@ -297,3 +385,6 @@ read_override(Dir) ->
           []
       end
   end.
+
+project_model() ->
+  persistent_term:get(?project_model).

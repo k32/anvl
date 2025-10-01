@@ -88,7 +88,10 @@ using parallelism when possible.
 It's meant as an alternative to tools like @code{make} and @code{ansible},
 but it takes a different approach focusing on @i{conditions} and @i{preconditions}, expressed in a simple DSL based on Erlang.
 
-@cindex Condition
+@node Concepts
+@section Concepts
+
+@subsection Conditions and preconditions
 The desired state of the system is expressed as a @i{condition}:
 a function that checks if the system is already in the correct state,
 and running arbitrary code to transfer into it there otherwise:
@@ -105,6 +108,41 @@ file_exists(Name) ->
   end.
 @end verbatim
 @end example
+
+@subsection Plugins
+
+@subsection Projects
+
+@subsection ANVL versus tranditional build systems
+
+A traditional build system is a program that automatically solves the following problems:
+
+@itemize
+@item Build targets that have not been built
+@item Re-build targets that are out-of-date
+@item Do not rebuild targets that are up to date
+@item Build targets that depend on each other in sequence
+@item Build independent targets in parallel
+@end itemize
+
+Typical build systems solve this problem using concepts of source, target and rule.
+Source and target are (usually) file names, and rule is a subroutine that takes the source files and produces the target file(s).
+Most build systems have a standard way of checking whether the target has to be rebuilt, based on comparison of file modification times or hashes.
+Dependencies between the targets are encoded in the build recipe as a graph.
+This way of doing things works very well as long as build system only works with files,
+but falls short when it’s no longer the case.
+
+ANVL's conditions, on the opposite, are not tied to the file system or anything concrete.
+
+Additionally, traditional build systems usually mix several concepts together:
+
+@itemize
+@item Dependency resolution
+@item Checking for updates
+@item Resource management (-j flag)
+@end itemize
+
+In contrast, ANVL presents these as independent library primitives.
 
 @lee{anvl_core,ANVL}
 

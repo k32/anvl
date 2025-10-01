@@ -86,12 +86,14 @@ model() ->
 project_model() ->
    #{ plugins =>
        {[value],
-        #{ type => list(anvl_plugin:t())
+        #{ oneliner => "List of plugins needed for the project"
+         , type => list(anvl_plugin:t())
          , default => []
          }}
     , conditions =>
         {[value],
-         #{ type => list(atom())
+         #{ oneliner => "List of custom conditions declared by the project"
+          , type => list(atom())
           , default => []
           }}
     }.

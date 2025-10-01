@@ -35,7 +35,6 @@ and dependency consumers.
 
 -include_lib("typerefl/include/types.hrl").
 -include_lib("kernel/include/logger.hrl").
--include_lib("stdlib/include/zip.hrl").
 -include("anvl.hrl").
 
 %%================================================================================
@@ -46,7 +45,7 @@ and dependency consumers.
 -type spec() :: file:filename_all() | {atom(), term()} | undefined.
 
 -type hook_ret() :: {true, file:filename_all()} | false.
--type locate_hook() :: fun((#{dep := dep(), spec := spec()}) -> hook_ret()).
+-type locate_hook() :: fun((#{dep := dep(), spec := spec(), consumer => module()}) -> hook_ret()).
 
 -reflect_type([dep/0, spec/0, hook_ret/0]).
 
@@ -108,61 +107,11 @@ add_hook(Fun, Priority) ->
 
 -doc false.
 init() ->
-  add_hook(fun builtin/1, -9999).
+  ok.
 
 %%================================================================================
 %% Internal functions
 %%================================================================================
-
-builtin(#{dep := App, kind := erlc_deps}) when App =:= anvl_core; App =:= avnl_git; App =:= anvl_erlc; App =:= anvl_texinfo;
-                                               App =:= lee; App =:= typerefl;
-                                               App =:= snabbkaffe; App =:= anvl_git;
-                                               App =:= erlang_qq ->
-  ?LOG_INFO("Using ANVL-builtin version of ~p", [App]),
-  Dir = filename:join([anvl_project:root(), ?BUILD_ROOT, self_hash()]),
-  _ = precondition(builtins_unpacked(Dir)),
-  AppSrcPattern = lists:flatten(io_lib:format("~s/**/~p.app.src", [Dir, App])),
-  [AppSrcFile] = filelib:wildcard(AppSrcPattern),
-  AppSrc = filename:split(AppSrcFile),
-  {AppDirComponents, _} = lists:split(length(AppSrc) - 2, AppSrc),
-  {true, filename:join(AppDirComponents)};
-builtin(#{dep := Dep}) ->
-  case atom_to_list(Dep) =:= filename:basename(anvl_project:root()) of
-    true ->
-      {true, anvl_project:root()};
-    false ->
-      false
-  end.
-
-?MEMO(builtins_unpacked, Dir,
-      begin
-        case filelib:is_file(filename:join([Dir, "__self", "src", "anvl.app.src"])) of
-          true ->
-            false;
-          false ->
-            extract_self(Dir),
-            true
-        end
-      end).
-
-extract_self(Dir) ->
-  ?LOG_NOTICE("Extracting ANVL sources to ~s", [Dir]),
-  {ok, Sections} = escript:extract(escript:script_name(), []),
-  Archive = proplists:get_value(archive, Sections),
-  {ok, [_|_]} = zip:extract(Archive,
-                            [ {cwd, Dir}
-                            , {file_filter, fun(#zip_file{name = Path}) ->
-                                                case Path of
-                                                  "__self" ++ _ -> true;
-                                                  _ -> false
-                                                end
-                                            end}
-                            ]),
-  ok.
-
-self_hash() ->
-  %% TODO: calculate hash of the escript
-  "FIXME-anvl-hash".
 
 set_dir(Consumer, Dep, Dir) ->
   anvl_condition:set_result(#?MODULE{consumer = Consumer, dep = Dep}, Dir).

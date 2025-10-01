@@ -1,2 +1,2 @@
 conf() ->
-  #{[erlc, bdeps] => [erlang_qq]}.
+  #{[erlang, bdeps] => [erlang_qq]}.

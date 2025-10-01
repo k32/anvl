@@ -1,2 +1,2 @@
 conf() ->
-  #{[erlc, bdeps] => [typerefl, snabbkaffe]}.
+  #{[erlang, bdeps] => [typerefl, snabbkaffe]}.

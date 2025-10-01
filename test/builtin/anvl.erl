@@ -1,8 +1,12 @@
-plugins(_) ->
-  [anvl_erlc, anvl_git].
+%% This testcase verifies that ANVL packages its own sources in the installation.
 
-erlc_escripts(_) ->
-  #{anvl_test =>
-      #{ apps => [anvl, lee, typerefl, anvl_git]
-       , emu_args => ""
-       }}.
+conf() ->
+  #{ plugins => [anvl_erlc, anvl_git]
+   , erlang =>
+       #{ escript =>
+            [#{ name => test_escript
+              , apps => [anvl_core, anvl_texinfo, anvl_git, lee, erlang_qq, typerefl, snabbkaffe]
+              }]
+        , deps => anvl_erlc_builtin:deps()
+        }
+   }.

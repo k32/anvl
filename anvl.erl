@@ -19,17 +19,12 @@
 
 -include("anvl.hrl").
 
-apps() ->
-  [anvl_core, anvl_erlc, anvl_git, anvl_texinfo].
-
-plugins() ->
-  [anvl_erlc, anvl_git, anvl_texinfo].
-
 conf() ->
   EmuArgs = "-dist_listen false -escript main anvl_app",
   Escript = #{apps => [anvl_core, anvl_erlc, anvl_git, anvl_texinfo, lee, typerefl]},
-  #{ conditions => [install, escript, docs]
-   , erlc =>
+  #{ plugins => [anvl_erlc, anvl_git, anvl_texinfo]
+   , conditions => [install, escript, docs, test]
+   , erlang =>
        #{ deps =>
             [ #{ app => typerefl
                , at => "vendor/typerefl"
@@ -45,7 +40,7 @@ conf() ->
                }
             ]
         , app_paths =>
-            ["${app}"]
+            ["${app}", "."]
         , escript =>
             [ Escript
               #{ name => anvl
@@ -60,6 +55,9 @@ conf() ->
         }
    }.
 
+apps() ->
+  [anvl_core, anvl_erlc, anvl_git, anvl_texinfo].
+
 ?MEMO(install,
       begin
         Prefix = filename:join(os:getenv("HOME"), ".local"),
@@ -67,6 +65,22 @@ conf() ->
           install_includes(Prefix) or
           install(Prefix, "${prefix}/bin/anvl", "anvl") or
           install(Prefix, "${prefix}/share/anvl/info/anvl.info", "_anvl_build/doc/anvl.info")
+      end).
+
+?MEMO(test,
+      precondition([ dummy_app_tests()
+                   , builtin_app_locate_tests()
+                   ])).
+
+?MEMO(dummy_app_tests,
+      begin
+        anvl_lib:exec("anvl", [], [{cd, "test/dummy"}]),
+        anvl_lib:exec("anvl", ["@erlc", "dummy"], [{cd, "test/dummy"}])
+      end).
+
+?MEMO(builtin_app_locate_tests,
+      begin
+        anvl_lib:exec("anvl", ["@escript", "test_escript"], [{cd, "test/builtin"}])
       end).
 
 install_includes(Prefix) ->
@@ -102,10 +116,3 @@ escript() ->
           , anvl_texinfo:compiled(Main, info)
           ])
       end).
-
-erlc_deps(#{app := A}) ->
-  %% Derive application src root path:
-  case lists:member(A, apps()) of
-    true -> "${dep}";
-    false -> "vendor/${dep}"
-  end.

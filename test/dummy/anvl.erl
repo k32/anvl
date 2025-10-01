@@ -1,11 +1,7 @@
-plugins(_) ->
-  [anvl_erlc].
-
-conditions(_) ->
-  [default].
+conf() ->
+  #{ plugins => [anvl_erlc]
+   , conditions => [default]
+   }.
 
 default() ->
-  anvl_condition:precondition(anvl_erlc:app_compiled(default, dummy)).
-
-erlc_deps(#{app := dummy}) ->
-  ".".
+  anvl_erlc:app_compiled(default, dummy).
