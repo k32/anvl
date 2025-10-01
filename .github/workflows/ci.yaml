@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [ master ]
 
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -20,3 +25,19 @@ jobs:
     - name: Bootstrap
       run: |
         ./bootstrap.escript
+    - name: Upload HTML files as artifact
+      id: html
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: _anvl_build/doc/anvl_html
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -440,7 +440,6 @@ project_model() ->
 -doc false.
 init() ->
   ok = anvl_resource:declare(erlc, 1),
-  anvl_erlc_builtin:init(),
   ok.
 
 -doc false.

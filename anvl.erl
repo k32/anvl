@@ -69,18 +69,12 @@ apps() ->
 
 ?MEMO(test,
       precondition([ dummy_app_tests()
-                   , builtin_app_locate_tests()
                    ])).
 
 ?MEMO(dummy_app_tests,
       begin
         anvl_lib:exec("anvl", [], [{cd, "test/dummy"}]),
         anvl_lib:exec("anvl", ["@erlc", "dummy"], [{cd, "test/dummy"}])
-      end).
-
-?MEMO(builtin_app_locate_tests,
-      begin
-        anvl_lib:exec("anvl", ["@escript", "test_escript"], [{cd, "test/builtin"}])
       end).
 
 install_includes(Prefix) ->
