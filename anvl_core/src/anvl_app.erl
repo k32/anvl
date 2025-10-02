@@ -40,6 +40,7 @@
 
 %% @doc Entrypoint for `anvl' escript.
 main(["--help" | _]) ->
+  %% FIXME: read configuration instead
   help();
 main(CLIArgs) ->
   set_logger_conf(),

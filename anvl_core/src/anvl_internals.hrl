@@ -22,6 +22,7 @@
 
 -include_lib("lee/include/lee.hrl").
 
+-define(anvl_root_project_dir, anvl_root_project_dir).
 
 -define(tool_conf_storage_token, anvl_conf_storage).
 -define(conf_storage, ?lee_persistent_term_storage(?tool_conf_storage_token)).

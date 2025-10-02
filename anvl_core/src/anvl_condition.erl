@@ -109,39 +109,30 @@ stats() ->
    , complete => counters:get(CRef, ?cnt_complete)
    , changed => counters:get(CRef, ?cnt_changed)
    , failed => counters:get(CRef, ?cnt_failed)
-   , top_time => stats_top(work_time, anvl_plugin:conf([top, n_time]))
-   , top_reds => stats_top(reductions, anvl_plugin:conf([top, n_reds]))
+   , top_time => stats_top(work_time, anvl_plugin:conf([debug, top, n_time]))
+   , top_reds => stats_top(reductions, anvl_plugin:conf([debug, top, n_reds]))
    }.
 
 -doc """
-Equivalent to @code{precondition(L, 100)}.
+Block execution of the function until all preconditions in @var{L} are satisfied.
+Throws an exception if any precondition could not be satisified.
+
+Function argument @var{ChunkSize} specifies maximum number of parallel tasks.
+
+Returns whether any changes were made to the system to satify the preconditions.
 """.
--spec precondition([t()] | t()) -> boolean().
+-spec precondition(L :: [t()] | t()) -> boolean().
 precondition(Tup) when is_record(Tup, anvl_memo_thunk) ->
   precondition([Tup]);
 precondition(L) when is_list(L) ->
   precondition(L, 100).
 
 -doc """
-For a satisfied condition, this function returns whether the condition has
-made changes to the system. Otherwise it returns @code{undefined}.
-""".
--spec is_changed(t()) -> boolean() | undefined.
-is_changed(Cond) ->
-  case ets:lookup(?tab, key(Cond)) of
-    [#done{changed = Changed}] ->
-      Changed;
-    _ ->
-      undefined
-  end.
+Equivalent to @code{precondition(L)},
+but takes an additional parameter @var{ChunkSize} that controls
+maximum number of parallel tasks spawned to satisfy the conditions in @var{L}.
 
--doc """
-Block execution of the function until all preconditions in the list @var{L} are satisfied.
-Throws an exception if some precondition could not be satisified.
-
-Function argument @var{ChunkSize} specifies maximum number of parallel tasks.
-
-Returns whether any changes were made to the system to satify the preconditions.
+Note: any sub-tasks spawned by the preconditions themselves are not accounted for.
 """.
 -spec precondition([t()], pos_integer() | infinity) -> boolean().
 precondition(L, ChunkSize) when ChunkSize > 0 ->
@@ -159,6 +150,19 @@ precondition(L, ChunkSize) when ChunkSize > 0 ->
     TimeWaited -> put(?gauge_waited, TimeWaited + T1 - T0)
   end,
   Result.
+
+-doc """
+For a satisfied condition, this function returns whether the condition has
+made changes to the system. Otherwise it returns @code{undefined}.
+""".
+-spec is_changed(t()) -> boolean() | undefined.
+is_changed(Cond) ->
+  case ets:lookup(?tab, key(Cond)) of
+    [#done{changed = Changed}] ->
+      Changed;
+    _ ->
+      undefined
+  end.
 
 %%%% Speculative targets:
 

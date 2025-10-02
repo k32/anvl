@@ -26,7 +26,15 @@
 
 -doc false.
 model() ->
-  #{ log =>
+  #{ root =>
+       {[value, cli_param],
+        #{ oneliner    => "Root project directory"
+         , type        => string()
+         , default     => "."
+         , cli_operand => "root-dir"
+         , cli_short   => $d
+         }}
+   , log =>
        #{ global_level =>
             {[value, os_env, cli_param, logger_level],
              #{ oneliner    => "Minimum severity of log messages"
@@ -55,22 +63,23 @@ model() ->
          , cli_operand => "shell"
          , default     => false
          }}
-   , top =>
-       #{ n_time =>
-            {[value, cli_param, os_env],
-             #{ oneliner    => "Display top N slowest jobs"
-              , type        => union(non_neg_integer(), true)
-              , cli_operand => "top-time"
-              , default     => 0
-              }}
-        , n_reds =>
-           {[value, cli_param, os_env],
-            #{ oneliner    => "Displey top N jobs by reductions"
-             , type        => union(non_neg_integer(), true)
-             , cli_operand => "top-reds"
-             , default     => 0
+   , debug =>
+       #{ top =>
+            #{ n_time =>
+                 {[value, cli_param, os_env],
+                  #{ oneliner    => "Display top N slowest jobs"
+                   , type        => union(non_neg_integer(), true)
+                   , cli_operand => "top-time"
+                   , default     => 0
+                   }}
+             , n_reds =>
+                 {[value, cli_param, os_env],
+                  #{ oneliner    => "Display top N jobs by reductions"
+                   , type        => union(non_neg_integer(), true)
+                   , cli_operand => "top-reds"
+                   , default     => 0
+                   }}
              }}
-        }
    , help =>
        #{ run =>
             {[value, cli_param],

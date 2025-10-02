@@ -38,84 +38,19 @@ Handler of ANVL project configurations.
 
 -type dir() :: file:filename_all().
 
--doc """
-Return list of plugins that should be loaded before initialization of the project.
-""".
--callback plugins() -> [anvl_plugin:t()].
-
 -type conf_tree() :: #{atom() | [atom()] => conf_tree() | [conf_tree()] | term()}.
 
 -doc """
-Return project configuration as a tree.
-
-For example:
-@example erlang
-@verbatim
-conf() ->
-  #{ erlang =>
-       #{ app_paths => ["."]
-        , includes => ["include", "src"]
-        , ...
-        }
-   , [erlang, deps] => []
-   , ...
-   }.
-@end verbatim
-@end example
-
-Note: notation @code{#@{[foo, bar, ...] => quux@}} can be used as a shortcut for
-@code{@verb{|#{foo => #{bar => #{... => quux ...}}}|}}.
-
-Groups of values (or ``maps'' in Lee terminology) are represented in the tree using lists,
-where each element is a child config tree.
-
-Example:
-@example erlang
-@verbatim
-#{erlang =>
-    #{ deps =>
-         %% `erlang.deps` is a map. Children:
-         [ #{ app => typerefl
-            , at => "vendor/typerefl"
-            }
-         , #{ app => lee
-            , at => "vendor/lee"
-            }
-         , ...
-         ]
-     }}
-@end verbatim
-@end example
+@xref{Project Configuration}
 """.
 -callback conf() -> conf_tree().
 
 -doc """
-This callback allows the root project to override project configuration of child projects.
-
-The return value is a configuration patch:
-a list of operations setting or un-setting keys in the configuration:
-
-@example erlang
-@verbatim
-config_override(Dir) ->
-  case filename:basename(Dir) of
-    "some_project" ->
-      Key1 = [erlang, bdeps],
-      Val1 = [some_app],
-      Key2 = [erlang, escript, {some_escript}],
-      [ {set, Key1, Val1}
-      , {rm, Key2}
-      , ...
-      ];
-    _ ->
-      []
-  end.
-@end verbatim
-@end example
+@xref{Project Configuration Override}
 """.
 -callback conf_override(dir()) -> lee:patch().
 
--optional_callbacks([conf/0, conf_override/1, plugins/0]).
+-optional_callbacks([conf/0, conf_override/1]).
 
 -export_type([dir/0, conf_tree/0]).
 
@@ -156,8 +91,7 @@ Root project is the one where @command{anvl} was called.
 """.
 -spec root() -> dir().
 root() ->
-  {ok, CWD} = file:get_cwd(),
-  CWD.
+  persistent_term:get(?anvl_root_project_dir).
 
 conditions() ->
   Plugins = plugins(root()),

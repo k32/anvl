@@ -95,10 +95,8 @@ Substitute variables @var{Substitutions} in @var{Pattern} and return a value of 
 
 Example:
 @example
-@verbatim
-template("Foo = ${foo}, bar = ${bar}", #{foo => <<"1">>, <<"bar">> => <<"2">>}, binary) ->
+template("Foo = $@{foo@}, bar = $@{bar@}", #@{foo => <<"1">>, <<"bar">> => <<"2">>@}, binary) ->
     <<"Foo = 1, bar = 2">>
-@end verbatim
 @end example
 """.
 -spec template(iodata(), template_vars(), list) -> string();
@@ -145,10 +143,8 @@ It automatically adds the following substitutions:
 
 Example:
 @example
-@verbatim
-patsubst("${profile}/ebin/${basename}.beam", "src/foo.erl", #{profile => <<"debug">>}) ->
+patsubst("$@{profile@}/ebin/$@{basename@}.beam", "src/foo.erl", #@{profile => <<"debug">>@}) ->
    <<"debug/ebin/foo.beam">>
-@end verbatim
 @end example
 """.
 -spec patsubst(filename_pattern(), file:filename_all(), template_vars()) -> file:filename_all().

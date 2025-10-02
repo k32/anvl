@@ -80,40 +80,248 @@ Foundation Web site at @url{https://www.gnu.org/licenses/fdl.html}.
 @node Introduction
 @chapter Introduction
 
-ANVL a general-purpose task planning and execution tool,
-that aims to be conceptually simple and flexible.
+ANVL is a general-purpose task planning and execution tool,
+that aims to be conceptually simple, universal and flexible.
 
-ANVL solves the problem of transitioning the system into a desired state step-by-step,
+ANVL solves the problem of transitioning the system into the desired state step-by-step,
 using parallelism when possible.
-It's meant as an alternative to tools like @code{make} and @code{ansible},
-but it takes a different approach focusing on @i{conditions} and @i{preconditions}, expressed in a simple DSL based on Erlang.
+It's meant as an alternative to build tools like @command{make},
+as well as system administration tools like @command{ansible},
+but it takes a different approach focusing on @i{conditions} and @i{preconditions},
+expressed in a simple DSL based on Erlang.
+
+@html
+@quotation Note
+Note: this is an online version of the ANVL documentation,
+which is also available in GNU Info format.
+
+Press @key{?} to get tips about navigating this website.
+@end quotation
+@end html
 
 @node Concepts
 @section Concepts
 
-@subsection Conditions and preconditions
-The desired state of the system is expressed as a @i{condition}:
-a function that checks if the system is already in the correct state,
-and running arbitrary code to transfer into it there otherwise:
+@subsection Project
+
+@emph{ANVL project} is a directory containing @file{anvl.erl} file,
+also known as the project configuration file.
+
+@file{anvl.erl} is a regular Erlang module, with one notable exception:
+it must NOT contain @code{-module} attribute (and if one exists, it is ignored).
+That is because ANVL derives module name for the project configuration file automatically.
+Because of that, it's not allowed to use @code{anvl:Fun(...)} or @code{fun anvl:Fun/N} syntax to refer to local functions.
+If needed, @code{fun ?MODULE:Fun/N} syntax can be used instead.
+Other than that, @file{anvl.erl} is compiled and loaded as a normal Erlang module.
+
+Project configuration modules implement @ref{api/anvl_core/anvl_project,@code{anvl_project}} behavior.
+
+Project referred to by @ref{cli_param/root,@option{-d}} CLI argument is called the @emph{root} project.
+It can refer to other projects, known as @emph{child} projects.
+
+@anchor{Project Configuration}
+@subsection Project Configuration
+
+@code{conf/0} callback of the project module returns project configuration tree.
+
+For example:
+@example erlang
+@verbatim
+conf() ->
+  #{ plugins => [anvl_erlc]
+   , erlang =>
+       #{ app_paths => ["."]
+        , includes => ["include", "src"]
+        , ...
+        }
+   , [erlang, deps] => []
+   , ...
+   }.
+@end verbatim
+@end example
+
+Note: notation @code{#@{[foo, bar, ...] => quux@}} is a shortcut for
+@code{@verb{|#{foo => #{bar => #{... => quux ...}}}|}}.
+
+Groups of values can be repeated in the configuration.
+In this case each configuration subtree appears as an element of a list:
 
 @example erlang
 @verbatim
--memo.
-file_exists(Name) ->
-  %% Check condition:
-  filelib:is_file(Name) orelse
-  begin
-     %% If condition is not satisfied, execute the code:
-     file:write_file(Name, <<>>)
+#{erlang =>
+    #{ deps =>
+         %% `erlang.deps` is a map. Children:
+         [ #{ app => typerefl
+            , at => "vendor/typerefl"
+            }
+         , #{ app => lee
+            , at => "vendor/lee"
+            }
+         , ...
+         ]
+     }}
+@end verbatim
+@end example
+
+@anchor{Project Configuration Override}
+@subsection Project Configuration Override
+
+@code{conf_override/1} callback of the root project module allows to override configuration of the child projects.
+
+The return value is a @emph{configuration patch}:
+a list of operations setting or un-setting keys in the configuration:
+
+@example erlang
+@verbatim
+config_override(ChildProject) ->
+  case filename:basename(ChildProject) of
+    "some_project" ->
+      Key1 = [erlang, bdeps],
+      Val1 = [some_app],
+      Key2 = [erlang, escript, {some_escript}],
+      [ {set, Key1, Val1}
+      , {rm, Key2}
+      , ...
+      ];
+    _ ->
+      []
   end.
 @end verbatim
 @end example
 
-@subsection Plugins
+@subsection Plugin
 
-@subsection Projects
+A @emph{plugin} is an Erlang application containing a module that implements @ref{api/anvl_core/anvl_plugin,@code{anvl_plugin}} behavior.
 
-@subsection ANVL versus tranditional build systems
+ANVL comes with a number of built-in plugins, sufficient to bootstrap other plugins:
+
+@itemize
+@item @ref{ANVL Plugin Erlc,Erlc},
+for building Erlang applications.
+@item @ref{ANVL Plugin Git,Git},
+for cloning git repositories.
+@item @ref{ANVL Plugin TexInfo,TexInfo},
+for building documentation.
+@end itemize
+
+ANVL core application provides the functionality that allows projects to load the plugins on demand,
+deals with configuration, CLI interface, documentation, etc.
+It also contains a number of utility functions to aid plugin development.
+
+Plugin configuration is split into two parts:
+
+@cindex Tool Configuration
+@emph{Tool} configuration that is controlled by the user running @command{anvl} command,
+and can be changed using CLI arguments and environment variables.
+Tool configuration is global.
+
+@cindex Project Configuration
+@emph{Project} configuration that is statically set by the project.
+ANVL keeps such configurations separate for each project.
+
+@subsection Conditions and preconditions
+
+@emph{Condition} is the basic building block of ANVL plugins and projects.
+In a very abstract sense,
+ANVL condition is a specially implemented Erlang function that ensures that state of the system satisfies certain criteria,
+for example:
+
+@itemize
+@item A project has been compiled from sources
+@item A system package has been installed
+@item A process, container or a VM has been started
+@item A server has been provisioned
+@item ...
+@end itemize
+
+Conditions have the following properties:
+
+@enumerate
+@item
+Condition function returns a boolean,
+indicating whether or not it produced side effects that changed the system.
+It returns @code{false} if the system state already satisfies the expectations,
+and no changes were made.
+Otherwise, it can run a subroutine that transfers the system into the expected state.
+When it succeeds, boolean @code{true} is returned,
+indicating presence of side effects.
+@item
+Condition throws an exception when the system can't be transferred to the desired state for any reason.
+@item
+Conditions can depend on each other.
+Such dependencies are called @emph{preconditions}.
+@item
+Conditions are memoized:
+ANVL guarantees that body of the condition is executed at most once for each unique set of arguments.
+@end enumerate
+
+@emph{Satisfying} the condition means checking whether the property already holds
+or running the subroutine transferring it to the desired state otherwise.
+
+@subsection Example: building C code
+
+Let us demonstrate that this rather abstract approach is sufficient to replace a traditional build system.
+In this example we'll define an ANVL project compiling C code into an executable.
+
+First, let's declare a condition @code{source_compiled},
+that is satisfied when the object file exists and is newer than the source file
+or after compiling the source file with GCC.
+
+@example erlang
+-include("anvl.hrl").
+
+?MEMO(source_compiled, Src, Obj,
+      begin
+        @ref{anvl_lib:newer/2,newer}(Src, Obj) andalso
+          @ref{anvl_lib:exec/2,anvl_lib:exec}("gcc", ["-c", "-o", Obj, Src])
+      end).
+@end example
+
+This first example condition demonstrates a few things:
+
+First, conditions are defined using @code{MEMO} macro.
+Its syntax is the following:
+@code{?MEMO(FunctionName, Arg1, Arg2, ..., BODY)}.
+
+Second, ANVL framework don't assume anything about the nature of conditions,
+it only concerns with the presence of side effects.
+Here, @code{newer} is a library function that compares modification time of the files (similar to @command{make}),
+but the user is free to implement any change detection,
+for example using hash comparison.
+
+Next, let's define a condition that ensures that the target executable is built and up-to-date:
+
+@example erlang
+?MEMO(executable_built,
+      begin
+        Executable = "build/hello",
+        Sources = filelib:wildcard("c_src/*.c"),
+        Objs = lists:map(fun obj_name/1, Sources),
+        precondition([source_compiled(Src, obj_name(Src)) || Src <- Sources]) or
+          newer(Objs, Executable) andalso
+          anvl_lib:exec("gcc", ["-o", Executable | Objs])
+      end).
+
+obj_name(Src) ->
+  @ref{anvl_lib:patsubst/2,patsubst}("build/$@{basename@}.o", Src).
+@end example
+
+Finally, setting @code{conditions} project configuration will let ANVL framework know that @code{executable_built/0} function is a condition that can be invoked by the user:
+
+@example erlang
+conf() ->
+  #@{ conditions => [executable_built]
+   @}.
+@end example
+
+Now running @command{anvl executable_built} command in the project directory will satisfy the condition with the same name.
+(Running @command{anvl} without arguments will satisfy the first condition in the list.)
+
+While this may look verbose at first, it opens up some possibilities.
+Using a full-fledged programming language (Erlang) to define conditions gives access to proper data structures and algorithms,
+and allows to encapsulate build rules into reusable modules with well-defined interfaces.
+
+@subsection ANVL versus traditional build systems
 
 A traditional build system is a program that automatically solves the following problems:
 

@@ -68,13 +68,21 @@ apps() ->
       end).
 
 ?MEMO(test,
-      precondition([ dummy_app_tests()
+      precondition([ compile_c_tests()
+                   , dummy_app_tests()
                    ])).
+
+?MEMO(compile_c_tests,
+      begin
+        file:del_dir_r("test/compile_c/build"),
+        anvl_lib:exec("anvl", ["--log-level", "info", "-d", "test/compile_c"])
+      end).
 
 ?MEMO(dummy_app_tests,
       begin
-        anvl_lib:exec("anvl", [], [{cd, "test/dummy"}]),
-        anvl_lib:exec("anvl", ["@erlc", "dummy"], [{cd, "test/dummy"}])
+        file:del_dir_r("test/dummy/_anvl_build"),
+        anvl_lib:exec("anvl", ["-d", "test/dummy"]),
+        anvl_lib:exec("anvl", ["-d", "test/dummy", "@erlc", "dummy"])
       end).
 
 install_includes(Prefix) ->

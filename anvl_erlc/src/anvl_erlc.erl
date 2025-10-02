@@ -27,7 +27,7 @@ A builtin plugin for compiling Erlang applications.
 
 %% API:
 -export([add_pre_compile_hook/1, add_app_spec_hook/1, add_pre_edoc_hook/1]).
--export([app_info/2, escript/2, app_compiled/2, dialyzed/2, module/2, edoc/3]).
+-export([app_info/2, escript/2, app_compiled/2, module/2, edoc/3]).
 -export([app_file/1, beam_file/2]).
 
 %% behavior callbacks:
@@ -192,42 +192,6 @@ Condition: OTP application has been compiled with the given profile.
         Hook
       end).
 
--spec dialyzed(profile(), nonempty_list(application())) -> anvl_condition:t().
-?MEMO(dialyzed, Profile, Apps,
-      begin
-        precondition([app_compiled(Profile, App) || App <- Apps]),
-        precondition(plt(Profile, Apps)),
-        Dirs = lists:map(
-                  fun(App) ->
-                      #{ebin_dir := Ebin} = app_info(Profile, App),
-                      filename:join(Ebin, "ebin")
-                  end,
-                  Apps),
-        try dialyzer:run([{analysis_type, incremental}, {files_rec, Dirs}]) of
-          [] ->
-            false;
-          Warnings ->
-            logger:error(["Dialyzer warnings:\n" | [dialyzer:format_warning(Msg) || Msg <- Warnings]]),
-            ?UNSAT("Dialyzer check failed", [])
-        catch
-          {dialyzer_error, Err} ->
-            ?UNSAT("~s", [Err])
-        end
-      end).
-
--spec plt(profile(), [application()]) -> anvl_condition:t().
-?MEMO(plt, Profile, Apps,
-      begin
-        Closure = lists:flatmap(
-                    fun(App) ->
-                        #{spec := Spec} = app_info(Profile, App),
-                        []
-                    end,
-                    Apps),
-        PltApps = Closure -- Apps,
-        false
-      end).
-
 -doc "Speculative condition: a particular module has been compiled.".
 -spec module(profile(), module()) -> anvl_condition:t().
 module(Profile, Module) ->
@@ -300,21 +264,6 @@ model() ->
             #{ apps =>
                  {[value, cli_positional],
                   #{ oneliner => "Names of OTP applications to compile"
-                   , type => nonempty_list(atom())
-                   , cli_arg_position => rest
-                   }}
-             , profile =>
-                 Profile
-             }}
-       , dialyzer =>
-           {[map, cli_action],
-            #{ oneliner => "Run Dialyzer on a set of Erlang/OTP applications"
-             , key_elements => [[apps]]
-             , cli_operand => "dialyzer"
-             },
-            #{ apps =>
-                 {[value, cli_positional],
-                  #{ oneliner => "Names of OTP applications to analyze"
                    , type => nonempty_list(atom())
                    , cli_arg_position => rest
                    }}
@@ -664,7 +613,7 @@ copy_includes(#{build_dir := BuildDir, src_root := SrcRoot}) ->
 
 %% @private Render application specification:
 render_app_spec(AppSrcProperties, Sources, Context) ->
-  #{app := App, profile := Profile, project_root := ProjectRoot, build_dir := BuildDir} = Context,
+  #{app := App, profile := Profile, build_dir := BuildDir} = Context,
   AppFile = app_file(Context),
   Modules = [module_of_erl(I) || I <- Sources],
   NewContent0 = {application, App, [{modules, Modules} | AppSrcProperties]},

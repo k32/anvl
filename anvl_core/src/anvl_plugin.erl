@@ -86,11 +86,14 @@ init() ->
   BuiltinPlugins = [anvl_erlc, anvl_git, anvl_texinfo],
   %% Load builtin plugins:
   _ = precondition([loaded(P) || P <- BuiltinPlugins]),
+  gen_server:call(?MODULE, load_config),
+  set_root(),
   %% Load custom plugins:
   Plugins = anvl_project:plugins(anvl_project:root()),
-  _ = precondition([loaded(P) || P <- Plugins]),
-  %% Load global configuration:
-  ok = gen_server:call(?MODULE, load_config).
+  precondition([loaded(P) || P <- Plugins]) andalso
+    %% Reload tool configuration:
+    gen_server:call(?MODULE, load_config),
+  ok.
 
 -doc """
 Get global configuration for a key.
@@ -220,3 +223,8 @@ project_metamodel() ->
 
 cli_args_getter() ->
   application:get_env(anvl, cli_args, []).
+
+set_root() ->
+  Root = filename:absname(anvl_plugin:conf([root])),
+  persistent_term:put(?anvl_root_project_dir, Root),
+  ok = file:set_cwd(Root).
