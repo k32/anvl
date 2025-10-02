@@ -53,12 +53,17 @@ ANVL allows to create a @emph{resource} for each type of such operation.
 %% Type declarations
 %%================================================================================
 
+-doc """
+Type of tokens identifying the resources.
+""".
 -type resource() :: term().
 
 -define(TAB, anvl_resource_tab).
 -record(set_max, {max :: pos_integer()}).
 -record(grab, {}).
 -record(release, {}).
+
+-export_type([resource/0]).
 
 %%================================================================================
 %% API functions

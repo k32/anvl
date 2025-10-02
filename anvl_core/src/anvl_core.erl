@@ -18,6 +18,7 @@
 %%================================================================================
 
 -module(anvl_core).
+-moduledoc false.
 
 -export([model/0, project_model/0]).
 

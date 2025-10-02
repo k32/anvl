@@ -117,8 +117,6 @@ stats() ->
 Block execution of the function until all preconditions in @var{L} are satisfied.
 Throws an exception if any precondition could not be satisified.
 
-Function argument @var{ChunkSize} specifies maximum number of parallel tasks.
-
 Returns whether any changes were made to the system to satify the preconditions.
 """.
 -spec precondition(L :: [t()] | t()) -> boolean().
@@ -129,8 +127,8 @@ precondition(L) when is_list(L) ->
 
 -doc """
 Equivalent to @code{precondition(L)},
-but takes an additional parameter @var{ChunkSize} that controls
-maximum number of parallel tasks spawned to satisfy the conditions in @var{L}.
+but takes an additional parameter @var{ChunkSize} that sets the maximum number of parallel tasks
+spawned to satisfy the conditions in @var{L}.
 
 Note: any sub-tasks spawned by the preconditions themselves are not accounted for.
 """.
@@ -276,6 +274,7 @@ terminate(_Reason, _S) ->
 %% Internal exports
 %%================================================================================
 
+-doc false.
 condition_entrypoint(Condition, Parent) ->
   process_flag(trap_exit, true),
   T0 = erlang:system_time(microsecond),

@@ -108,7 +108,7 @@ Press @key{?} to get tips about navigating this website.
 also known as the project configuration file.
 
 @file{anvl.erl} is a regular Erlang module, with one notable exception:
-it must NOT contain @code{-module} attribute (and if one exists, it is ignored).
+it must NOT contain @code{-module} attribute (and if such exists, it is ignored).
 That is because ANVL derives module name for the project configuration file automatically.
 Because of that, it's not allowed to use @code{anvl:Fun(...)} or @code{fun anvl:Fun/N} syntax to refer to local functions.
 If needed, @code{fun ?MODULE:Fun/N} syntax can be used instead.
@@ -193,7 +193,7 @@ config_override(ChildProject) ->
 
 A @emph{plugin} is an Erlang application containing a module that implements @ref{api/anvl_core/anvl_plugin,@code{anvl_plugin}} behavior.
 
-ANVL comes with a number of built-in plugins, sufficient to bootstrap other plugins:
+ANVL comes with a number of built-in plugins, sufficient for bootstrapping other plugins:
 
 @itemize
 @item @ref{ANVL Plugin Erlc,Erlc},

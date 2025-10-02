@@ -43,9 +43,6 @@ A builtin plugin for compiling Erlang applications.
 %% Type declarations
 %%================================================================================
 
--doc """
-This is a type.
-""".
 -type profile() :: atom().
 
 -type application() :: atom().
@@ -60,6 +57,10 @@ This is a type.
 
 -type escript_name() :: atom().
 
+-doc """
+Build context: a summary of options and data about the application
+that is available at its build time.
+""".
 -type context() ::
         #{ app := atom()
          , src_root := file:filename_all()
@@ -71,6 +72,12 @@ This is a type.
          , includes := [file:filename_all()]
          }.
 
+-doc """
+Application info is a summary of data about the application
+that becomes available after application is built.
+
+This type is an extention of @ref{t:anvl_erlc:context/0,context/0}.
+""".
 -type app_info() ::
         #{ app := atom()
          , src_root := file:filename_all()
@@ -85,14 +92,10 @@ This is a type.
          , escript_files := [file:filename_all()]
          }.
 
--type source_location_ret() :: #{application() => string() | {atom(), term()}}.
-
--type archive_file() :: {file:filename_all(), file:filename_all()}.
-
 -define(app_info(PROFILE, APP), {?MODULE, app_info, PROFILE, APP}).
 -define(context(PROFILE, APP), {?MODULE, context, PROFILE, APP}).
 
--reflect_type([profile/0, source_location_ret/0, compile_options/0, escript_name/0, context/0, application_spec/0, archive_file/0]).
+-reflect_type([profile/0, compile_options/0, escript_name/0, context/0, application_spec/0]).
 
 %%================================================================================
 %% API functions

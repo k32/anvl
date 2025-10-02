@@ -38,6 +38,8 @@ Plugins can declare hook points and inject code into other plugin's hook points.
 
 -define(max_prio, 16#ffffffff).
 
+-export_type([hook/0, hookpoint/0]).
+
 %%================================================================================
 %% API functions
 %%================================================================================
