@@ -182,6 +182,7 @@ module(Profile, Module) ->
 -spec escript(file:filename_all(), string()) -> anvl_condition:t().
 ?MEMO(escript, ProjectRoot, EscriptName,
       begin
+        precondition(anvl_project:loaded(ProjectRoot)),
         do_escript(ProjectRoot, EscriptName)
       end).
 
@@ -303,22 +304,6 @@ project_model() ->
              , type => list(anvl_lib:filename_pattern())
              , default => ["apps/${app}", "."]
              }}
-       , deps =>
-           {[map],
-            #{ oneliner => "External dependencies"
-             , key_elements => [[app]]
-             },
-           #{ app =>
-                {[value],
-                 #{ oneliner => "Name of the external OTP application"
-                  , type => application()
-                  }}
-            , at =>
-                {[value],
-                 #{ oneliner => "Recipe for locating the external project"
-                  , type => anvl_locate:spec()
-                  }}
-            }}
        , escript =>
            {[map],
             #{ oneliner => "Define an escript"
@@ -681,33 +666,24 @@ src_root(_Profile, App) ->
 -spec sources_discovered(application()) -> anvl_condition:t().
 ?MEMO(sources_discovered, App,
       begin
-        L = %% 1. Try to locate application in the root project:
-          [fun() -> locate_in_project(anvl_project:root(), App) end] ++
-          %% 2. Try to locate it as a depencency in one of the known projects:
-          [fun() -> locate_dependency(Project, App) end || Project <- anvl_project:known_projects()],
-        case traverse_locate_methods(L) of
+        ParentProject = anvl_project:root(),
+        case locate_in_project(ParentProject, App) of
+          {ok, AppRoot} ->
+            set_app_location(App, anvl_project:root(), AppRoot),
+            false;
           undefined ->
-            ?UNSAT("Could not find sources for OTP application ~p", [App]);
-          {Changed, Project, SrcRoot} ->
-            set_app_location(App, Project, SrcRoot),
-            Changed
+            Changed = precondition(anvl_locate:located(?MODULE, App)),
+            ChildProject = anvl_locate:dir(?MODULE, App),
+            Loaded = precondition(anvl_project:loaded(ChildProject)),
+            case locate_in_project(ChildProject, App) of
+              {ok, AppRoot} ->
+                set_app_location(App, ChildProject, AppRoot),
+                Changed or Loaded;
+              undefined ->
+                ?UNSAT("Application ~p is not found in project ~p, as requested by ~p", [App, ChildProject, ParentProject])
+            end
         end
       end).
-
-locate_dependency(ParentProject, App) ->
-  case anvl_project:maybe_conf(ParentProject, [erlang, deps, {App}, at]) of
-    {ok, Spec} ->
-      Changed = precondition(anvl_locate:located(?MODULE, App, Spec)),
-      ChildProject = anvl_locate:dir(?MODULE, App),
-      case locate_in_project(ChildProject, App) of
-        {_, _, SrcRoot} ->
-          {Changed, ChildProject, SrcRoot};
-        _ ->
-          ?UNSAT("Application ~p is not found in project ~p, as requested by ~p", [App, ChildProject, ParentProject])
-      end;
-    undefined ->
-      undefined
-  end.
 
 locate_in_project(Project, App) ->
   traverse_locate_methods(
@@ -717,7 +693,7 @@ locate_in_project(Project, App) ->
                      template(Template, #{app => App}, path)),
          case filelib:is_file(app_src_path(AppRoot, App)) of
            true ->
-             {false, Project, AppRoot};
+             {ok, AppRoot};
            false ->
              undefined
          end
@@ -734,7 +710,7 @@ traverse_locate_methods([]) ->
 traverse_locate_methods([Fun | Rest]) ->
   case Fun() of
     undefined -> traverse_locate_methods(Rest);
-    {_, _, _} = Result -> Result
+    Result -> Result
   end.
 
 -define(app_location, anvl_erlc_app_location).

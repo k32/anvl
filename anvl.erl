@@ -25,21 +25,7 @@ conf() ->
   #{ plugins => [anvl_erlc, anvl_git, anvl_texinfo]
    , conditions => [install, escript, docs, test]
    , erlang =>
-       #{ deps =>
-            [ #{ app => typerefl
-               , at => "vendor/typerefl"
-               }
-            , #{ app => lee
-               , at => "vendor/lee"
-               }
-            , #{ app => erlang_qq
-               , at => "vendor/erlang_qq"
-               }
-            , #{ app => snabbkaffe
-               , at => "vendor/snabbkaffe"
-               }
-            ]
-        , app_paths =>
+       #{ app_paths =>
             ["${app}", "."]
         , escript =>
             [ Escript
@@ -53,6 +39,7 @@ conf() ->
                }
             ]
         }
+   , [deps, local] => [#{dir => "vendor/${id}"}]
    }.
 
 apps() ->

@@ -26,10 +26,10 @@ and dependency consumers.
 """.
 
 %% API:
--export([located/3, dir/2, add_hook/2, add_hook/1]).
+-export([located/2, dir/2, add_hook/2, add_hook/1, match_consumer/2]).
 
-%% behavior callbacks:
--export([init/0]).
+%% Internal exports:
+-export([init_for_project/1]).
 
 -export_type([locate_hook/0]).
 
@@ -41,15 +41,29 @@ and dependency consumers.
 %% Type declarations
 %%================================================================================
 
--type dep() :: term().
--type spec() :: file:filename_all() | {atom(), term()} | undefined.
+-define(max_prio, 10).
+
+-type id() :: term().
+
+-type consumer() :: module().
+
+-type spec() :: #{ id := id()
+                 , consumer := consumer()
+                 }.
 
 -type hook_ret() :: {true, file:filename_all()} | false.
--type locate_hook() :: fun((#{dep := dep(), spec := spec(), consumer => module()}) -> hook_ret()).
 
--reflect_type([dep/0, spec/0, hook_ret/0]).
+-type locate_hook() :: fun((spec()) -> hook_ret()).
 
--record(?MODULE, {consumer :: module(), dep :: dep()}).
+-type consumer_filter() :: [consumer()] | all.
+
+-type hook_priority() :: -?max_prio .. ?max_prio.
+
+-reflect_type([id/0, consumer_filter/0]).
+
+-record(?MODULE, {consumer :: module(), id :: id()}).
+
+-define(hookpoint, ?MODULE).
 
 %%================================================================================
 %% API functions
@@ -58,32 +72,33 @@ and dependency consumers.
 -doc """
 Condition: external dependency @var{Dep} has been located.
 """.
--spec located(Consumer :: module(), Dep :: dep(), Spec :: spec()) -> anvl_condition:t().
-?MEMO(located, Consumer, Dep, Spec,
+-spec located(Consumer :: consumer(), Id :: id()) -> anvl_condition:t().
+?MEMO(located, Consumer, Id,
       begin
-        IsLiteral = io_lib:char_list(Spec),
-        case Spec of
-          _ when IsLiteral ->
-            Substs = #{dep => Dep},
-            set_dir(Consumer, Dep, anvl_lib:template(Spec, Substs, list)),
-            false;
-          _ ->
-            case anvl_hook:first_match(locate, #{dep => Dep, spec => Spec}) of
-              {Changed, Dir} ->
-                set_dir(Consumer, Dep, Dir),
-                Changed;
-              undefined ->
-                ?UNSAT("Failed to locate ~p", [Dep])
-            end
+        Spec = #{id => Id, consumer => Consumer},
+        Fun = fun(Hook, Acc) ->
+                  case Hook(Spec) of
+                    false ->
+                      {true, Acc};
+                    {Changed, Dir} ->
+                      {false, {Changed, Dir}}
+                  end
+              end,
+        case anvl_hook:traverse(Fun, undefined, ?hookpoint) of
+          {Changed, Dir} ->
+            set_dir(Consumer, Id, Dir),
+            Changed;
+          undefined ->
+            ?UNSAT("Failed to locate dependency ~p for consumer ~p", [Id, Consumer])
         end
       end).
 
 -doc """
 Return a directory that contains located dependency.
 """.
--spec dir(module(), dep()) -> file:filename().
-dir(Consumer, Dep) ->
-  anvl_condition:get_result(#?MODULE{consumer = Consumer, dep = Dep}).
+-spec dir(consumer(), id()) -> file:filename().
+dir(Consumer, Id) ->
+  anvl_condition:get_result(#?MODULE{consumer = Consumer, id = Id}).
 
 -doc """
 Equivalent to @code{add_hook(Fun, 0)}.
@@ -99,19 +114,37 @@ When multiple hooks are capable of resolving the dependency, hooks with higher @
 """.
 -spec add_hook(locate_hook(), integer()) -> ok.
 add_hook(Fun, Priority) ->
-  anvl_hook:add(locate, Priority, Fun).
+  anvl_hook:add(?hookpoint, Priority, Fun).
+
+-spec match_consumer(consumer(), consumer_filter()) -> boolean().
+match_consumer(_, all) ->
+  true;
+match_consumer(Consumer, L) ->
+  lists:member(Consumer, L).
+
+add_local_search_path(Prio, RootDir, Pattern) ->
+  add_hook(
+    fun(#{id := _, consumer := Consumer} = Spec) ->
+        Dir = filename:join(RootDir, template(Pattern, Spec, path)),
+        filelib:is_dir(Dir) andalso {false, Dir}
+    end,
+    Prio).
 
 %%================================================================================
-%% behavior callbacks
+%% Internal exports
 %%================================================================================
 
 -doc false.
-init() ->
+init_for_project(Project) ->
+  [begin
+     Pattern = anvl_project:conf(Project, Key ++ [dir]),
+     add_local_search_path(0, Project, Pattern)
+   end || Key <- anvl_project:list_conf(Project, [deps, local, {}])],
   ok.
 
 %%================================================================================
 %% Internal functions
 %%================================================================================
 
-set_dir(Consumer, Dep, Dir) ->
-  anvl_condition:set_result(#?MODULE{consumer = Consumer, dep = Dep}, Dir).
+set_dir(Consumer, Id, Dir) ->
+  anvl_condition:set_result(#?MODULE{consumer = Consumer, id = Id}, Dir).

@@ -30,21 +30,18 @@ A builtin plugin for cloning Git repositories.
 -include_lib("typerefl/include/types.hrl").
 -include_lib("anvl_core/include/anvl.hrl").
 
--type options() :: #{ repo := string() | binary()
-                    , ref := string()
-                    , paths => [string()]
-                    , local => boolean()
-                    }.
+-type ref() :: {branch, string()} | {tag, string()}.
 
--reflect_type([options/0]).
+-reflect_type([ref/0]).
 
 -doc false.
 init() ->
-  ok = anvl_resource:declare(git, 5),
-  ok = anvl_locate:add_hook(fun src_prepared/1).
+  ok = anvl_resource:declare(git, 5).
 
 -doc false.
-init_for_project(_Project) ->
+init_for_project(Project) ->
+  %% [add_project_hook(Project, Key)
+  %%  || Key <- anvl_project:list_conf(Project, [deps, git, {}])],
   ok.
 
 -doc false.
@@ -68,25 +65,66 @@ model() ->
 
 -doc false.
 project_model() ->
-  #{}.
+  #{deps =>
+      #{git =>
+          {[map],
+           #{ key_elements => [[id]]
+            , oneliner => "Git dependencies"
+            },
+           #{ id =>
+                {[value],
+                 #{ oneliner => "Identifier of the git repo"
+                  , type => anvl_locate:id()
+                  }}
+            , repo =>
+                {[value],
+                 #{ oneliner => "URL of the Git repo"
+                  , type => string()
+                  }}
+            , ref =>
+                {[value],
+                 #{ oneliner => "Reference to checkout"
+                  , type => ref()
+                  }}
+            , local =>
+                {[value],
+                 #{ type => boolean()
+                  , default => false
+                  }}
+            , paths =>
+                {[value],
+                 #{ type => list(string())
+                  , default => []
+                  }}
+            }}}}.
 
-src_prepared(#{what := What, spec := {git, Opts}}) ->
-  case typerefl:typecheck(options(), Opts) of
-    ok ->
-      #{repo := Repo} = Opts,
-      SrcRootDir = anvl_project:root(),
-      _ = precondition(locked(SrcRootDir, What, Opts)),
-      Dir = archive_unpacked( What
-                            , Repo
-                            , locked_commit(SrcRootDir, What)
-                            , maps:get(paths, Opts, [])
-                            ),
-      {true, Dir};
-    {error, Err} ->
-      ?UNSAT("Invalid options for the git discovery mechanism: ~p", [Err])
-  end;
-src_prepared(_) ->
-  false.
+-spec add_hook(anvl_project:dir(), lee:key()) -> ok.
+add_hook(Project, Key) ->
+  ?LOG_WARNING("OHAYO: ~p ~p", [Project, Key]),
+%%   L0 = anvl_project:list_all_conf([deps, git, {Id}]),
+%%   L =
+%%   case of
+%%     [] ->
+%%       false;
+%%     [Key] ->
+%%       Cfg = fun(Suffix) -> anvl_p
+%%   case typerefl:typecheck(options(), Opts) of
+%%     ok ->
+%%       #{repo := Repo} = Opts,
+%%       SrcRootDir = anvl_project:root(),
+%%       _ = precondition(locked(SrcRootDir, What, Opts)),
+%%       Dir = archive_unpacked( What
+%%                             , Repo
+%%                             , locked_commit(SrcRootDir, What)
+%%                             , maps:get(paths, Opts, [])
+%%                             ),
+%%       {true, Dir};
+%%     {error, Err} ->
+%%       ?UNSAT("Invalid options for the git discovery mechanism: ~p", [Err])
+%%   end;
+%% src_prepared(_) ->
+%%   false.
+  ok.
 
 archive_unpacked(What, Repo, CommitHash, Paths) ->
   LocalDir = filename:join([anvl_project:root(), ?BUILD_ROOT, "git", What, CommitHash]),
@@ -163,8 +201,12 @@ locked_commit(SrcRootDir, What) ->
 mirror_dir(Repo) ->
   filename:join(cfg_mirror_dir(), anvl_lib:hash(Repo)).
 
-get_commit_hash(RepoDir, #{ref := Ref}) ->
-  case anvl_lib:exec_("git", ["show-ref", "-s", "refs/" ++ Ref], [{cd, RepoDir}, collect_output]) of
+get_commit_hash(RepoDir, {Kind, Ref}) ->
+  Filter = case Kind of
+             branch -> "--branches";
+             tag -> "--tags"
+           end,
+  case anvl_lib:exec_("git", ["show-ref", Filter, "-s", Ref], [{cd, RepoDir}, collect_output]) of
     {0, [Hash]} ->
       string:trim(Hash);
     {ExitStatus, Output} ->

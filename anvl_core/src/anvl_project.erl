@@ -22,7 +22,7 @@
 Handler of ANVL project configurations.
 """.
 
--export([root/0, conf/2, maybe_conf/2, list_conf/2, conditions/0, plugins/1, known_projects/0]).
+-export([root/0, conf/2, maybe_conf/2, list_conf/2, conditions/0, plugins/1, known_projects/0, loaded/1]).
 
 %% lee_metatype behavior:
 -export([names/1, create/1, read_patch/2]).
@@ -69,9 +69,12 @@ Project can use it, for example, to install hooks.
 %% API
 %%================================================================================
 
+-spec loaded(dir()) -> anvl_condition:t().
+loaded(Project) ->
+  config_loaded(Project).
+
 -spec conf(dir(), lee:model_key()) -> _Result.
 conf(ProjectRoot, Key) ->
-  _ = config_module(ProjectRoot),
   lee:get(?proj_conf_storage(ProjectRoot), Key).
 
 -spec maybe_conf(dir(), lee:model_key()) -> {ok, _Result} | undefined.
@@ -86,7 +89,6 @@ maybe_conf(ProjectRoot, Key) ->
 
 -spec list_conf(dir(), lee:model_key()) -> list().
 list_conf(ProjectRoot, Key) ->
-  _ = config_module(ProjectRoot),
   lee:list(?proj_conf_storage(ProjectRoot), Key).
 
 -spec known_projects() -> [dir()].
