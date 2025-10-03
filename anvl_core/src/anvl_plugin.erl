@@ -88,6 +88,7 @@ init() ->
   _ = precondition([loaded(P) || P <- BuiltinPlugins]),
   gen_server:call(?MODULE, load_config),
   set_root(),
+  conf([help, run]) andalso anvl_app:help(),
   %% Load custom plugins:
   Plugins = anvl_project:plugins(anvl_project:root()),
   precondition([loaded(P) || P <- Plugins]) andalso

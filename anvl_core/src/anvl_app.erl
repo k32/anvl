@@ -29,7 +29,7 @@
 -export([start/2, stop/1]).
 
 %% internal exports:
--export([bootstrap/0, prefix/0]).
+-export([bootstrap/0, prefix/0, help/0]).
 
 -include_lib("kernel/include/logger.hrl").
 -include("anvl.hrl").
@@ -39,9 +39,6 @@
 %%================================================================================
 
 %% @doc Entrypoint for `anvl' escript.
-main(["--help" | _]) ->
-  %% FIXME: read configuration instead
-  help();
 main(CLIArgs) ->
   set_logger_conf(),
   application:set_env(anvl, cli_args, CLIArgs),

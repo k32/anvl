@@ -14,7 +14,6 @@ logs
 *.html
 TAGS
 doc/*
-!doc/src
 snabbkaffe
 !vendor/snabbkaffe
 _anvl_build
