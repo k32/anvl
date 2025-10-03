@@ -244,6 +244,7 @@ cli_args_getter() ->
   application:get_env(anvl, cli_args, []).
 
 set_root() ->
-  Root = filename:absname(anvl_plugin:conf([root])),
+  file:set_cwd(filename:absname(anvl_plugin:conf([root]))),
+  {ok, Root} = file:get_cwd(),
   persistent_term:put(?anvl_root_project_dir, Root),
-  ok = file:set_cwd(Root).
+  ok.

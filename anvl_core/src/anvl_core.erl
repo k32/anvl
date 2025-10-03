@@ -54,6 +54,7 @@ model() ->
    , custom_conditions =>
        {[value, cli_positional],
         #{ oneliner         => "List of conditions to satisfy"
+         , doc              => "@anvl-custom-conditions"
          , type             => typerefl:list(atom())
          , cli_arg_position => rest
          }}
@@ -80,11 +81,12 @@ model() ->
                    , cli_operand => "top-reds"
                    , default     => 0
                    }}
-             }}
+             }
+        }
    , help =>
        #{ run =>
             {[value, cli_param],
-             #{ oneliner    => "Get help"
+             #{ oneliner    => "Get help and exit"
               , type        => boolean()
               , default     => false
               , cli_operand => "help"

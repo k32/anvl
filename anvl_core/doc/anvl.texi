@@ -297,7 +297,7 @@ Next, let's define a condition that ensures that the target executable is built 
         Executable = "build/hello",
         Sources = filelib:wildcard("c_src/*.c"),
         Objs = lists:map(fun obj_name/1, Sources),
-        precondition([source_compiled(Src, obj_name(Src)) || Src <- Sources]) or
+        @ref{anvl_condition:precondition/1,precondition}([source_compiled(Src, obj_name(Src)) || Src <- Sources]) or
           newer(Objs, Executable) andalso
           anvl_lib:exec("gcc", ["-o", Executable | Objs])
       end).
@@ -351,6 +351,14 @@ Additionally, traditional build systems usually mix several concepts together:
 @end itemize
 
 In contrast, ANVL presents these as independent library primitives.
+
+@macro anvl-custom-conditions
+  Select conditions from the @ref{value/conditions,[conditions]} list of the root project.
+
+  If user didn't explicitly specify any conditions to satisfy,
+  then ANVL will run the first condition from @ref{value/conditions,[conditions]} list.
+
+@end macro
 
 @lee{anvl_core,ANVL}
 

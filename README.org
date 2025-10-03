@@ -2,11 +2,12 @@
 
 * Dependencies
 
-1. Erlang/OTP 27 or later
-2. =texi2any= tool.
+1. Git
+2. Erlang/OTP 27 or later
+3. =texi2any= tool.
    It is available as =sys-apps/texinfo= package in Gentoo, or =texinfo= in Debian derivatives.
 
 * Installation
 
 1. Clone the repo
-2. Run =./bootstrap.escript= command. It will install =anvl= to =~/.local= directory.
+2. Run =./bootstrap.escript= command. It will build and install =anvl= to =~/.local= directory.
