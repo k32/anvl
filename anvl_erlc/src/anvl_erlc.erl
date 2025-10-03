@@ -26,8 +26,8 @@ A builtin plugin for compiling Erlang applications.
 -behavior(anvl_plugin).
 
 %% API:
--export([add_pre_compile_hook/1, add_app_spec_hook/1, add_pre_edoc_hook/1]).
--export([app_info/2, escript/2, app_compiled/2, module/2, edoc/3]).
+-export([add_pre_compile_hook/1, add_app_spec_hook/1]).
+-export([app_info/2, escript/2, app_compiled/2, module/2]).
 -export([app_file/1, beam_file/2]).
 
 %% behavior callbacks:
@@ -89,7 +89,6 @@ This type is an extention of @ref{t:anvl_erlc:context/0,context/0}.
          , includes := [file:filename_all()]
          , spec := application_spec()
          , ebin_dir := file:filename_all()
-         , escript_files := [file:filename_all()]
          }.
 
 -define(app_info(PROFILE, APP), {?MODULE, app_info, PROFILE, APP}).
@@ -123,17 +122,9 @@ add_pre_compile_hook(Fun) ->
   anvl_hook:add(erlc_pre_compile_hook, Fun).
 
 -doc """
-Add a pre-edoc hook. Functions hooked there will run before
-building the documentation for the app.
-""".
--spec add_pre_edoc_hook(fun((app_info()) -> boolean())) -> ok.
-add_pre_edoc_hook(Fun) ->
-  anvl_hook:add(erlc_pre_edoc_hook, Fun).
-
--doc """
 Condition: OTP application has been compiled with the given profile.
 """.
--spec app_compiled(profile(), application()) -> anvl_condition:t().
+-spec app_compiled(Profile :: profile(), Application :: application()) -> anvl_condition:t().
 ?MEMO(app_compiled, Profile, App,
       begin
         ?LOG_INFO("Compiling ~p", [App]),
@@ -180,19 +171,6 @@ Condition: OTP application has been compiled with the given profile.
           clean_orphans(Sources, Context) or
           copy_includes(Context) or
           render_app_spec(AppSrcProperties, Sources, Context)
-      end).
-
--doc "Condition: Erlang documentation for an application has been created.".
--spec edoc(file:filename_all(), profile(), application()) -> anvl_condition:t().
-?MEMO(edoc, ProjectRoot, Profile, App,
-      begin
-        OutputDir = pcfg(ProjectRoot, Profile, [edoc, output_dir]),
-        Options = pcfg(ProjectRoot, Profile, [edoc, options]),
-        ok = filelib:ensure_path(OutputDir),
-        #{src_root := Src, includes := IncludeDirs} = AppInfo = app_info(Profile, App),
-        Hook = anvl_hook:foreach(erlc_pre_edoc_hook, AppInfo),
-        edoc:application(App, Src, [{includes, IncludeDirs}, {dir, OutputDir} | Options]),
-        Hook
       end).
 
 -doc "Speculative condition: a particular module has been compiled.".
@@ -298,18 +276,6 @@ project_model() ->
           #{ type => list()
            , default => [debug_info]
            }}
-     , edoc =>
-         #{ output_dir =>
-              {[value],
-               #{ type => string()
-                , default => "doc"
-                }}
-          , options =>
-              {[value],
-               #{ type => list()
-                , default => [{preprocess, true}]
-                }}
-          }
      },
   Overrides = lee_model:map_vals(
                 fun(Key, {MTs, Attrs0}) ->
@@ -386,6 +352,13 @@ project_model() ->
                    , type => profile()
                    , default => default
                    }}
+             , archive_options =>
+                 {[value],
+                  #{ type => list()
+                   , default => [ {compress, all}
+                                , {uncompress, {add, [".beam", ".app"]}}
+                                ]
+                   }}
              }}
        }}.
 
@@ -425,7 +398,8 @@ do_escript(ProjectRoot, EscriptName) ->
   Files = AppFiles,
   {Sources, _} = lists:unzip(Files),
   %% Create the escript:
-  ChangedP or newer(Sources, Filename) andalso
+  ChangedP or
+    newer(Sources, Filename) andalso
     begin
       ?LOG_NOTICE("Creating ~s", [Filename]),
       ok = filelib:ensure_dir(Filename),
@@ -439,12 +413,9 @@ do_escript(ProjectRoot, EscriptName) ->
                            end
                        end,
                        Files),
-      ArchiveOpts = [ {compress, all}
-                    , {uncompress, {add, [".beam", ".app"]}}
-                    ],
       Sections = [ shebang
                  , {emu_args, Cfg([emu_args])}
-                 , {archive, Bins, ArchiveOpts}
+                 , {archive, Bins, Cfg([archive_options])}
                  ],
       case escript:create(Filename, Sections) of
         ok           -> anvl_lib:exec("chmod", ["+x", Filename]);
@@ -459,7 +430,8 @@ do_escript(ProjectRoot, EscriptName) ->
         Module = module_of_erl(Src),
         satisfies(module(Profile, Module)),
         Beam = beam_of_erl(Src, Context),
-        newer(Src, Beam) or precondition(beam_deps(Src, Beam, CRef)) andalso
+        newer(Src, Beam) or
+          precondition(beam_deps(Src, Beam, CRef)) andalso
           anvl_resource:with(
             erlc,
             fun() ->
@@ -474,7 +446,7 @@ do_escript(ProjectRoot, EscriptName) ->
       end).
 
 -doc """
-Precondition: Compile-time dependencies of the Erlang %% module are satisfied.
+Precondition: Compile-time dependencies of the Erlang module are satisfied.
 """.
 ?MEMO(beam_deps, Src, Beam, CRef,
       begin
