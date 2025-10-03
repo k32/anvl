@@ -193,7 +193,7 @@ Equivalent to @code{exec_(Cmd, Args, [])}
 """.
 -spec exec_(string(), [string()]) -> integer().
 exec_(Cmd, Args) ->
-  exec(Cmd, Args, []).
+  exec_(Cmd, Args, []).
 
 -doc """
 Execute a command and return exit code.

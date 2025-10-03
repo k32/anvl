@@ -68,9 +68,19 @@ apps() ->
       end).
 
 ?MEMO(test,
-      precondition([ compile_c_tests()
+      precondition([ self_tests()
+                   , compile_c_tests()
                    , dummy_app_tests()
                    ])).
+
+?MEMO(self_tests,
+      begin
+        anvl_lib:exec("anvl", ["@escript", "anvl"]),
+        anvl_lib:exec("anvl", ["@erlc", "anvl_core"]),
+        1 = anvl_lib:exec_("anvl", ["blah"]),
+        1 = anvl_lib:exec_("anvl", ["--invalid-arg"]),
+        true
+      end).
 
 ?MEMO(compile_c_tests,
       begin

@@ -240,15 +240,17 @@ load_project_conf(ProjectDir, Module, Storage) ->
              end,
   Overrides = read_override(ProjectDir),
   %% 1. Load basic config to get the list of plugins:
-  _ = read_project_conf(ProjectDir, ConfTree, Overrides, [anvl_core], Storage),
+  _ = read_project_conf(ProjectDir, ConfTree, Overrides, Storage),
   Plugins = lee:get(Storage, [plugins]),
   %% 2. Load plugins:
-  _ = precondition(lists:map(fun anvl_plugin:loaded/1, Plugins)),
-  %% 3. Re-load configuration with all plugins included:
-  read_project_conf(ProjectDir, ConfTree, Overrides, [anvl_core | Plugins], Storage),
+  precondition(lists:map(fun anvl_plugin:loaded/1, Plugins)),
+  %% 3. Re-load the configuration, now that all plugins have been loaded:
+  read_project_conf(ProjectDir, ConfTree, Overrides, Storage),
+  anvl_plugin:load_config(),
   %% 4. Optionally, run init function.
   erlang:function_exported(Module, init, 0) andalso
     Module:init(),
+  ?LOG_INFO("Loaded project ~p", [ProjectDir]),
   false.
 
 tree_to_patch(Model, Tree) ->
@@ -339,11 +341,11 @@ read_override(Dir) ->
       end
   end.
 
-read_project_conf(ProjectDir, ConfTree, Overrides, Plugins, Data0) ->
+read_project_conf(ProjectDir, ConfTree, Overrides, Data0) ->
   MetaModel = [ lee_metatype:create(?MODULE, #{conf => ConfTree, overrides => Overrides})
               | anvl_plugin:project_metamodel()
               ],
-  MM = [Mod:project_model() || Mod <- Plugins],
+  MM = anvl_plugin:get_project_model(),
   case lee_model:compile(MetaModel, MM) of
     {ok, Model} ->
       case lee:init_config(Model, Data0) of

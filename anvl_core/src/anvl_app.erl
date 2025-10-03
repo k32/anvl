@@ -49,6 +49,7 @@ main(CLIArgs) ->
       ?LOG_CRITICAL("No default condition is specified in anvl.erl. Nothing to do"),
       ?MODULE:halt(1);
     Toplevel ->
+      anvl_plugin:set_complete(),
       exec_top(Toplevel)
   end.
 

@@ -31,7 +31,7 @@ An ANVL API for managing plugins.
 -export([init/1, handle_call/3, handle_cast/2, terminate/2]).
 
 %% Internal exports
--export([start_link/0, metamodel/0, project_metamodel/0]).
+-export([start_link/0, metamodel/0, project_metamodel/0, get_project_model/0, load_config/0, set_complete/0]).
 
 -reflect_type([t/0]).
 
@@ -77,23 +77,16 @@ Condition: @var{Plugin} has been loaded.
                     end,
           load_model(Plugin),
           Plugin:init(),
+          ?LOG_INFO("Loaded plugin ~p", [Plugin]),
           Changed
       end).
 
 -doc false.
 init() ->
   ok = anvl_sup:init_plugins(),
-  BuiltinPlugins = [anvl_erlc, anvl_git, anvl_texinfo],
-  %% Load builtin plugins:
-  _ = precondition([loaded(P) || P <- BuiltinPlugins]),
-  gen_server:call(?MODULE, load_config),
+  load_config(),
   set_root(),
   conf([help, run]) andalso anvl_app:help(),
-  %% Load custom plugins:
-  Plugins = anvl_project:plugins(anvl_project:root()),
-  precondition([loaded(P) || P <- Plugins]) andalso
-    %% Reload tool configuration:
-    gen_server:call(?MODULE, load_config),
   ok.
 
 -doc """
@@ -110,6 +103,20 @@ List global configuration for a key.
 list_conf(Key) ->
   lee:list(?conf_storage, Key).
 
+-spec get_project_model() -> [lee:model_module()].
+get_project_model() ->
+  gen_server:call(?MODULE, get_project_model).
+
+-doc false.
+-spec load_config() -> ok.
+load_config() ->
+  gen_server:call(?MODULE, load_config).
+
+-doc false.
+-spec set_complete() -> ok.
+set_complete() ->
+  gen_server:call(?MODULE, set_complete).
+
 %%================================================================================
 %% gen_server callbacks:
 %%================================================================================
@@ -120,6 +127,7 @@ start_link() ->
 
 -record(s,
         { model = []
+        , complete = false :: boolean()
         , project_model = []
         , m
         , conf
@@ -132,16 +140,8 @@ init([]) ->
   do_load_model(anvl_core, S).
 
 -doc false.
-handle_call(load_config, _From, S = #s{m = Model}) ->
-  case lee:init_config(Model, ?conf_storage) of
-    {ok, ?conf_storage, _Warnings} ->
-      {reply, ok, S};
-    {error, Errors, Warnings} ->
-      logger:critical("Invalid configuration"),
-      [logger:critical(E) || E <- Errors],
-      [logger:warning(E) || E <- Warnings],
-      anvl_app:halt(1)
-  end;
+handle_call(load_config, _From, S) ->
+  do_load_config(S);
 handle_call({load_model, Plugin}, _From, S0) ->
   try do_load_model(Plugin, S0) of
     {ok, S} ->
@@ -150,6 +150,11 @@ handle_call({load_model, Plugin}, _From, S0) ->
     EC:Err:Stack ->
       {reply, {EC, Err, Stack}, S0}
   end;
+handle_call(set_complete, _From, S0) ->
+  S = load_configuration_model(S0#s{complete = true}),
+  do_load_config(S);
+handle_call(get_project_model, _From, S) ->
+  {reply, S#s.project_model, S};
 handle_call(_Call, _From, S) ->
   {reply, {error, unknown_call}, S}.
 
@@ -173,10 +178,11 @@ load_model(Plugins) ->
       erlang:raise(EC, Err, Stack)
   end.
 
-do_load_model(Module, S0) ->
+do_load_model(Module, S0 = #s{model = M0}) ->
   T0 = erlang:system_time(microsecond),
   S1 = load_project_model(Module, S0),
-  S = load_configuration_model(Module, S1),
+  S2 = S1#s{model = [Module:model() | M0]},
+  S = load_configuration_model(S2),
   T1 = erlang:system_time(microsecond),
   ?LOG_DEBUG("Loading model for ~p took ~p ms", [Module, (T1 - T0)/1000]),
   {ok, S}.
@@ -191,24 +197,38 @@ load_project_model(Module, S = #s{project_model = PM0}) ->
       ?UNSAT("Project model is invalid! (Likely caused by a plugin)", [])
   end.
 
-load_configuration_model(Module, S = #s{model = M0}) ->
-  M = [Module:model() | M0],
-  case lee_model:compile(metamodel(), M) of
+load_configuration_model(S = #s{model = M, complete = Complete}) ->
+  case lee_model:compile(metamodel(Complete), M) of
     {ok, Model} ->
-      S#s{m = Model, model = M};
+      S#s{m = Model};
     {error, Errors} ->
       logger:critical("Configuration model is invalid! (Likely caused by a plugin)"),
       [logger:critical(E) || E <- Errors],
       error(badmodel)
   end.
 
+do_load_config(S = #s{m = Model}) ->
+  case lee:init_config(Model, ?conf_storage) of
+    {ok, ?conf_storage, _Warnings} ->
+      {reply, ok, S};
+    {error, Errors, Warnings} ->
+      logger:critical("Invalid configuration"),
+      [logger:critical(E) || E <- Errors],
+      [logger:warning(E) || E <- Warnings],
+      anvl_app:halt(1)
+  end.
+
 metamodel() ->
+  metamodel(true).
+
+metamodel(Complete) ->
   [ lee:base_metamodel()
   , lee_metatype:create(lee_os_env, #{prefix => "ANVL_", priority => 0})
   , lee_metatype:create(lee_logger)
   , lee_metatype:create(lee_cli,
                         #{ cli_opts => fun cli_args_getter/0
                          , priority => 10
+                         , allow_unknown => not Complete
                          })
   , lee_metatype:create(anvl_resource)
   ].
