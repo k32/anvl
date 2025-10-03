@@ -109,14 +109,19 @@ meta_validate_node(value, Model, _Key, #mnode{metaparams = Attrs}) ->
 
 %% @private
 description(value, Model, Options) ->
-    case lists:sort(maps:to_list(lee_model:fold(fun mk_doc_tree/4, #{}, {false, []}, Model))) of
-        [{[], Global} | Rest] ->
-            mk_doc(Options, Model, [], Global) ++
-            [document_map(Options, Model, Parent, Children)
-             || {Parent, Children} <- Rest];
-        [] ->
-            []
-    end.
+    Scopes = lee_model:fold(
+                 fun mk_doc_tree/4,
+                 #{},
+                 {false, []},
+                 Model),
+    case lists:sort(maps:to_list(Scopes)) of
+        [{[], Global} | Maps] ->
+           Values = mk_doc(Options, Model, [], Global);
+        Maps ->
+           Values = []
+    end,
+    Values ++ [document_map(Options, Model, Parent, Children) || {Parent, Children} <- Maps].
+
 
 %%================================================================================
 %% Internal functions

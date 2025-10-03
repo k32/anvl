@@ -22,7 +22,7 @@
 Handler of ANVL project configurations.
 """.
 
--export([root/0, conf/2, maybe_conf/2, list_conf/2, conditions/0, plugins/1, known_projects/0]).
+-export([root/0, conf/2, maybe_conf/2, list_conf/2, conditions/0, plugins/1, known_projects/0, loaded/1]).
 
 %% lee_metatype behavior:
 -export([names/1, create/1, read_patch/2]).
@@ -69,9 +69,12 @@ Project can use it, for example, to install hooks.
 %% API
 %%================================================================================
 
+-spec loaded(dir()) -> anvl_condition:t().
+loaded(Project) ->
+  config_loaded(Project).
+
 -spec conf(dir(), lee:model_key()) -> _Result.
 conf(ProjectRoot, Key) ->
-  _ = config_module(ProjectRoot),
   lee:get(?proj_conf_storage(ProjectRoot), Key).
 
 -spec maybe_conf(dir(), lee:model_key()) -> {ok, _Result} | undefined.
@@ -86,7 +89,6 @@ maybe_conf(ProjectRoot, Key) ->
 
 -spec list_conf(dir(), lee:model_key()) -> list().
 list_conf(ProjectRoot, Key) ->
-  _ = config_module(ProjectRoot),
   lee:list(?proj_conf_storage(ProjectRoot), Key).
 
 -spec known_projects() -> [dir()].
@@ -166,35 +168,42 @@ config_module(ProjectRoot) ->
 
 ?MEMO(config_loaded, Dir,
       begin
-        ConfFile = filename:join(Dir, "anvl.erl"),
-        case {filelib:is_file(ConfFile), Dir =:= root()} of
-          {true, _} ->
-            Module = anvl_config_module(Dir),
-            Options = [{d, 'PROJECT', Module},
-                       {d, 'PROJECT_STRING', atom_to_list(Module)},
-                       {i, include_dir()},
-                       {parse_transform, ?MODULE},
-                       report, no_error_module_mismatch,
-                       nowarn_export_all, export_all, binary],
-            case compile:file(ConfFile, Options) of
-              {ok, Module, Binary} ->
-                {module, Module} = code:load_binary(Module, ConfFile, Binary),
-                anvl_condition:set_result(#conf_module_of_dir{directory = Dir}, Module),
-                Conf = lee_storage:new(lee_persistent_term_storage, ?proj_conf_storage_token(Dir)),
-                load_project_conf(Dir, Module, Conf),
-                false;
-              error ->
-                ?UNSAT("Failed to compile anvl config file for ~s.", [Dir])
-            end;
-          {false, false} ->
-            ?LOG_WARNING("Directory ~s doesn't contain 'anvl.erl' file. "
-                         "Falling back to top level project's config.", [Dir]),
-            anvl_condition:set_result(#conf_module_of_dir{directory = Dir}, config_module(root())),
-            false;
-          {false, true} ->
-            ?UNSAT("'anvl.erl' file is not found in the current directory", [])
-        end
+        Module = obtain_project_conf_module(Dir),
+        anvl_condition:set_result(#conf_module_of_dir{directory = Dir}, Module),
+        Conf = lee_storage:new(lee_persistent_term_storage, ?proj_conf_storage_token(Dir)),
+        load_project_conf(Dir, Module, Conf),
+        false
       end).
+
+obtain_project_conf_module(Dir) ->
+  ConfFile = filename:join(Dir, "anvl.erl"),
+  case filelib:is_file(ConfFile) of
+    true ->
+      Module = anvl_config_module(Dir),
+      Options = [ {d, 'PROJECT', Module}
+                , {d, 'PROJECT_STRING', atom_to_list(Module)}
+                , {i, include_dir()}
+                , {parse_transform, ?MODULE}
+                , report, no_error_module_mismatch
+                , nowarn_export_all, export_all, binary
+                ],
+      case compile:file(ConfFile, Options) of
+        {ok, Module, Binary} ->
+          {module, Module} = code:load_binary(Module, ConfFile, Binary),
+          Module;
+        error ->
+          ?UNSAT("Failed to compile anvl config file for ~s.", [Dir])
+      end;
+    false ->
+      case anvl_project:root() =:= Dir of
+        true ->
+          ?UNSAT("~s is not a valid ANVL project: 'anvl.erl' file is not found.", [Dir]);
+        false ->
+          ?LOG_WARNING("Directory ~s doesn't contain 'anvl.erl' file. "
+                       "Falling back to top level project's config.", [Dir]),
+          config_module(root())
+      end
+  end.
 
 anvl_config_module(Dir) when is_list(Dir) ->
   list_to_atom("anvl_config##" ++ Dir).

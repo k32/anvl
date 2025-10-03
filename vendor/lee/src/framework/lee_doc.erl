@@ -49,7 +49,7 @@ texinfo(Options, FD, Doclet) ->
         #doclet{mt = MT, tag = oneliner, data = Oneliner} ->
             io:format(FD, "@cindex ~s (~p)\n~s\n\n", [Oneliner, MT, Oneliner]);
         #doclet{mt = value, tag = doc, data = Doc} ->
-            P([Doc, "\n"]);
+            P([Doc, "\n\n"]);
         #doclet{mt = value, tag = default, data = #doc_xref{mt = MT, key = Key}} ->
             P([ "@b{Default value}: "
               , "@xref{", texi_key([MT| Key]), "}\n\n"

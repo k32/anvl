@@ -44,6 +44,7 @@ main(CLIArgs) ->
   application:set_env(anvl, cli_args, CLIArgs),
   {ok, _} = application:ensure_all_started(anvl_core),
   anvl_plugin:init(),
+  precondition(anvl_project:loaded(anvl_project:root())),
   case anvl_project:conditions() of
     [] ->
       ?LOG_CRITICAL("No default condition is specified in anvl.erl. Nothing to do"),

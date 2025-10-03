@@ -24,7 +24,7 @@ API for managing the hooks.
 Plugins can declare hook points and inject code into other plugin's hook points.
 """.
 
--export([init/0, add/2, add/3, traverse/3, fold/2, foreach/2, flatmap/2, first_match/2]).
+-export([init/0, add/2, add/3, traverse/3, fold/2, foreach/2, flatmap/2]).
 
 %%================================================================================
 %% Type declarations
@@ -82,18 +82,6 @@ flatmap(HookPoint, Args) ->
             {true, Hook(Args) ++ Acc}
         end,
   traverse(Fun, [], HookPoint).
-
--spec first_match(hookpoint(), term()) -> {ok, term()} | undefined.
-first_match(HookPoint, Args) ->
-  Fun = fun(Hook, _) ->
-            case Hook(Args) of
-              {true, Ret} ->
-                {false, {ok, Ret}};
-              false ->
-                {true, undefined}
-            end
-        end,
-  traverse(Fun, undefined, HookPoint).
 
 %%================================================================================
 %% Internal functions

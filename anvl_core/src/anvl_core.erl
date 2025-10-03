@@ -31,7 +31,7 @@ init() ->
   ok.
 
 init_for_project(Dir) ->
-  ok.
+  anvl_locate:init_for_project(Dir).
 
 -doc false.
 model() ->
@@ -42,6 +42,13 @@ model() ->
          , default     => "."
          , cli_operand => "root-dir"
          , cli_short   => $d
+         }}
+   , workdir =>
+       {[value, cli_param],
+        #{ type        => string()
+         , default     => "_anvl_build"
+         , cli_operand => "workdir"
+         , cli_short   => $W
          }}
    , log =>
        #{ global_level =>
@@ -89,8 +96,7 @@ model() ->
                    , cli_operand => "top-reds"
                    , default     => 0
                    }}
-             }
-        }
+             }}
    , help =>
        #{ run =>
             {[value, cli_param],
@@ -116,4 +122,25 @@ project_model() ->
           , type => list(atom())
           , default => []
           }}
+    , deps =>
+        #{local =>
+            {[map],
+             #{ key_elements => [[dir]]
+              },
+             #{ dir =>
+                  {[value],
+                   #{ oneliner => "Search path"
+                    , type => string()
+                    }}
+              , priority =>
+                  {[value],
+                   #{ type => integer()
+                    , default => 1
+                    }}
+              , consumer =>
+                  {[value],
+                   #{ type => anvl_locate:consumer_filter()
+                    , default => all
+                    }}
+              }}}
     }.

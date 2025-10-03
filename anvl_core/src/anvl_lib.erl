@@ -108,7 +108,7 @@ template(Pattern, Substitutions, binary) ->
 template(Pattern, Substitutions, list) ->
   binary_to_list(template(Pattern, Substitutions, binary));
 template(Pattern, Substitutions, path) ->
-  filename:nativename(template(Pattern, Substitutions, binary));
+  filename:nativename(template(Pattern, Substitutions, list));
 template(Pattern, Substitutions0, iolist) ->
   Substitutions = template_normalize_substs(maps:iterator(Substitutions0), #{}),
   Fun = fun(_Whole, [Key]) ->
