@@ -159,7 +159,6 @@ handle_cast(_Cast, S) ->
 
 -doc false.
 terminate(_Reason, _S) ->
-  persistent_term:erase(?project_model),
   ok.
 
 %%================================================================================
@@ -185,8 +184,7 @@ do_load_model(Module, S0) ->
 load_project_model(Module, S = #s{project_model = PM0}) ->
   PM = [Module:project_model() | PM0],
   case lee_model:compile(project_metamodel(), PM) of
-    {ok, ProjectModel} ->
-      persistent_term:put(?project_model, ProjectModel),
+    {ok, _} ->
       S#s{project_model = PM};
     {error, Errors} ->
       [logger:critical(E) || E <- Errors],

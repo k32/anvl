@@ -24,6 +24,8 @@ Handler of ANVL project configurations.
 
 -export([root/0, conf/2, maybe_conf/2, list_conf/2, conditions/0, plugins/1, known_projects/0]).
 
+%% lee_metatype behavior:
+-export([names/1, create/1, read_patch/2]).
 %% Internal exports
 -export([parse_transform/2]).
 
@@ -35,6 +37,9 @@ Handler of ANVL project configurations.
 %%================================================================================
 %% Type declarations
 %%================================================================================
+
+-define(mt_conf_tree_key, [?MODULE, conf_tree]).
+-define(mt_conf_overrides, [?MODULE, overrides]).
 
 -type dir() :: file:filename_all().
 
@@ -50,7 +55,13 @@ Handler of ANVL project configurations.
 """.
 -callback conf_override(dir()) -> lee:patch().
 
--optional_callbacks([conf/0, conf_override/1]).
+-doc """
+An optional callback that is executed after loading the plugins and project configuration.
+Project can use it, for example, to install hooks.
+""".
+-callback init() -> term().
+
+-optional_callbacks([conf/0, conf_override/1, init/0]).
 
 -export_type([dir/0, conf_tree/0]).
 
@@ -61,7 +72,7 @@ Handler of ANVL project configurations.
 -spec conf(dir(), lee:model_key()) -> _Result.
 conf(ProjectRoot, Key) ->
   _ = config_module(ProjectRoot),
-  lee:get(project_model(), ?proj_conf_storage(ProjectRoot), Key).
+  lee:get(?proj_conf_storage(ProjectRoot), Key).
 
 -spec maybe_conf(dir(), lee:model_key()) -> {ok, _Result} | undefined.
 maybe_conf(ProjectRoot, Key) ->
@@ -76,7 +87,7 @@ maybe_conf(ProjectRoot, Key) ->
 -spec list_conf(dir(), lee:model_key()) -> list().
 list_conf(ProjectRoot, Key) ->
   _ = config_module(ProjectRoot),
-  lee:list(project_model(), ?proj_conf_storage(ProjectRoot), Key).
+  lee:list(?proj_conf_storage(ProjectRoot), Key).
 
 -spec known_projects() -> [dir()].
 known_projects() ->
@@ -107,6 +118,30 @@ conditions() ->
 -spec plugins(Project :: dir()) -> [anvl_plugin:t()].
 plugins(Project) ->
   conf(Project, [plugins]).
+
+%%================================================================================
+%% Lee metatype callbacks
+%%================================================================================
+
+-doc false.
+names(_) ->
+  [pcfg].
+
+-doc false.
+create(#{conf := ConfTree, overrides := Overrides}) ->
+  [ {?mt_conf_tree_key, ConfTree}
+  , {?mt_conf_overrides, Overrides}
+  ].
+
+-doc false.
+read_patch(pcfg, Model) ->
+  {ok, ConfTree} = lee_model:get_meta(?mt_conf_tree_key, Model),
+  {ok, Overrides} = lee_model:get_meta(?mt_conf_overrides, Model),
+  {ok, 0, tree_to_patch(Model, ConfTree) ++ Overrides}.
+
+%%================================================================================
+%% API
+%%================================================================================
 
 %%================================================================================
 %% Internal functions
@@ -147,13 +182,6 @@ config_module(ProjectRoot) ->
                 anvl_condition:set_result(#conf_module_of_dir{directory = Dir}, Module),
                 Conf = lee_storage:new(lee_persistent_term_storage, ?proj_conf_storage_token(Dir)),
                 load_project_conf(Dir, Module, Conf),
-                %% Load the plugins needed for the project. If new
-                %% plugins have been added, reload the configuration:
-                Plugins = lee:get(project_model(), Conf, [plugins]),
-                precondition(
-                  lists:map(fun anvl_plugin:loaded/1,
-                            Plugins)) andalso
-                  load_project_conf(ConfFile, Module, Conf),
                 false;
               error ->
                 ?UNSAT("Failed to compile anvl config file for ~s.", [Dir])
@@ -206,31 +234,22 @@ include_dir() ->
   end.
 
 load_project_conf(ProjectDir, Module, Storage) ->
-  Model = project_model(),
-  Patch = read_patch(Model, Module),
-  ?LOG_DEBUG(#{load_project_config => ProjectDir, patch => Patch, module => Module}),
-  lee_storage:patch(Storage, Patch),
-  case read_override(ProjectDir) of
-    []       -> ok;
-    Override -> lee_storage:patch(Storage, Override)
-  end,
-  case lee:validate(Model, Storage) of
-    {ok, Warnings} ->
-      [logger:warning(I) || I <- Warnings],
-      ok;
-    {error, Errors, Warnings} ->
-      [logger:critical(E) || E <- Errors],
-      [logger:warning(W) || W <- Warnings],
-      ?UNSAT("Invalid project configuration ~p", [ProjectDir])
-  end.
-
-read_patch(Model, Module) ->
-  case erlang:function_exported(Module, conf, 0) of
-    true ->
-      tree_to_patch(Model, Module:conf());
-    false ->
-      []
-  end.
+  ConfTree = case erlang:function_exported(Module, conf, 0) of
+               true -> Module:conf();
+               false -> #{}
+             end,
+  Overrides = read_override(ProjectDir),
+  %% 1. Load basic config to get the list of plugins:
+  _ = read_project_conf(ProjectDir, ConfTree, Overrides, [anvl_core], Storage),
+  Plugins = lee:get(Storage, [plugins]),
+  %% 2. Load plugins:
+  _ = precondition(lists:map(fun anvl_plugin:loaded/1, Plugins)),
+  %% 3. Re-load configuration with all plugins included:
+  read_project_conf(ProjectDir, ConfTree, Overrides, [anvl_core | Plugins], Storage),
+  %% 4. Optionally, run init function.
+  erlang:function_exported(Module, init, 0) andalso
+    Module:init(),
+  false.
 
 tree_to_patch(Model, Tree) ->
   MKeys = [key_parts(K) || K <- lee_model:get_metatype_index(value, Model)],
@@ -320,5 +339,23 @@ read_override(Dir) ->
       end
   end.
 
-project_model() ->
-  persistent_term:get(?project_model).
+read_project_conf(ProjectDir, ConfTree, Overrides, Plugins, Data0) ->
+  MetaModel = [ lee_metatype:create(?MODULE, #{conf => ConfTree, overrides => Overrides})
+              | anvl_plugin:project_metamodel()
+              ],
+  MM = [Mod:project_model() || Mod <- Plugins],
+  case lee_model:compile(MetaModel, MM) of
+    {ok, Model} ->
+      case lee:init_config(Model, Data0) of
+        {ok, Data, Warnings} ->
+          [logger:warning(I) || I <- Warnings],
+          Data;
+        {error, Errors, Warnings} ->
+          [logger:critical(E) || E <- Errors],
+          [logger:warning(W) || W <- Warnings],
+          ?UNSAT("Invalid project configuration ~p", [ProjectDir])
+      end;
+    {error, Errors} ->
+      [logger:critical(E) || E <- Errors],
+      ?UNSAT("Project model is invalid! (Likely caused by a plugin)", [])
+  end.

@@ -1,2 +1,4 @@
 conf() ->
-  #{[erlang, bdeps] => [typerefl, snabbkaffe]}.
+  #{ plugins => [anvl_erlc, anvl_texinfo]
+   , [erlang, bdeps] => [typerefl, snabbkaffe]
+   }.
