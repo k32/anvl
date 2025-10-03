@@ -28,7 +28,7 @@ A plugin for creating and compiling @url{https://www.gnu.org/software/texinfo/, 
 -export([compiled/2, anvl_plugin_documented/1, erl_doc/2, erl_module_doc/3]).
 
 %% behavior callbacks:
--export([init/0, model/0, project_model/0]).
+-export([init/0, init_for_project/1, model/0, project_model/0]).
 
 -include_lib("typerefl/include/types.hrl").
 -include_lib("anvl_core/include/anvl.hrl").
@@ -55,6 +55,10 @@ These modules should export @code{model/0} function.
 
 -doc false.
 init() ->
+  ok.
+
+-doc false.
+init_for_project(_Project) ->
   ok.
 
 -doc false.

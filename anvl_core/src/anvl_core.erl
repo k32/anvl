@@ -20,10 +20,18 @@
 -module(anvl_core).
 -moduledoc false.
 
--export([model/0, project_model/0]).
+-behavior(anvl_plugin).
+
+-export([init/0, init_for_project/1, model/0, project_model/0]).
 
 -include_lib("lee/include/lee.hrl").
 -include_lib("typerefl/include/types.hrl").
+
+init() ->
+  ok.
+
+init_for_project(Dir) ->
+  ok.
 
 -doc false.
 model() ->

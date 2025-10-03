@@ -31,7 +31,7 @@ A builtin plugin for compiling Erlang applications.
 -export([app_file/1, beam_file/2]).
 
 %% behavior callbacks:
--export([model/0, project_model/0, init/0, conditions/1]).
+-export([model/0, project_model/0, init/0, init_for_project/1, conditions/1]).
 
 -export_type([app_info/0]).
 
@@ -365,6 +365,10 @@ project_model() ->
 -doc false.
 init() ->
   ok = anvl_resource:declare(erlc, 1),
+  ok.
+
+-doc false.
+init_for_project(_Project) ->
   ok.
 
 -doc false.

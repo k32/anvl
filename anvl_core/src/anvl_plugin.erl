@@ -31,7 +31,7 @@ An ANVL API for managing plugins.
 -export([init/1, handle_call/3, handle_cast/2, terminate/2]).
 
 %% Internal exports
--export([start_link/0, metamodel/0, project_metamodel/0, get_project_model/0, load_config/0, set_complete/0]).
+-export([start_link/0, metamodel/0, project_metamodel/0, get_project_model/0, load_config/0, set_complete/0, init_for_project/2]).
 
 -reflect_type([t/0]).
 
@@ -53,6 +53,8 @@ An ANVL API for managing plugins.
 -callback conditions(file:filename_all()) -> [[anvl_condition:t()]].
 
 -callback init() -> ok.
+
+-callback init_for_project(anvl_project:dir()) -> ok.
 
 -optional_callbacks([conditions/1]).
 
@@ -116,6 +118,11 @@ load_config() ->
 -spec set_complete() -> ok.
 set_complete() ->
   gen_server:call(?MODULE, set_complete).
+
+-doc false.
+-spec init_for_project(module(), anvl_project:dir()) -> ok.
+init_for_project(Plugin, Dir) ->
+  Plugin:init_for_project(Dir).
 
 %%================================================================================
 %% gen_server callbacks:

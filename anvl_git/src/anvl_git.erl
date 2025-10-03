@@ -25,7 +25,7 @@ A builtin plugin for cloning Git repositories.
 -behavior(anvl_plugin).
 
 %% behavior callbacks:
--export([model/0, project_model/0, init/0]).
+-export([model/0, project_model/0, init/0, init_for_project/1]).
 
 -include_lib("typerefl/include/types.hrl").
 -include_lib("anvl_core/include/anvl.hrl").
@@ -42,6 +42,10 @@ A builtin plugin for cloning Git repositories.
 init() ->
   ok = anvl_resource:declare(git, 5),
   ok = anvl_locate:add_hook(fun src_prepared/1).
+
+-doc false.
+init_for_project(_Project) ->
+  ok.
 
 -doc false.
 model() ->
