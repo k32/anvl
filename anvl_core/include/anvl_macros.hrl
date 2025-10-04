@@ -29,8 +29,6 @@
           exit(unsat)
         end).
 
--define(BUILD_ROOT, "_anvl_build").
-
 -define(MEMO_THUNK(COMMENT, FUN, ARGS),
         #anvl_memo_thunk{descr = COMMENT, func = FUN, args = ARGS}).
 

@@ -68,7 +68,7 @@ model() ->
            {[value, cli_param],
             #{ oneliner => "Output directory for the plugin documentation"
              , type => typerefl:filename_all()
-             , default => filename:join("_anvl_build", "doc")
+             , default => "doc"
              , cli_operand => "anvl-doc-dir"
              }}
        , document =>
@@ -100,7 +100,7 @@ This condition is specific for ANVL plugins.
 ?MEMO(anvl_plugin_documented, Plugin,
       begin
         _ = precondition(anvl_plugin:loaded(Plugin)),
-        Dir = doc_dir(Plugin),
+        Dir = doc_dir([Plugin]),
         %% Render API reference:
         _ = precondition(erl_doc(default, Plugin)),
         %% Render model documentation:
@@ -139,7 +139,7 @@ with_model(Metamodel, ExtractorConfig, Plugin, ModelCB) ->
 
 ?MEMO(compiled, DocSrc, Format,
       begin
-        Dir = anvl_plugin:conf([anvl_texinfo, doc_dir]),
+        Dir = doc_dir([]),
         Name = filename:rootname(filename:basename(DocSrc)),
         case Format of
           html ->
@@ -168,8 +168,7 @@ Render documentation for an Erlang application @var{App} compiled in profile @va
 -spec erl_doc(Profile :: anvl_erlc:profile(), App :: anvl_erc:application()) -> anvl_condition:t().
 ?MEMO(erl_doc, Profile, App,
       begin
-        OutDir = filename:join(anvl_plugin:conf([anvl_texinfo, doc_dir]),
-                               atom_to_list(App)),
+        OutDir = doc_dir([atom_to_list(App)]),
         ModulesDir = filename:join(OutDir, "mod"),
         OutFile = filename:join(OutDir, "app.texi"),
         #{spec := Spec} = Ctx = anvl_erlc:app_info(Profile, App),
@@ -334,5 +333,7 @@ get_documentation(hidden) ->
 get_documentation(#{<<"en">> := Doc}) ->
   [Doc, <<"\n\n">>].
 
-doc_dir(Plugin) ->
-  filename:join([anvl_plugin:conf([anvl_texinfo, doc_dir]), Plugin]).
+doc_dir(Rest) ->
+  anvl_plugin:workdir([ anvl_plugin:conf([anvl_texinfo, doc_dir])
+                      , Rest
+                      ]).

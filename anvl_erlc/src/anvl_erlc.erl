@@ -135,7 +135,7 @@ Condition: OTP application has been compiled with the given profile.
         BDeps = pcfg(Project, Profile, [bdeps]),
         AppSrcProperties = app_src(App, SrcRoot),
         Dependencies = non_otp_apps(BDeps ++ proplists:get_value(applications, AppSrcProperties, [])),
-        BuildRoot = binary_to_list(filename:join([?BUILD_ROOT, <<"erlc">>, anvl_lib:hash(COpts0)])),
+        BuildRoot = binary_to_list(anvl_plugin:workdir(["erlc", anvl_lib:hash(COpts0)])),
         %% Satisfy the dependencies:
         _ = precondition([app_compiled(Profile, Dep) || Dep <- Dependencies]),
         BuildDir = build_dir(BuildRoot, App),
@@ -371,7 +371,7 @@ do_escript(ProjectRoot, EscriptName) ->
   Profile = Cfg([profile]),
   FilePatterns = Cfg([files]),
   Apps = Cfg([apps]),
-  Filename = filename:join([?BUILD_ROOT, Profile, EscriptName]),
+  Filename = anvl_plugin:workdir([Profile, EscriptName]),
   %% Satisfy dependencies:
   ChangedP = precondition([app_compiled(Profile, App) || App <- Apps]),
   %% Compose the list of files:

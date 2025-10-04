@@ -118,13 +118,14 @@ locate_in_project(Project, Consumer, Id) ->
                           Id,
                           Repo,
                           anvl_project:conf(Project, Key ++ [ref])),
-      Dir = archive_unpacked(Consumer, Id, Repo, Hash, Paths),
+      Dir = archive_unpacked(Id, Repo, Hash, Paths),
       {Changed, Dir}
   end.
 
-archive_unpacked(Consumer, Id, Repo, CommitHash, Paths) ->
-  Ctx = #{root => anvl_project:root(), consumer => Consumer, id => Id, hash => CommitHash},
-  LocalDir = template("${root}/" ?BUILD_ROOT "/git/${consumer}/${id}/${hash}", Ctx, path),
+archive_unpacked(Id, Repo, CommitHash, Paths) ->
+  %% FIXME: use workdir normally
+  Ctx = #{root => anvl_plugin:workdir([]), id => Id, hash => CommitHash},
+  LocalDir = template("${root}/deps/${id}/${hash}", Ctx, path),
   TmpFile = LocalDir ++ ".tar",
   (filelib:is_dir(LocalDir) andalso not filelib:is_file(TmpFile)) orelse
     begin
