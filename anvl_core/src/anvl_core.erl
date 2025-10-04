@@ -45,7 +45,8 @@ model() ->
          }}
    , workdir =>
        {[value, cli_param],
-        #{ type        => string()
+        #{ oneliner    => "Directory where ANVL plugins store artifacts"
+         , type        => string()
          , default     => "_anvl_build"
          , cli_operand => "workdir"
          , cli_short   => $W
@@ -112,35 +113,46 @@ model() ->
 project_model() ->
    #{ plugins =>
        {[value],
-        #{ oneliner => "List of plugins needed for the project"
-         , type => list(anvl_plugin:t())
-         , default => []
+        #{ oneliner  => "List of plugins needed for the project"
+         , type      => list(anvl_plugin:t())
+         , default   => []
          }}
-    , conditions =>
+    , conditions     =>
         {[value],
          #{ oneliner => "List of custom conditions declared by the project"
-          , type => list(atom())
-          , default => []
+          , type     => list(atom())
+          , default  => []
           }}
     , deps =>
         #{local =>
             {[map],
-             #{ key_elements => [[dir]]
+             #{ oneliner => "Local search paths used by locate"
+              , key_elements => [[dir]]
               },
              #{ dir =>
                   {[value],
                    #{ oneliner => "Search path"
-                    , type => string()
+                    , doc      =>
+                        """
+                        Supported substitutions:
+                        @itemize
+                        @item @code{$@{id@}}
+                        @item @code{$@{consumer@}}
+                        @end itemize
+                        """
+                    , type     => string()
                     }}
               , priority =>
                   {[value],
-                   #{ type => integer()
-                    , default => 1
+                   #{ oneliner => "Priority of the search path"
+                    , type     => integer()
+                    , default  => 0
                     }}
               , consumer =>
                   {[value],
-                   #{ type => anvl_locate:consumer_filter()
-                    , default => all
+                   #{ oneliner => "Limit scope of the search path the specified consumers"
+                    , type     => anvl_locate:consumer_filter()
+                    , default  => all
                     }}
               }}}
     }.

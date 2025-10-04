@@ -2,18 +2,10 @@
 
 conf() ->
   #{ conditions => [run]
-   , plugins => [anvl_erlc, anvl_git]
-   , [deps, git] =>
-       [ #{ id => erlperf
-          , repo => "https://github.com/max-au/erlperf.git"
-          , ref => {branch, "master"}
-          }
-       ]
    }.
 
 ?MEMO(run,
       begin
-        _ = precondition(anvl_erlc:app_compiled(default, erlperf)),
         N = 10000,
         Depth = 5,
         precondition(child(Depth, N))

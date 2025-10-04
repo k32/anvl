@@ -125,7 +125,7 @@ locate_in_project(Project, Consumer, Id) ->
 archive_unpacked(Id, Repo, CommitHash, Paths) ->
   %% FIXME: use workdir normally
   Ctx = #{root => anvl_plugin:workdir([]), id => Id, hash => CommitHash},
-  LocalDir = template("${root}/deps/${id}/${hash}", Ctx, path),
+  LocalDir = filename:absname(template("${root}/deps/${id}/${hash}", Ctx, path)),
   TmpFile = LocalDir ++ ".tar",
   (filelib:is_dir(LocalDir) andalso not filelib:is_file(TmpFile)) orelse
     begin
