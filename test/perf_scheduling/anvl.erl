@@ -3,9 +3,10 @@
 conf() ->
   #{ conditions => [run]
    , plugins => [anvl_erlc, anvl_git]
-   , [erlang, deps] =>
-       [ #{ app => erlperf
-          , at => {git, #{repo => "https://github.com/max-au/erlperf.git"}}
+   , [deps, git] =>
+       [ #{ id => erlperf
+          , repo => "https://github.com/max-au/erlperf.git"
+          , ref => {branch, "master"}
           }
        ]
    }.

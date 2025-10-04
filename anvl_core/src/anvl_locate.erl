@@ -41,8 +41,6 @@ and dependency consumers.
 %% Type declarations
 %%================================================================================
 
--define(max_prio, 10).
-
 -type id() :: term().
 
 -type consumer() :: module().
@@ -56,8 +54,6 @@ and dependency consumers.
 -type locate_hook() :: fun((spec()) -> hook_ret()).
 
 -type consumer_filter() :: [consumer()] | all.
-
--type hook_priority() :: -?max_prio .. ?max_prio.
 
 -reflect_type([id/0, consumer_filter/0]).
 
@@ -124,7 +120,7 @@ match_consumer(Consumer, L) ->
 
 add_local_search_path(Prio, RootDir, Pattern) ->
   add_hook(
-    fun(#{id := _, consumer := Consumer} = Spec) ->
+    fun(#{id := _, consumer := _} = Spec) ->
         Dir = filename:join(RootDir, template(Pattern, Spec, path)),
         filelib:is_dir(Dir) andalso {false, Dir}
     end,

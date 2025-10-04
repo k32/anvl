@@ -39,10 +39,17 @@ init() ->
   ok = anvl_resource:declare(git, 5).
 
 -doc false.
+-spec init_for_project(anvl_project:dir()) -> ok.
 init_for_project(Project) ->
-  %% [add_project_hook(Project, Key)
-  %%  || Key <- anvl_project:list_conf(Project, [deps, git, {}])],
-  ok.
+  Prio = case anvl_project:root() of
+           Project -> -50;
+           _       -> -100
+         end,
+  anvl_locate:add_hook(
+    fun(#{consumer := Consumer, id := Id}) ->
+        locate_in_project(Project, Consumer, Id)
+    end,
+    Prio).
 
 -doc false.
 model() ->
@@ -98,38 +105,28 @@ project_model() ->
                   }}
             }}}}.
 
--spec add_hook(anvl_project:dir(), lee:key()) -> ok.
-add_hook(Project, Key) ->
-  ?LOG_WARNING("OHAYO: ~p ~p", [Project, Key]),
-%%   L0 = anvl_project:list_all_conf([deps, git, {Id}]),
-%%   L =
-%%   case of
-%%     [] ->
-%%       false;
-%%     [Key] ->
-%%       Cfg = fun(Suffix) -> anvl_p
-%%   case typerefl:typecheck(options(), Opts) of
-%%     ok ->
-%%       #{repo := Repo} = Opts,
-%%       SrcRootDir = anvl_project:root(),
-%%       _ = precondition(locked(SrcRootDir, What, Opts)),
-%%       Dir = archive_unpacked( What
-%%                             , Repo
-%%                             , locked_commit(SrcRootDir, What)
-%%                             , maps:get(paths, Opts, [])
-%%                             ),
-%%       {true, Dir};
-%%     {error, Err} ->
-%%       ?UNSAT("Invalid options for the git discovery mechanism: ~p", [Err])
-%%   end;
-%% src_prepared(_) ->
-%%   false.
-  ok.
+locate_in_project(Project, Consumer, Id) ->
+  case anvl_project:list_conf(Project, [deps, git, {Id}]) of
+    [] ->
+      false;
+    [Key] ->
+      Repo = anvl_project:conf(Project, Key ++ [repo]),
+      Paths = anvl_project:conf(Project, Key ++ [paths]),
+      {Changed, Hash} = locked(
+                          Project,
+                          Consumer,
+                          Id,
+                          Repo,
+                          anvl_project:conf(Project, Key ++ [ref])),
+      Dir = archive_unpacked(Consumer, Id, Repo, Hash, Paths),
+      {Changed, Dir}
+  end.
 
-archive_unpacked(What, Repo, CommitHash, Paths) ->
-  LocalDir = filename:join([anvl_project:root(), ?BUILD_ROOT, "git", What, CommitHash]),
-  TmpFile = <<LocalDir/binary, ".tar">>,
-  filelib:is_dir(LocalDir) orelse
+archive_unpacked(Consumer, Id, Repo, CommitHash, Paths) ->
+  Ctx = #{root => anvl_project:root(), consumer => Consumer, id => Id, hash => CommitHash},
+  LocalDir = template("${root}/" ?BUILD_ROOT "/git/${consumer}/${id}/${hash}", Ctx, path),
+  TmpFile = LocalDir ++ ".tar",
+  (filelib:is_dir(LocalDir) andalso not filelib:is_file(TmpFile)) orelse
     begin
       MirrorDir = mirror_dir(Repo),
       %% 1. Sync the mirror if necessary:
@@ -176,30 +173,30 @@ is_git_repo(Dir) ->
             false
         end)).
 
-locked(SrcRootDir, What0, Opts = #{repo := Repo}) ->
-  Fun = fun(What) ->
-            LockFile = lock_file(SrcRootDir, What),
-            case filelib:is_file(LockFile) of
-              true ->
-                false;
-              false ->
-                _ = precondition(mirror_synced(Repo)),
-                MirrorDir = mirror_dir(Repo),
-                CommitHash = get_commit_hash(MirrorDir, Opts),
-                ?LOG_NOTICE("Locking ~p to ~s", [What, CommitHash]),
-                ok = filelib:ensure_dir(LockFile),
-                ok = file:write_file(LockFile, CommitHash),
-                true
-            end
-        end,
-  ?MEMO_THUNK(?MODULE_STRING ":locked", Fun, [What0]).
+locked(Project, Consumer, Id, Repo, Ref) ->
+  Root = anvl_project:root(),
+  case read_lock(Root, Consumer, Id) of
+    {ok, Hash} ->
+      {false, Hash};
+    undefined ->
+      case Project =/= Root andalso read_lock(Project, Consumer, Id) of
+        {ok, Hash} -> ok;
+        _          -> Hash = discover(Repo, Ref)
+      end,
+      ?LOG_NOTICE("Locking ~p to ~s", [Id, Hash]),
+      write_lock(Root, Consumer, Id, Hash),
+      {true, Hash}
+  end.
 
-locked_commit(SrcRootDir, What) ->
-  {ok, Hash} = file:read_file(lock_file(SrcRootDir, What)),
-  Hash.
+discover(Repo, Ref) ->
+  _ = precondition(mirror_synced(Repo)),
+  MirrorDir = mirror_dir(Repo),
+  get_commit_hash(MirrorDir, Ref).
 
 mirror_dir(Repo) ->
-  filename:join(cfg_mirror_dir(), anvl_lib:hash(Repo)).
+  filename:join(
+    anvl_plugin:conf([git, local_mirror_dir]),
+    anvl_lib:hash(Repo)).
 
 get_commit_hash(RepoDir, {Kind, Ref}) ->
   Filter = case Kind of
@@ -218,8 +215,19 @@ Mirror directory: ~p"
             )
   end.
 
-lock_file(SrcRootDir, What) ->
-  filename:join([SrcRootDir, "anvl_lock", What]).
+write_lock(Project, Consumer, Id, Hash) ->
+  LockFile = lock_file(Project, Consumer, Id),
+  ok = filelib:ensure_dir(LockFile),
+  ok = file:write_file(LockFile, Hash).
 
-cfg_mirror_dir() ->
-  anvl_plugin:conf([git, local_mirror_dir]).
+read_lock(Project, Consumer, Id) ->
+  case file:read_file(lock_file(Project, Consumer, Id)) of
+    {ok, _} = Ret ->
+      Ret;
+    {error, enoent} ->
+      undefined
+  end.
+
+lock_file(Project, Consumer, Id) ->
+  Ctx = #{proj => Project, consumer => Consumer, id => Id},
+  template("${proj}/anvl_lock/git/${consumer}/${id}", Ctx, path).

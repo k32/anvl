@@ -2,7 +2,7 @@
 %% This file is part of anvl, a parallel general-purpose task
 %% execution tool.
 %%
-%% Copyright (C) 2024 k32
+%% Copyright (C) 2024-2025 k32
 %%
 %% This program is free software: you can redistribute it and/or
 %% modify it under the terms of the GNU Lesser General Public License
@@ -29,7 +29,7 @@
           exit(unsat)
         end).
 
--define(BUILD_ROOT, <<"_anvl_build">>).
+-define(BUILD_ROOT, "_anvl_build").
 
 -define(MEMO_THUNK(COMMENT, FUN, ARGS),
         #anvl_memo_thunk{descr = COMMENT, func = FUN, args = ARGS}).

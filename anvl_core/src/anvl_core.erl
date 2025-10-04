@@ -43,6 +43,13 @@ model() ->
          , cli_operand => "root-dir"
          , cli_short   => $d
          }}
+   , workdir =>
+       {[value, cli_param],
+        #{ type        => string()
+         , default     => "_anvl_build"
+         , cli_operand => "workdir"
+         , cli_short   => $W
+         }}
    , log =>
        #{ global_level =>
             {[value, os_env, cli_param, logger_level],
@@ -89,8 +96,7 @@ model() ->
                    , cli_operand => "top-reds"
                    , default     => 0
                    }}
-             }
-        }
+             }}
    , help =>
        #{ run =>
             {[value, cli_param],
