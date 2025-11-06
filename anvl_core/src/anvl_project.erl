@@ -22,7 +22,7 @@
 Handler of ANVL project configurations.
 """.
 
--export([root/0, conf/2, maybe_conf/2, list_conf/2, conditions/0, plugins/1, known_projects/0, loaded/1]).
+-export([root/0, conf/2, maybe_conf/2, list_conf/2, conditions/0, plugins/1, known_projects/0, loaded/1, anvl_includes_dir/0]).
 
 %% lee_metatype behavior:
 -export([names/1, create/1, read_patch/2]).
@@ -145,6 +145,18 @@ read_patch(pcfg, Model) ->
 %% API
 %%================================================================================
 
+-doc """
+Return directory containing @file{anvl.hrl} and other ANVL headers.
+""".
+-spec anvl_includes_dir() -> file:filename_all().
+anvl_includes_dir() ->
+  case application:get_env(anvl_core, include_dir) of
+    undefined ->
+      filename:join(anvl_app:prefix(), "share/anvl/include");
+    {ok, Dir} ->
+      Dir
+  end.
+
 %%================================================================================
 %% Internal functions
 %%================================================================================
@@ -182,7 +194,7 @@ obtain_project_conf_module(Dir) ->
       Module = anvl_config_module(Dir),
       Options = [ {d, 'PROJECT', Module}
                 , {d, 'PROJECT_STRING', atom_to_list(Module)}
-                , {i, include_dir()}
+                , {i, anvl_includes_dir()}
                 , {parse_transform, ?MODULE}
                 , report, no_error_module_mismatch
                 , nowarn_export_all, export_all, binary
@@ -232,14 +244,6 @@ custom_conditions(AdHoc) ->
     Undefined ->
       ?LOG_CRITICAL("Condition(s) are declared, but undefined: ~p", [Undefined]),
       anvl_app:halt(1)
-  end.
-
-include_dir() ->
-  case application:get_env(anvl_core, include_dir) of
-    undefined ->
-      filename:join(anvl_app:prefix(), "share/anvl/include");
-    {ok, Dir} ->
-      Dir
   end.
 
 load_project_conf(ProjectDir, Module, Storage) ->

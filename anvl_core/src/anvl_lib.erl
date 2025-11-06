@@ -24,7 +24,7 @@ A collection of functions useful for implementing conditions.
 
 %% API:
 -export([template/3, patsubst/3, patsubst/2]).
--export([newer/2, newer_/2, hash/1]).
+-export([newer/2, newer/3, hash/1]).
 -export([exec/2, exec/3, exec_/2, exec_/3]).
 
 -export_type([template_vars/0]).
@@ -52,41 +52,29 @@ Returns @code{true} if any of the source files is newer than the target or if th
 @code{false} otherwise.
 This function assumes that the @var{Target} will be created,
 and creates the directory for the @var{Target} as a side effect.
-If this is not desirable, use @ref{anvl_lib:newer_/2}.
-
-Throws @code{@{no_src_file, Src, _Reason@}} error when source file is not found.
-
-Throws @code{@{target_file, Target, _@}} error when target file is not readable.
+If this is not desirable, use @code{anvl_lib:newer(false, Srcs, Targets)} instead.
 """.
--spec newer(file:filename_all() | [file:filename_all()], file:filename_all()) -> boolean().
+-spec newer(
+        file:filename_all() | [file:filename_all()],
+        file:filename_all() | [file:filename_all()]
+       ) -> boolean().
 newer(Src, Target) ->
-  filelib:ensure_dir(Target),
-  newer_(Src, Target).
+  newer(true, Src, Target).
 
 -doc """
-Version of @code{newer/2} that does not create the target directory.
+Version of @code{newer/2} that takes an additional argument
+that specifies whether to ensure directories for the target files or not.
 """.
--spec newer_(Src :: file:filename_all() | [file:filename_all()], Target :: file:filename_all()) -> boolean().
-newer_([Src1|_] = Sources, Target) when is_binary(Src1); is_list(Src1) ->
-  lists:any(fun(Src) -> newer_(Src, Target) end,
-            Sources);
-newer_(Src, Target) ->
-  Changed =
-    case file:read_file_info(Src, [raw]) of
-      {ok, #file_info{mtime = SrcMtime}} ->
-        case file:read_file_info(Target, [raw]) of
-          {ok, #file_info{mtime = TargetMtime}} ->
-            SrcMtime >= TargetMtime;
-          {error, enoent} ->
-            true;
-          {error, Err} ->
-            error({target_file, Target, Err})
-        end;
-      {error, Reason} ->
-        error({no_src_file, Src, Reason})
-    end,
-  Changed andalso ?LOG_INFO("Source ~p is newer than ~p", [Src, Target]),
-  Changed.
+-spec newer(
+        boolean(),
+        file:filename_all() | [file:filename_all()],
+        file:filename_all() | [file:filename_all()]
+       ) -> boolean().
+newer(EnsureDirs, Src, Target) ->
+  Newer = max_mtime(ensure_filename_list(Src)) >=
+          min_mtime(EnsureDirs, ensure_filename_list(Target)),
+  Newer andalso ?LOG_DEBUG("Source(s) ~p are newer than ~p", [Src, Target]),
+  Newer.
 
 -doc """
 template(Pattern, Substitutions, Type)
@@ -269,4 +257,52 @@ collect_port_output(Port, Acc) ->
       {Status, lists:reverse(Acc)};
     {Port, {data, {_, Data}}} ->
       collect_port_output(Port, [Data | Acc])
+  end.
+
+-spec min_mtime(boolean(), [file:filename_all()]) -> integer() | infinity.
+min_mtime(EnsureDirs, L) ->
+  lists:foldl(
+    fun(File, Acc) ->
+        case file_mtime(File) of
+          {ok, Mtime} ->
+            min(Acc, Mtime);
+          {error, enoent} ->
+            EnsureDirs andalso filelib:ensure_dir(File),
+            -1;
+          {error, Err} ->
+            error({error, File, Err})
+        end
+    end,
+    infinity,
+    L).
+
+-spec max_mtime([file:filename_all()]) -> integer().
+max_mtime(L) ->
+  lists:foldl(
+    fun(File, Acc) ->
+        case file_mtime(File) of
+          {ok, Mtime} ->
+            max(Acc, Mtime);
+          {error, enoent} ->
+            ?UNSAT("Missing source file: ~s", [File]);
+          {error, Err} ->
+            error({error, File, Err})
+        end
+    end,
+    0,
+    L).
+
+ensure_filename_list(B) when is_binary(B) ->
+  [B];
+ensure_filename_list([Hd|_] = L) when is_list(Hd) ->
+  L;
+ensure_filename_list([Hd|_] = Str) when is_integer(Hd) ->
+  [Str].
+
+file_mtime(File) ->
+  case file:read_file_info(File, [raw, {time, posix}]) of
+    {ok, #file_info{mtime = MTime}} when is_integer(MTime) ->
+      {ok, MTime};
+    {error, _} = Err ->
+      Err
   end.

@@ -221,7 +221,7 @@ post_patch(anvl_resource, Model, Data, #mnode{metaparams = Attrs}, PatchOp) ->
 -doc false.
 -spec grab(resource()) -> ok.
 grab(Resource) ->
-  case gen_server:call(server(Resource), #grab{}) of
+  case gen_server:call(server(Resource), #grab{}, infinity) of
     ok ->
       ok;
     {error, Err} ->
