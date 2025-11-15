@@ -1,0 +1,11 @@
+.git
+test
+Makefile
+rebar.config
+rebar.lock
+README.*
+.editorconfig
+.github
+support
+CHANGELOG.md
+doc

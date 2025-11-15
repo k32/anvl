@@ -96,8 +96,18 @@ validate_node(value, _Model, Data, Key, #mnode{metaparams = Attrs}) ->
 
 %% @private
 pre_compile(value, MPs = #{default_str := Str, type := Type}) ->
-    {ok, Default} = typerefl:from_string(Type, Str),
-    MPs#{default => Default};
+    {ok, DefaultFromStr} = typerefl:from_string(Type, Str),
+    case maps:is_key(default, MPs) of
+        false ->
+            MPs#{default => DefaultFromStr};
+        true ->
+            %% `default' takes precedence over `default_str'. This is
+            %% used in situations when `default' is computed
+            %% dynamically (e.g. it's a local path, local
+            %% machine-dependent variable, etc.). In this case
+            %% `default_str' is used only for documentation purposes.
+            MPs
+    end;
 pre_compile(_, MPs) ->
     MPs.
 
@@ -110,18 +120,18 @@ meta_validate_node(value, Model, _Key, #mnode{metaparams = Attrs}) ->
 %% @private
 description(value, Model, Options) ->
     Scopes = lee_model:fold(
-                 fun mk_doc_tree/4,
-                 #{},
-                 {false, []},
-                 Model),
+               fun mk_doc_tree/4,
+               #{},
+               {false, []},
+               Model),
     case lists:sort(maps:to_list(Scopes)) of
         [{[], Global} | Maps] ->
-           Values = mk_doc(Options, Model, [], Global);
+            Values = mk_doc(Options, Model, [], Global);
         Maps ->
-           Values = []
+            Values = []
     end,
-    Values ++ [document_map(Options, Model, Parent, Children) || {Parent, Children} <- Maps].
-
+    Values ++ [document_map(Options, Model, Parent, Children)
+               || {Parent, Children} <- Maps].
 
 %%================================================================================
 %% Internal functions
