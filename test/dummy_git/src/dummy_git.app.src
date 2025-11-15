@@ -1,4 +1,5 @@
 {application, dummy_git,
  [ {description, "Dummy application for testing git"}
  , {vsn, "0.0.1"}
+ , {applications, [kernel, stdlib, erlexec]}
  ]}.

@@ -24,6 +24,9 @@ A builtin plugin for cloning Git repositories.
 
 -behavior(anvl_plugin).
 
+%% API:
+-export([sources_prepared/3]).
+
 %% behavior callbacks:
 -export([model/0, project_model/0, init/0, init_for_project/1]).
 
@@ -33,6 +36,32 @@ A builtin plugin for cloning Git repositories.
 -type ref() :: {branch, string()} | {tag, string()}.
 
 -reflect_type([ref/0]).
+
+?MEMO(sources_prepared, Repo, Dir, Hash,
+      begin
+        Mirror = mirror_dir(Repo),
+        case git_commit(Dir) of
+          {ok, Hash} ->
+            %% Already prepared:
+            false;
+          {ok, Other} ->
+            ?LOG_NOTICE("Switching ~s from ~s to ~s", [Repo, Other, Hash]),
+            precondition(mirror_synced(Repo, Hash)),
+            git_fetch(Dir),
+            git_checkout(Dir, Hash),
+            true;
+          {error, not_a_git_directory} ->
+            precondition(mirror_synced(Repo, Hash)),
+            ok = filelib:ensure_dir(Dir),
+            anvl_lib:exec("git", ["clone", "--local", Mirror, Dir]),
+            git_checkout(Dir, Hash),
+            true
+        end
+      end).
+
+%%--------------------------------------------------------------------------
+%% anvl callbacks
+%%--------------------------------------------------------------------------
 
 -doc false.
 init() ->
@@ -80,7 +109,7 @@ project_model() ->
             },
            #{ id =>
                 {[value],
-                 #{ oneliner => "Identifier of the git repo"
+                 #{ oneliner => "Identifier of the git dependency"
                   , type => anvl_locate:id()
                   }}
             , repo =>
@@ -93,16 +122,6 @@ project_model() ->
                  #{ oneliner => "Reference to checkout"
                   , type => ref()
                   }}
-            , local =>
-                {[value],
-                 #{ type => boolean()
-                  , default => false
-                  }}
-            , paths =>
-                {[value],
-                 #{ type => list(string())
-                  , default => []
-                  }}
             }}}}.
 
 locate_in_project(Project, Consumer, Id) ->
@@ -111,68 +130,22 @@ locate_in_project(Project, Consumer, Id) ->
       false;
     [Key] ->
       Repo = anvl_project:conf(Project, Key ++ [repo]),
-      Paths = anvl_project:conf(Project, Key ++ [paths]),
-      {Changed, Hash} = locked(
-                          Project,
-                          Consumer,
-                          Id,
-                          Repo,
-                          anvl_project:conf(Project, Key ++ [ref])),
-      Dir = archive_unpacked(Id, Repo, Hash, Paths),
-      {Changed, Dir}
+      Ref = anvl_project:conf(Project, Key ++ [ref]),
+      Changed = precondition(dependency_resolved(Project, Consumer, Id, Repo, Ref)),
+      {Changed, dir(Consumer, Id)}
   end.
 
-archive_unpacked(Id, Repo, CommitHash, Paths) ->
-  %% FIXME: use workdir normally
-  Ctx = #{root => anvl_plugin:workdir([]), id => Id, hash => CommitHash},
-  LocalDir = filename:absname(template("${root}/deps/${id}/${hash}", Ctx, path)),
-  TmpFile = LocalDir ++ ".tar",
-  (filelib:is_dir(LocalDir) andalso not filelib:is_file(TmpFile)) orelse
-    begin
-      MirrorDir = mirror_dir(Repo),
-      %% 1. Sync the mirror if necessary:
-      mirror_has_commit(MirrorDir, CommitHash) orelse
-        precondition(mirror_synced(Repo)),
-      %% 2. Create an archive from the commit hash:
-      ok = filelib:ensure_dir(TmpFile),
-      anvl_lib:exec("git", ["archive", "--format", "tar", "-o", TmpFile, CommitHash | Paths], [{cd, MirrorDir}]),
-      %% 3. Extract archive:
-      ok = erl_tar:extract(TmpFile, [{cwd, LocalDir}]),
-      %% 4. Remove the temp file:
-      ok = file:delete(TmpFile)
-    end,
-  LocalDir.
+?MEMO(dependency_resolved, Project, Consumer, Id, Repo, Ref,
+      begin
+        {Changed, Hash} = locked(Project, Consumer, Id, Repo, Ref),
+        Dir = dir(Consumer, Id),
+        Changed or
+          precondition(sources_prepared(Repo, Dir, Hash))
+      end).
 
-mirror_has_commit(MirrorDir, Hash) ->
-  case is_git_repo(MirrorDir) of
-    true ->
-      case anvl_lib:exec_("git", ["cat-file", "-e", <<Hash/binary, "^{commit}">>], [{cd, MirrorDir}]) of
-        0 -> true;
-        1 -> false
-      end;
-    false ->
-      false
-  end.
-
-is_git_repo(Dir) ->
-  filelib:is_dir(Dir) andalso
-    anvl_lib:exec_("git", ["rev-parse", "--is-inside-work-tree"], [{cd, Dir}]) =:= 0.
-
-?MEMO(mirror_synced, Repo,
-      anvl_resource:with(
-        git,
-        fun() ->
-            Dir = mirror_dir(Repo),
-            ?LOG_NOTICE("Syncing mirror for repository ~s~nMirror dir: ~s", [Repo, Dir]),
-            case is_git_repo(Dir) of
-              true ->
-                anvl_lib:exec("git", ["remote", "update"], [{cd, Dir}]);
-              false ->
-                ok = filelib:ensure_dir(Dir),
-                anvl_lib:exec("git", ["clone", "--mirror", Repo, Dir])
-            end,
-            false
-        end)).
+%%--------------------------------------------------------------------------
+%% Lock management
+%%--------------------------------------------------------------------------
 
 locked(Project, Consumer, Id, Repo, Ref) ->
   Root = anvl_project:root(),
@@ -181,42 +154,22 @@ locked(Project, Consumer, Id, Repo, Ref) ->
       {false, Hash};
     undefined ->
       case Project =/= Root andalso read_lock(Project, Consumer, Id) of
-        {ok, Hash} -> ok;
-        _          -> Hash = discover(Repo, Ref)
+        {ok, Hash} ->
+          ok;
+        _ ->
+          Hash = resolve_hash(Repo, Ref)
       end,
-      ?LOG_NOTICE("Locking ~p to ~s", [Id, Hash]),
       write_lock(Root, Consumer, Id, Hash),
       {true, Hash}
   end.
 
-discover(Repo, Ref) ->
-  _ = precondition(mirror_synced(Repo)),
-  MirrorDir = mirror_dir(Repo),
-  get_commit_hash(MirrorDir, Ref).
-
-mirror_dir(Repo) ->
-  filename:join(
-    anvl_plugin:conf([git, local_mirror_dir]),
-    anvl_lib:hash(Repo)).
-
-get_commit_hash(RepoDir, {Kind, Ref}) ->
-  Filter = case Kind of
-             branch -> "--branches";
-             tag -> "--tags"
-           end,
-  case anvl_lib:exec_("git", ["show-ref", Filter, "-s", Ref], [{cd, RepoDir}, collect_output]) of
-    {0, [Hash]} ->
-      string:trim(Hash);
-    {ExitStatus, Output} ->
-      ?UNSAT( "Could not find unique commit hash corresponding to the reference ~p
-Git exit status: ~p
-Git output: ~p
-Mirror directory: ~p"
-            , [Ref, ExitStatus, Output, RepoDir]
-            )
-  end.
+resolve_hash(Repo, Ref) ->
+  Mirror = mirror_dir(Repo),
+  sync_mirror(Mirror, Repo),
+  get_commit_hash(Mirror, Ref).
 
 write_lock(Project, Consumer, Id, Hash) ->
+  ?LOG_NOTICE("Locking ~p/~p to ~s", [Consumer, Id, Hash]),
   LockFile = lock_file(Project, Consumer, Id),
   ok = filelib:ensure_dir(LockFile),
   ok = file:write_file(LockFile, Hash).
@@ -229,6 +182,115 @@ read_lock(Project, Consumer, Id) ->
       undefined
   end.
 
+%%--------------------------------------------------------------------------
+%% Mirror management
+%%--------------------------------------------------------------------------
+
+?MEMO(mirror_synced, Repo, Hash,
+      begin
+        %% TODO: don't sync mirror too often if commit is missing?
+        Mirror = mirror_dir(Repo),
+        mirror_needs_sync(Mirror, Hash) andalso
+          sync_mirror(Mirror, Repo)
+      end).
+
+mirror_needs_sync(Mirror, Hash) ->
+  case is_git_repo(Mirror) of
+    true ->
+      case anvl_lib:exec_("git",
+                          ["cat-file", "-e", <<Hash/binary, "^{commit}">>],
+                          [{cd, Mirror}]) of
+        0 -> false;
+        1 -> true
+      end;
+    false ->
+      true
+  end.
+
+sync_mirror(Mirror, Repo) ->
+  anvl_resource:with(
+    git,
+    fun() ->
+        ?LOG_NOTICE("Syncing mirror for repository ~s~nMirror dir: ~s", [Repo, Mirror]),
+        case is_git_repo(Mirror) of
+          true ->
+            git_fetch(Mirror);
+          false ->
+            ok = filelib:ensure_dir(Mirror),
+            anvl_lib:exec("git", ["clone", "--mirror", Repo, Mirror])
+        end
+    end),
+  true.
+
+%%--------------------------------------------------------------------------
+%% Git wrappers
+%%--------------------------------------------------------------------------
+
+%% Get commit hash corresponding to a branch or a tag
+get_commit_hash(RepoDir, {Kind, Ref}) ->
+  Filter = case Kind of
+             branch -> "--branches";
+             tag -> "--tags"
+           end,
+  case anvl_lib:exec_("git",
+                      ["show-ref", Filter, "-s", Ref],
+                      [{cd, RepoDir}, collect_output]) of
+    {0, [Hash]} ->
+      string:trim(Hash);
+    {ExitStatus, Output} ->
+      ?UNSAT( "Could not find unique commit hash corresponding to the reference ~p
+Git exit status: ~p
+Git output: ~p
+Mirror directory: ~p"
+            , [Ref, ExitStatus, Output, RepoDir]
+            )
+  end.
+
+%% Checkout given commit hash in the
+git_checkout(Dir, Hash) ->
+  anvl_lib:exec("git",
+                [<<"checkout">>, iolist_to_binary([Hash, <<"^{commit}">>])],
+                [{cd, Dir}]).
+
+git_fetch(Dir) ->
+  anvl_lib:exec("git", ["fetch", "--all"], [{cd, Dir}]).
+
+is_git_repo(Dir) ->
+  filelib:is_dir(Dir) andalso
+    anvl_lib:exec_("git",
+                   ["rev-parse", "--is-inside-work-tree"],
+                   [{cd, Dir}]) =:= 0.
+
+git_commit(Dir) ->
+  case filelib:is_dir(filename:join(Dir, ".git")) of
+    true ->
+      case anvl_lib:exec_("git", ["rev-parse", "HEAD"], [{cd, Dir}, collect_output]) of
+        {0, [Hash]} ->
+          {ok, Hash};
+        {ExitCode, Output} ->
+          ?UNSAT("Failed to get git commit in ~s
+Exit code: ~p
+Output:
+~s",
+                 [Dir, ExitCode, Output])
+      end;
+    false ->
+      {error, not_a_git_directory}
+  end.
+
+%%--------------------------------------------------------------------------
+%% Locations
+%%--------------------------------------------------------------------------
+
 lock_file(Project, Consumer, Id) ->
   Ctx = #{proj => Project, consumer => Consumer, id => Id},
   template("${proj}/anvl_lock/git/${consumer}/${id}", Ctx, path).
+
+mirror_dir(Repo) ->
+  filename:join(
+    anvl_plugin:conf([git, local_mirror_dir]),
+    anvl_lib:hash(Repo)).
+
+dir(Consumer, Id) ->
+  Ctx = #{workdir => anvl_plugin:workdir([]), id => Id, consumer => Consumer},
+  template("${workdir}/deps/${consumer}/${id}", Ctx, path).
