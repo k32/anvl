@@ -4,29 +4,29 @@
 @settitle ANVΛ
 
 @macro lee{DIR, PREFIX}
-  @node \PREFIX\ Invokation
+  @node Invokation \PREFIX\
   @section Invokation
   @lowersections
     @include \DIR\/cli_param.texi
   @raisesections
 
-  @node \PREFIX\ Environment variables
+  @node Environment variables \PREFIX\
   @section Environment Variables
   @include \DIR\/os_env.texi
 
-  @node \PREFIX\ All Configurable Values
+  @node All Configurable Values \PREFIX\
   @section Index of All Configurable Values
   @lowersections
     @include \DIR\/value.texi
   @raisesections
 
-  @node \PREFIX\ Project Configuration
+  @node Project Configuration \PREFIX\
   @section Project Configuration
   @lowersections
     @include \DIR\/value.proj.texi
   @raisesections
 
-  @node \PREFIX\ API Reference
+  @node API Reference \PREFIX\
   @section API Reference
   @lowersections
     @include \DIR\/app.texi
@@ -196,11 +196,11 @@ A @emph{plugin} is an Erlang application containing a module that implements @re
 ANVL comes with a number of built-in plugins, sufficient for bootstrapping other plugins:
 
 @itemize
-@item @ref{ANVL Plugin Erlc,Erlc},
+@item @ref{Erlc Builtin ANVL Plugin,Erlc},
 for building Erlang applications.
-@item @ref{ANVL Plugin Git,Git},
+@item @ref{Git Builtin ANVL Plugin,Git},
 for cloning git repositories.
-@item @ref{ANVL Plugin TexInfo,TexInfo},
+@item @ref{TexInfo Builtin ANVL Plugin,TexInfo},
 for building documentation.
 @end itemize
 

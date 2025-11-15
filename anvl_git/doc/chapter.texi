@@ -1,4 +1,4 @@
-@node ANVL Plugin Git
-@chapter Builtin Plugin anvl_git
+@node Git Builtin ANVL Plugin
+@chapter Git, Builtin ANVL Plugin
 
 @lee{anvl_git,ANVL Git}

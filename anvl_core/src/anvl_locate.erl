@@ -21,7 +21,7 @@
 -moduledoc """
 This module provides a generic discovery mechanism for resolving external dependencies.
 It doesn't do anything on its own,
-but acts as a broker between dependency resolver plugins (such as @ref{ANVL Plugin Git})
+but acts as a broker between dependency resolver plugins (such as @ref{Git Builtin ANVL Plugin})
 and dependency consumers.
 """.
 

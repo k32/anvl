@@ -1,5 +1,5 @@
-@node ANVL Plugin TexInfo
-@chapter Builtin Plugin anvl_texinfo
+@node TexInfo Builtin ANVL Plugin
+@chapter Texinfo, Builtin ANVL Plugin
 
 This builtin plugin contains routines for building documentation in GNU TexInfo format.
 
