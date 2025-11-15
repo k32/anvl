@@ -71,8 +71,14 @@ that specifies whether to ensure directories for the target files or not.
         file:filename_all() | [file:filename_all()]
        ) -> boolean().
 newer(EnsureDirs, Src, Target) ->
-  Newer = max_mtime(ensure_filename_list(Src)) >=
-          min_mtime(EnsureDirs, ensure_filename_list(Target)),
+  SrcL = ensure_filename_list(Src),
+  TargetL = ensure_filename_list(Target),
+  case TargetL of
+    [] -> ?UNSAT("No target files", []);
+    _  -> ok
+  end,
+  Newer = max_mtime(SrcL) >=
+          min_mtime(EnsureDirs, TargetL),
   Newer andalso ?LOG_DEBUG("Source(s) ~p are newer than ~p", [Src, Target]),
   Newer.
 
@@ -294,10 +300,12 @@ max_mtime(L) ->
 
 ensure_filename_list(B) when is_binary(B) ->
   [B];
-ensure_filename_list([Hd|_] = L) when is_list(Hd) ->
+ensure_filename_list([Hd|_] = L) when is_list(Hd); is_binary(Hd) ->
   L;
 ensure_filename_list([Hd|_] = Str) when is_integer(Hd) ->
-  [Str].
+  [Str];
+ensure_filename_list([]) ->
+  [].
 
 file_mtime(File) ->
   case file:read_file_info(File, [raw, {time, posix}]) of

@@ -303,7 +303,7 @@ document_category(P, Category, Mod, Specs, L) ->
           #{Key := AST} ->
             P([ <<"@example\n@verbatim\n">>
               , erl_prettypr:format(AST)
-              , <<"\n@end verbatim\n@end example\n">>
+              , <<"\n@end verbatim\n@end example\n\n">>
               ]);
           #{} ->
             ok

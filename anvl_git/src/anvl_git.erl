@@ -37,6 +37,12 @@ A builtin plugin for cloning Git repositories.
 
 -reflect_type([ref/0]).
 
+-doc """
+Condition: repository @var{Repo} is cloned to directory @var{Dir},
+and commit @var{Hash} is checked out.
+""".
+-spec sources_prepared(Repo :: string(), Dir :: file:filename(), Hash :: string()) ->
+        anvl_condition:t().
 ?MEMO(sources_prepared, Repo, Dir, Hash,
       begin
         Mirror = mirror_dir(Repo),

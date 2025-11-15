@@ -23,7 +23,7 @@ conf() ->
   EmuArgs = "-dist_listen false -escript main anvl_app",
   Escript = #{apps => [anvl_core, anvl_erlc, anvl_git, anvl_texinfo, lee, typerefl]},
   #{ plugins => [anvl_erlc, anvl_git, anvl_texinfo]
-   , conditions => [install, escript, docs, test]
+   , conditions => [install, escript, docs, test, git_tests]
    , erlang =>
        #{ app_paths =>
             ["${app}", "."]
@@ -55,10 +55,14 @@ apps() ->
       end).
 
 ?MEMO(test,
-      precondition([ self_tests()
-                   , compile_c_tests()
-                   , dummy_app_tests()
-                   ])).
+      begin
+        precondition(install()),
+        precondition([ self_tests()
+                     , compile_c_tests()
+                     , dummy_app_tests()
+                     , git_tests()
+                     ])
+      end).
 
 ?MEMO(self_tests,
       begin
@@ -80,6 +84,15 @@ apps() ->
         file:del_dir_r("test/dummy/_anvl_build"),
         anvl_lib:exec("anvl", ["-d", "test/dummy"]),
         anvl_lib:exec("anvl", ["-d", "test/dummy", "@erlc", "dummy"])
+      end).
+
+?MEMO(git_tests,
+      begin
+        file:del_dir_r("test/dummy_git/_anvl_build"),
+        file:del_dir_r("test/dummy_git/anvl_lock"),
+        anvl_lib:exec("anvl", ["-d", "test/dummy_git", "--log-level", "info", "@erlc", "dummy_git"]),
+        %% Should not sync anything:
+        anvl_lib:exec("anvl", ["-d", "test/dummy_git", "--log-level", "info", "@erlc", "dummy_git"])
       end).
 
 install_includes(Prefix) ->

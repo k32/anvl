@@ -80,7 +80,7 @@ texinfo(Options, FD, Doclet) ->
             texinfo(Options, FD, CliScope);
         #doclet{mt = cli_action, tag = cli_action, key = Key, data = [Header | CliScope]} ->
             #doclet{mt = cli_action, tag = cli_action_name, data = Action} = Header,
-            P([ "@node @@", Action, " CLI Action"
+            P([ "@node @@", Action, " CLI Action\n"
               , "@anchor{", texi_key([cli_action | Key]), "}\n"
               , "@section @command{@@", Action, "}, CLI Action\n"
               , "@findex @@", Action, $\n

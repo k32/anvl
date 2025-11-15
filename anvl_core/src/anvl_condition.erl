@@ -140,14 +140,7 @@ precondition(L, ChunkSize) when ChunkSize > 0 ->
                         , resource => Resource
                         })
   end,
-  T0 = erlang:system_time(microsecond),
-  Result = precondition1(L, false, ChunkSize),
-  T1 = erlang:system_time(microsecond),
-  case get(?gauge_waited) of
-    undefined  -> put(?gauge_waited, T1 - T0);
-    TimeWaited -> put(?gauge_waited, TimeWaited + T1 - T0)
-  end,
-  Result.
+  precondition1(L, false, ChunkSize).
 
 -doc """
 For a satisfied condition, this function returns whether the condition has
@@ -286,6 +279,7 @@ condition_entrypoint(Condition, Parent) ->
       Parent ! {self(), proceed},
       ?LOG_DEBUG("Running ~p", [Condition]),
       inc_counter(?cnt_started),
+      put(?gauge_waited, 0),
       try exec(Condition) of
         Changed ->
           ets:insert(?tab,
@@ -321,13 +315,17 @@ condition_entrypoint(Condition, Parent) ->
 precondition1([], Result, _ChunkSize) ->
   Result;
 precondition1(L, Result0, ChunkSize) ->
+  T0 = erlang:system_time(microsecond),
   {Result1, WaitL, Rest} = precondition2(L, Result0, [], 0, ChunkSize),
-  Result = lists:foldl(fun({Task, MRef}, Acc) ->
+  Result2 = lists:foldl(fun({Task, MRef}, Acc) ->
                            Acc or wait_result(Task, MRef)
                        end,
                        Result1,
                        WaitL),
-  precondition1(Rest, Result, ChunkSize).
+  Result = precondition1(Rest, Result2, ChunkSize),
+  T1 = erlang:system_time(microsecond),
+  put(?gauge_waited, time_waited() + (T1 - T0)),
+  Result.
 
 precondition2([], ResultAcc, WaitingAcc, _Nwaiting, _Nmax) ->
   {ResultAcc, WaitingAcc, []};
@@ -422,10 +420,7 @@ key(#anvl_memo_thunk{func = Fun, args = Args}) ->
 
 report_stats(Condition, T0) ->
   T1 = erlang:system_time(microsecond),
-  case get(?gauge_waited) of
-    undefined -> WaitTime = 0;
-    WaitTime  -> ok
-  end,
+  WaitTime = time_waited(),
   WorkTime = (T1 - T0) - WaitTime,
   Stats = [ {work_time, WorkTime}
           , erlang:process_info(self(), reductions)
@@ -458,3 +453,9 @@ stats_top(Key, MaxItems) ->
       {0, ordsets:new()},
       ?stats_tab),
   lists:reverse([{K, V} || {V, K} <- Top]).
+
+time_waited() ->
+  case get(?gauge_waited) of
+    undefined -> 0;
+    Val -> Val
+  end.

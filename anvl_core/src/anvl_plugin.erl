@@ -260,5 +260,6 @@ cli_args_getter() ->
 
 set_root() ->
   Root = filename:absname(anvl_plugin:conf([root])),
+  logger:debug("Root project is ~s", [Root]),
   persistent_term:put(?anvl_root_project_dir, Root),
   ok.
