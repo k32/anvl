@@ -2,7 +2,7 @@
 -module(lee_doc).
 
 -export([make_docs/2, get_description/2, get_oneliner/3]).
--export([texinfo/3]).
+-export([texinfo/3, texi_key/1]).
 
 -export([documented/0]).
 -export_type([doclet/0]).
@@ -165,6 +165,14 @@ get_oneliner(MT, Model, Key) ->
         #{} -> []
     end.
 
+-spec texi_key(lee:model_key()) -> string().
+texi_key([{}]) ->
+    "_";
+texi_key([A]) when is_atom(A) ->
+    atom_to_binary(A);
+texi_key([A|Rest]) ->
+    [texi_key([A]), "/" | texi_key(Rest)].
+
 %%================================================================================
 %% Internal exports
 %%================================================================================
@@ -176,11 +184,3 @@ documented() ->
 %%================================================================================
 %% Internal functions
 %%================================================================================
-
--spec texi_key(lee:model_key()) -> string().
-texi_key([{}]) ->
-    "_";
-texi_key([A]) when is_atom(A) ->
-    atom_to_binary(A);
-texi_key([A|Rest]) ->
-    [texi_key([A]), "/" | texi_key(Rest)].
