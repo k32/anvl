@@ -139,7 +139,11 @@ create(#{conf := ConfTree, overrides := Overrides}) ->
 read_patch(pcfg, Model) ->
   {ok, ConfTree} = lee_model:get_meta(?mt_conf_tree_key, Model),
   {ok, Overrides} = lee_model:get_meta(?mt_conf_overrides, Model),
-  {ok, 0, tree_to_patch(Model, ConfTree) ++ Overrides}.
+  Keys = lee_model:get_metatype_index(value, Model),
+  maybe
+    {ok, Patch} ?= lee_lib:tree_to_patch(Model, ConfTree, Keys),
+    {ok, 0, Patch ++ Overrides}
+  end.
 
 %%================================================================================
 %% API
@@ -267,79 +271,6 @@ load_project_conf(ProjectDir, Module, Storage) ->
     Module:init(),
   ?LOG_INFO("Loaded project ~p", [ProjectDir]),
   false.
-
-tree_to_patch(Model, Tree) ->
-  MKeys = [key_parts(K) || K <- lee_model:get_metatype_index(value, Model)],
-  tree_to_patch(Model, [], Tree, MKeys).
-
-key_parts(L) ->
-  key_parts(L, []).
-
-key_parts([], Acc) ->
-  [lists:reverse(Acc)];
-key_parts([?children | Rest], Acc) ->
-  [lists:reverse(Acc) | key_parts(Rest)];
-key_parts([A|Rest], Acc) ->
-  key_parts(Rest, [A | Acc]).
-
-tree_to_patch(Model, Parent, Tree, MKeys) ->
-  ParentModelKey = lee_model:get_model_key(Parent),
-  lists:foldl(
-    fun([Key | Rest], Acc) ->
-        case tree_get(Key, Tree) of
-          undefined ->
-            Acc;
-          {ok, Value} when Rest =:= [] ->
-            [{set, Parent ++ Key, Value} | Acc];
-          {ok, SubTrees} ->
-            lists:foldl(
-              fun(SubTree, Acc1) ->
-                  InstKey = make_inst_key(Model, ParentModelKey, Key, SubTree),
-                  tree_to_patch(Model, Parent ++ Key ++ [InstKey], SubTree, [Rest]) ++ Acc1
-              end,
-              Acc,
-              SubTrees)
-        end
-    end,
-    [],
-    MKeys).
-
-make_inst_key(Model, ParentModelKey, MapKey, Conf) ->
-  #mnode{metaparams = MAttrs} = lee_model:get(
-                                  ParentModelKey ++ MapKey,
-                                  Model),
-  KeyElems = [case tree_get(I, Conf) of
-                {ok, Val} ->
-                  Val;
-                undefined ->
-                  %% TODO: handle defaults
-                  error({ParentModelKey, MapKey, I})
-              end
-              || I <- ?m_attr(map, ?key_elements, MAttrs, [])],
-  list_to_tuple(KeyElems).
-
-tree_get(Key, Conf) when is_list(Key), is_map(Conf) ->
-  case Conf of
-    #{Key := Val} ->
-      {ok, Val};
-    _ ->
-      case Key of
-        [Tail] ->
-          case Conf of
-            #{Tail := Val} ->
-              {ok, Val};
-            _ ->
-              undefined
-          end;
-        [Head | Tail] ->
-          case Conf of
-            #{Head := Children} ->
-              tree_get(Tail, Children);
-            _ ->
-              undefined
-          end
-      end
-  end.
 
 read_override(Dir) ->
   Root = root(),
