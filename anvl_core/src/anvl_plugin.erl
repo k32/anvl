@@ -25,7 +25,7 @@ An ANVL API for managing plugins.
 -behavior(gen_server).
 
 %% API:
--export([conf/1, list_conf/1, init/0, loaded/1, workdir/1]).
+-export([conf/1, list_conf/1, init/0, loaded/1]).
 
 %% gen_server:
 -export([init/1, handle_call/3, handle_cast/2, terminate/2]).
@@ -82,14 +82,6 @@ Condition: @var{Plugin} has been loaded.
           ?LOG_INFO("Loaded plugin ~p", [Plugin]),
           Changed
       end).
-
--spec workdir([string()]) -> file:filename().
-workdir(Rest) ->
-  Base = conf([workdir]),
-  case Rest of
-    [] -> Base;
-    _  -> filename:join([Base | Rest])
-  end.
 
 -doc false.
 init() ->

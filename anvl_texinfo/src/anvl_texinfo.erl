@@ -334,6 +334,4 @@ get_documentation(#{<<"en">> := Doc}) ->
   [Doc, <<"\n\n">>].
 
 doc_dir(Rest) ->
-  anvl_plugin:workdir([ anvl_plugin:conf([anvl_texinfo, doc_dir])
-                      , Rest
-                      ]).
+  anvl_fn:workdir([anvl_plugin:conf([anvl_texinfo, doc_dir]), Rest]).

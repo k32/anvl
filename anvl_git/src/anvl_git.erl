@@ -298,5 +298,4 @@ mirror_dir(Repo) ->
     anvl_lib:hash(Repo)).
 
 dir(Consumer, Id) ->
-  Ctx = #{workdir => anvl_plugin:workdir([]), id => Id, consumer => Consumer},
-  template("${workdir}/deps/${consumer}/${id}", Ctx, path).
+  anvl_fn:workdir([<<"deps">>, Consumer, Id]).
