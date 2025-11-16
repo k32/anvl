@@ -50,8 +50,8 @@ apps() ->
         Prefix = filename:join(os:getenv("HOME"), ".local"),
         precondition([escript(), docs()]) or
           install_includes(Prefix) or
-          install(Prefix, "${prefix}/bin/anvl", "anvl") or
-          install(Prefix, "${prefix}/share/anvl/info/anvl.info", "_anvl_build/doc/anvl.info")
+          install(Prefix, "${prefix}/bin/anvl", "anvl", 8#755) or
+          install(Prefix, "${prefix}/share/anvl/info/anvl.info", "_anvl_build/doc/anvl.info", 8#644)
       end).
 
 ?MEMO(test,
@@ -100,19 +100,20 @@ install_includes(Prefix) ->
   lists:foldl(
     fun(Src, Acc) ->
         case filename:extension(Src) of
-          <<".hrl">> -> install(Prefix, "${prefix}/share/anvl/include/${basename}.hrl", Src);
+          <<".hrl">> -> install(Prefix, "${prefix}/share/anvl/include/${basename}.hrl", Src, 8#644);
           _ -> false
         end or Acc
     end,
     false,
     Files).
 
-install(Prefix, Template, Src) ->
+install(Prefix, Template, Src, Mode) ->
   Dest = patsubst(Template, Src, #{prefix => Prefix}),
   newer(Src, Dest) andalso
     begin
       logger:notice("Installing ~s to ~s", [Src, Dest]),
       {ok, _} = file:copy(Src, Dest),
+      ok = file:change_mode(Dest, Mode),
       true
     end.
 
