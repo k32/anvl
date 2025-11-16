@@ -72,17 +72,15 @@ Convenience wrapper for @command{git ls-files} command. It supports the followin
 @item other
 Include untracked files (excluding files covered by .gitignore).
 This option is passes @option{-o} to the command.
-
 @item  no_cache
 Exclude cached files.
 This option disable passing @option{-c} to the command.
-
 @item relative
 Return relative paths,
 overriding default behavior where absolute paths within @var{Dir} are returned.
-
 @item @{x, WildcardPattern@}
 Exclude untracked files matching the pattern.
+Can be repeated.
 @end table
 """.
 

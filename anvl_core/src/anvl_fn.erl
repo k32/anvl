@@ -48,7 +48,7 @@ Directory component.
 %%================================================================================
 
 -doc """
-Return a fileneme within the working directory by joining the list of components.
+Return a filename within the working directory by joining the list of components.
 """.
 -spec workdir([component()]) -> file:filename().
 workdir(Components) ->
