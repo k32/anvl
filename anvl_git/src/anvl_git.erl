@@ -25,7 +25,7 @@ A builtin plugin for cloning Git repositories.
 -behavior(anvl_plugin).
 
 %% API:
--export([sources_prepared/3]).
+-export([sources_prepared/3, ls_files/2]).
 
 %% behavior callbacks:
 -export([model/0, project_model/0, init/0, init_for_project/1]).
@@ -64,6 +64,70 @@ and commit @var{Hash} is checked out.
             true
         end
       end).
+
+-doc """
+Convenience wrapper for @command{git ls-files} command. It supports the following options:
+
+@table @code
+@item other
+Include untracked files (excluding files covered by .gitignore).
+This option is passes @option{-o} to the command.
+
+@item  no_cache
+Exclude cached files.
+This option disable passing @option{-c} to the command.
+
+@item relative
+Return relative paths,
+overriding default behavior where absolute paths within @var{Dir} are returned.
+
+@item @{x, WildcardPattern@}
+Exclude untracked files matching the pattern.
+@end table
+""".
+
+-spec ls_files(file:filename(), [no_cache | other | relative | {x, string()}]) ->
+        {ok, [file:filename()]} | {error, _}.
+ls_files(Dir, Options) ->
+  maybe
+    true ?= is_git_repo(Dir),
+    #{cache := Cache, other := Other, relative := Relative, exclude := Exclude} ?=
+      lists:foldl(
+        fun(Opt, Acc = #{exclude := ExclAcc}) ->
+            case Opt of
+              no_cache ->
+                Acc#{cache := []};
+              other ->
+                Acc#{other := ["-o"]};
+              relative->
+                Acc#{relative := true};
+              {x, Exc} when is_list(Exc); is_binary(Exc) ->
+                Acc#{exclude := ["-x", Exc | ExclAcc]};
+              _ ->
+                {error, badarg}
+            end;
+           (_, Acc) ->
+            Acc
+        end,
+        #{cache => ["-c"], other => [], relative => false, exclude => []},
+        Options),
+    {0, RelPaths} ?= anvl_lib:exec_("git",
+                                    ["ls-files", "--exclude-standard"] ++ Other ++ Cache ++ Exclude,
+                                    [{cd, Dir}, collect_output]),
+    case Relative of
+      true ->
+        {ok, RelPaths};
+      false ->
+        {ok, [filename:absname(I, Dir) || I <- RelPaths]}
+    end
+  else
+    false ->
+      {error, not_a_git_directory};
+    {ErrCode, Str} when is_integer(ErrCode) ->
+      {error, {git_error, ErrCode, Str}};
+    Err ->
+      Err
+  end.
 
 %%--------------------------------------------------------------------------
 %% anvl callbacks
@@ -298,5 +362,4 @@ mirror_dir(Repo) ->
     anvl_lib:hash(Repo)).
 
 dir(Consumer, Id) ->
-  Ctx = #{workdir => anvl_plugin:workdir([]), id => Id, consumer => Consumer},
-  template("${workdir}/deps/${consumer}/${id}", Ctx, path).
+  anvl_fn:workdir([<<"deps">>, Consumer, Id]).
