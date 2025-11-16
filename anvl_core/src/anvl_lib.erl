@@ -290,7 +290,7 @@ max_mtime(L) ->
           {ok, Mtime} ->
             max(Acc, Mtime);
           {error, enoent} ->
-            ?UNSAT("Missing source file: ~s", [File]);
+            error({missing_source_file, File});
           {error, Err} ->
             error({error, File, Err})
         end

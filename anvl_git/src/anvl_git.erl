@@ -324,10 +324,15 @@ git_fetch(Dir) ->
   anvl_lib:exec("git", ["fetch", "--all"], [{cd, Dir}]).
 
 is_git_repo(Dir) ->
-  filelib:is_dir(Dir) andalso
-    anvl_lib:exec_("git",
-                   ["rev-parse", "--is-inside-work-tree"],
-                   [{cd, Dir}]) =:= 0.
+  maybe
+    true ?= filelib:is_dir(Dir),
+    {0, [<<"true">>]} ?= anvl_lib:exec_("git",
+                                        ["rev-parse", "--is-inside-work-tree", "-q"],
+                                        [{cd, Dir}, collect_output, stderr_to_stdout]),
+    true
+  else
+    _ -> false
+  end.
 
 git_commit(Dir) ->
   case filelib:is_dir(filename:join(Dir, ".git")) of

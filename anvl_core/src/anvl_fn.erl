@@ -52,7 +52,7 @@ Return a filename within the working directory by joining the list of components
 """.
 -spec workdir([component()]) -> file:filename().
 workdir(Components) ->
-  Base = anvl_plugin:conf([workdir]),
+  Base = filename:absname(anvl_plugin:conf([workdir])),
   case Components of
     [] -> Base;
     _  -> filename:join([Base | stringify_atoms(Components)])
