@@ -52,12 +52,12 @@ and commit @var{Hash} is checked out.
             false;
           {ok, Other} ->
             ?LOG_NOTICE("Switching ~s from ~s to ~s", [Repo, Other, Hash]),
-            precondition(mirror_synced(Repo, Hash)),
+            maybe_sync_mirror(Repo, Hash),
             git_fetch(Dir),
             git_checkout(Dir, Hash),
             true;
           {error, not_a_git_directory} ->
-            precondition(mirror_synced(Repo, Hash)),
+            maybe_sync_mirror(Repo, Hash),
             ok = filelib:ensure_dir(Dir),
             anvl_lib:exec("git", ["clone", "--local", Mirror, Dir]),
             git_checkout(Dir, Hash),
@@ -233,7 +233,7 @@ locked(Project, Consumer, Id, Repo, Ref) ->
 
 resolve_hash(Repo, Ref) ->
   Mirror = mirror_dir(Repo),
-  sync_mirror(Mirror, Repo),
+  _ = precondition(mirror_synced(Mirror, Repo)),
   get_commit_hash(Mirror, Ref).
 
 write_lock(Project, Consumer, Id, Hash) ->
@@ -254,13 +254,11 @@ read_lock(Project, Consumer, Id) ->
 %% Mirror management
 %%--------------------------------------------------------------------------
 
-?MEMO(mirror_synced, Repo, Hash,
-      begin
-        %% TODO: don't sync mirror too often if commit is missing?
-        Mirror = mirror_dir(Repo),
-        mirror_needs_sync(Mirror, Hash) andalso
-          sync_mirror(Mirror, Repo)
-      end).
+maybe_sync_mirror(Repo, Hash) ->
+  %% TODO: don't sync mirror too often if commit is missing?
+  Mirror = mirror_dir(Repo),
+  mirror_needs_sync(Mirror, Hash) andalso
+    precondition(mirror_synced(Mirror, Repo)).
 
 mirror_needs_sync(Mirror, Hash) ->
   case is_git_repo(Mirror) of
@@ -275,20 +273,22 @@ mirror_needs_sync(Mirror, Hash) ->
       true
   end.
 
-sync_mirror(Mirror, Repo) ->
-  anvl_resource:with(
-    git,
-    fun() ->
-        ?LOG_NOTICE("Syncing mirror for repository ~s~nMirror dir: ~s", [Repo, Mirror]),
-        case is_git_repo(Mirror) of
-          true ->
-            git_fetch(Mirror);
-          false ->
-            ok = filelib:ensure_dir(Mirror),
-            anvl_lib:exec("git", ["clone", "--mirror", Repo, Mirror])
-        end
-    end),
-  true.
+?MEMO(mirror_synced, Mirror, Repo,
+      begin
+          anvl_resource:with(
+            git,
+            fun() ->
+                ?LOG_NOTICE("Syncing mirror for repository ~s~nMirror dir: ~s", [Repo, Mirror]),
+                case filelib:is_dir(Mirror) of
+                  true ->
+                    git_fetch(Mirror);
+                  false ->
+                    ok = filelib:ensure_dir(Mirror),
+                    anvl_lib:exec("git", ["clone", "--mirror", Repo, Mirror])
+                end
+            end),
+          true
+      end).
 
 %%--------------------------------------------------------------------------
 %% Git wrappers
