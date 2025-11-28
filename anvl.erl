@@ -40,6 +40,15 @@ conf() ->
             ]
         }
    , [deps, local] => [#{dir => "vendor/${id}"}]
+   , texinfo =>
+       #{ compile =>
+            [#{ format => html
+              , options => ["-c", "INFO_JS_DIR=js"]
+              }
+            ]
+        , formats => [info, html]
+        , sources => ["anvl_core/doc/anvl.texi"]
+        }
    }.
 
 apps() ->
@@ -121,11 +130,10 @@ escript() ->
   anvl_erlc:escript(".", anvl).
 
 ?MEMO(docs,
-      begin
-        precondition([anvl_texinfo:anvl_plugin_documented(I) || I <- apps()]),
-        Main = "anvl_core/doc/anvl.texi",
-        precondition(
-          [ anvl_texinfo:compiled(Main, html)
-          , anvl_texinfo:compiled(Main, info)
-          ])
+      case os:find_executable("texi2any") of
+        false ->
+          logger:warning("GNU TexInfo is not found, documentation is not built", []);
+        _ ->
+          precondition([anvl_texinfo:anvl_plugin_documented(I) || I <- apps()]),
+          precondition(anvl_texinfo:compiled(anvl_project:root()))
       end).
