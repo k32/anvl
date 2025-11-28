@@ -13,10 +13,11 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
     strategy:
       matrix:
         otp: ['27']
+        os: ['ubuntu-latest']
+    runs-on: ${{matrix.os}}
     steps:
     - uses: actions/checkout@v4
     - uses: erlef/setup-beam@v1
