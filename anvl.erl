@@ -40,6 +40,15 @@ conf() ->
             ]
         }
    , [deps, local] => [#{dir => "vendor/${id}"}]
+   , texinfo =>
+       #{ compile =>
+            [#{ format => html
+              , options => ["-c", "INFO_JS_DIR=js"]
+              }
+            ]
+        , formats => [info, html]
+        , sources => ["anvl_core/doc/anvl.texi"]
+        }
    }.
 
 apps() ->
@@ -51,7 +60,8 @@ apps() ->
         precondition([escript(), docs()]) or
           install_includes(Prefix) or
           install(Prefix, "${prefix}/bin/anvl", "anvl", 8#755) or
-          install(Prefix, "${prefix}/share/anvl/info/anvl.info", "_anvl_build/doc/anvl.info", 8#644)
+          (anvl_texinfo:available() andalso
+           install(Prefix, "${prefix}/share/anvl/info/anvl.info", "_anvl_build/doc/anvl.info", 8#644))
       end).
 
 ?MEMO(test,
@@ -121,11 +131,11 @@ escript() ->
   anvl_erlc:escript(".", anvl).
 
 ?MEMO(docs,
-      begin
-        precondition([anvl_texinfo:anvl_plugin_documented(I) || I <- apps()]),
-        Main = "anvl_core/doc/anvl.texi",
-        precondition(
-          [ anvl_texinfo:compiled(Main, html)
-          , anvl_texinfo:compiled(Main, info)
-          ])
+      case anvl_texinfo:available() of
+        false ->
+          logger:warning("GNU TexInfo is not found, documentation is not built.", []),
+          false;
+        true ->
+          precondition([anvl_texinfo:anvl_plugin_documented(I) || I <- apps()]),
+          precondition(anvl_texinfo:compiled(anvl_project:root()))
       end).

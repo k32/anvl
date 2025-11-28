@@ -25,7 +25,7 @@ A plugin for creating and compiling @url{https://www.gnu.org/software/texinfo/, 
 -behavior(anvl_plugin).
 
 %% API
--export([compiled/2, anvl_plugin_documented/1, erl_doc/2, erl_module_doc/3]).
+-export([available/0, compiled/1, compiled/3, anvl_plugin_documented/1, erl_doc/2, erl_module_doc/3]).
 
 %% behavior callbacks:
 -export([init/0, init_for_project/1, model/0, project_model/0]).
@@ -37,17 +37,9 @@ A plugin for creating and compiling @url{https://www.gnu.org/software/texinfo/, 
 %% Type declarations
 %%================================================================================
 
--type doc_format() :: info | html | pdf.
+-type doc_format() :: info | docbook | html | epub3 | latex | plaintext.
 
 -reflect_type([doc_format/0]).
-
--doc """
-@pconf List of Erlang modules containing Lee models.
-
-These modules should export @code{model/0} function.
-""".
--doc #{default => []}.
--callback texinfo_lee_modules() -> [module()].
 
 %%================================================================================
 %% Behavior callbacks
@@ -90,7 +82,36 @@ model() ->
 
 -doc false.
 project_model() ->
-  #{}.
+  #{texinfo =>
+      #{ compile =>
+           {[map],
+            #{ oneliner => "Settings for texi2any tool"
+             , key_elements => [[format]]
+             },
+            #{ format =>
+                 {[value],
+                  #{ type => doc_format()
+                   }}
+             , options =>
+                 {[value],
+                  #{ oneliner => "List of additional CLI options"
+                   , type => list(string())
+                   , default => []
+                   }}
+             }}
+       , sources =>
+           {[value],
+            #{ oneliner => "List of .texi sources"
+             , type => list(string())
+             , default => []
+             }}
+       , formats =>
+           {[value],
+            #{ oneliner => "Compile sources to the given formats"
+             , type => list(doc_format())
+             , default => [info]
+             }}
+       }}.
 
 -doc """
 Condition: documentation for the @var{Plugin} has been extracted.
@@ -137,7 +158,38 @@ with_model(Metamodel, ExtractorConfig, Plugin, ModelCB) ->
       end
     end.
 
-?MEMO(compiled, DocSrc, Format,
+-doc """
+Check if the system has @command{texi2any} executable necessary for building TexInfo.
+""".
+-spec available() -> boolean().
+available() ->
+  case os:find_executable("texi2any") of
+    false -> false;
+    _     -> true
+  end.
+
+-doc """
+Condition: all texinfo sources listend in the project configuration
+are compiled to all formats requested by the project.
+""".
+-spec compiled(anvl_project:dir()) -> anvl_condition:t().
+?MEMO(compiled, Project,
+      begin
+        Formats = anvl_project:conf(Project, [texinfo, formats]),
+        Sources = anvl_project:conf(Project, [texinfo, sources]),
+        precondition([compiled(Project, Src, Format) ||
+                       Format <- Formats,
+                       Pattern <- Sources,
+                       Src <- filelib:wildcard(Pattern, Project)
+                     ])
+      end).
+
+-doc """
+Condition: a source file @var{DocSrc} in project @var{Project}
+is compiled to format @var{Format}.
+""".
+-spec compiled(anvl_project:dir(), file:filename(), doc_format()) -> anvl_condition:t().
+?MEMO(compiled, Project, DocSrc, Format,
       begin
         Dir = doc_dir([]),
         Name = filename:rootname(filename:basename(DocSrc)),
@@ -152,9 +204,10 @@ with_model(Metamodel, ExtractorConfig, Plugin, ModelCB) ->
         newer(DocSrc, DocTarget) or true andalso
           begin
             filelib:ensure_dir(DocTarget),
+            Options = anvl_project:conf(Project, [texinfo, compile, {Format}, options]),
             ?LOG_NOTICE("Creating ~s", [DocTarget]),
-            anvl_lib:exec("texi2any", [ "-c", "INFO_JS_DIR=js"
-                                      , "-I", Dir
+            anvl_lib:exec("texi2any", Options ++
+                                      [ "-I", Dir
                                       , "--" ++ atom_to_list(Format)
                                       , "-o", Output
                                       , DocSrc
