@@ -26,7 +26,7 @@ A builtin plugin for compiling Erlang applications.
 -behavior(anvl_plugin).
 
 %% API:
--export([add_pre_compile_hook/1, add_app_spec_hook/1]).
+-export([add_pre_compile_hook/2, add_app_spec_hook/2]).
 -export([app_info/2, escript/2, app_compiled/2, module/2]).
 -export([app_file/1, beam_file/2]).
 
@@ -62,7 +62,8 @@ Build context: a summary of options and data about the application
 that is available at its build time.
 """.
 -type context() ::
-        #{ app := atom()
+        #{ project := anvl_project:dir()
+         , app := atom()
          , src_root := file:filename_all()
          , build_root := file:filename_all()
          , build_dir := file:filename_all()
@@ -94,6 +95,9 @@ This type is an extention of @ref{t:anvl_erlc:context/0,context/0}.
 -define(app_info(PROFILE, APP), {?MODULE, app_info, PROFILE, APP}).
 -define(context(PROFILE, APP), {?MODULE, context, PROFILE, APP}).
 
+-record(erlc_pre_compile_hook, {project :: anvl_project:dir()}).
+-record(erlc_app_spec_hook, {project :: anvl_project:dir()}).
+
 -reflect_type([profile/0, compile_options/0, escript_name/0, context/0, application_spec/0]).
 
 %%================================================================================
@@ -108,18 +112,18 @@ app_file(Ctx) ->
 beam_file(#{build_dir := BuildDir}, Module) ->
   filename:join([BuildDir, "ebin", atom_to_list(Module) ++ ".beam"]).
 
--spec add_app_spec_hook(fun((application_spec()) -> application_spec())) -> ok.
-add_app_spec_hook(Hook) ->
-  anvl_hook:add(erlc_app_spec_hook, Hook).
+-spec add_app_spec_hook(anvl_project:dir(), fun((application_spec()) -> application_spec())) -> ok.
+add_app_spec_hook(Project, Hook) ->
+  anvl_hook:add(#erlc_app_spec_hook{project = Project}, Hook).
 
 -doc """
 Add a pre-compile hook.
 Functions hooked there will run after the dependencies are satisfied,
 but before building the application itself.
 """.
--spec add_pre_compile_hook(fun((context()) -> boolean())) -> ok.
-add_pre_compile_hook(Fun) ->
-  anvl_hook:add(erlc_pre_compile_hook, Fun).
+-spec add_pre_compile_hook(anvl_project:dir(), fun((context()) -> boolean())) -> ok.
+add_pre_compile_hook(Project, Fun) ->
+  anvl_hook:add(#erlc_pre_compile_hook{project = Project}, Fun).
 
 -doc """
 Condition: OTP application has been compiled with the given profile.
@@ -141,7 +145,8 @@ Condition: OTP application has been compiled with the given profile.
         BuildDir = build_dir(BuildRoot, App),
         %% Create the context:
         %% 0. Add constants:
-        Ctx0 = #{ app => App
+        Ctx0 = #{ project => Project
+                , app => App
                 , profile => Profile
                 , build_root => BuildRoot
                 , build_dir => BuildDir
@@ -160,7 +165,7 @@ Condition: OTP application has been compiled with the given profile.
         ok = filelib:ensure_path(filename:join(BuildDir, "ebin")),
         ok = filelib:ensure_path(filename:join(BuildDir, "include")),
         ok = filelib:ensure_path(filename:join(BuildDir, "anvl_deps")),
-        CompHook = anvl_hook:foreach(erlc_pre_compile_hook, Context),
+        CompHook = anvl_hook:foreach(#erlc_pre_compile_hook{project = Project}, Context),
         %% TODO: this is a hack, should be done by dependency manager:
         EbinDir = filename:join(BuildDir, "ebin"),
         true = code:add_patha(EbinDir),
@@ -577,11 +582,11 @@ copy_includes(#{build_dir := BuildDir, src_root := SrcRoot}) ->
 
 %% @private Render application specification:
 render_app_spec(AppSrcProperties, Sources, Context) ->
-  #{app := App, profile := Profile, build_dir := BuildDir} = Context,
+  #{project := Project, app := App, profile := Profile, build_dir := BuildDir} = Context,
   AppFile = app_file(Context),
   Modules = [module_of_erl(I) || I <- Sources],
   NewContent0 = {application, App, [{modules, Modules} | AppSrcProperties]},
-  NewContent = anvl_hook:fold(erlc_app_spec_hook, NewContent0),
+  NewContent = anvl_hook:fold(#erlc_app_spec_hook{project = Project}, NewContent0),
   anvl_condition:set_result(?app_info(Profile, App),
                             Context
                             #{ ebin_dir => BuildDir
