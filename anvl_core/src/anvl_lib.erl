@@ -24,7 +24,7 @@ A collection of functions useful for implementing conditions.
 
 %% API:
 -export([template/3, patsubst/3, patsubst/2]).
--export([newer/2, newer/3, hash/1]).
+-export([newer/2, newer/3, max_mtime/1, hash/1]).
 -export([exec/2, exec/3, exec_/2, exec_/3]).
 
 -export_type([template_vars/0]).
@@ -60,6 +60,26 @@ If this is not desirable, use @code{anvl_lib:newer(false, Srcs, Targets)} instea
        ) -> boolean().
 newer(Src, Target) ->
   newer(true, Src, Target).
+
+-doc """
+Returns maximum modification time for a set of files.
+Throws an exception if any input file doesn't exist.
+""".
+-spec max_mtime([file:filename_all()]) -> integer().
+max_mtime(L) ->
+  lists:foldl(
+    fun(File, Acc) ->
+        case file_mtime(File) of
+          {ok, Mtime} ->
+            max(Acc, Mtime);
+          {error, enoent} ->
+            error({missing_source_file, File});
+          {error, Err} ->
+            error({error, File, Err})
+        end
+    end,
+    0,
+    L).
 
 -doc """
 Version of @code{newer/2} that takes an additional argument
@@ -280,22 +300,6 @@ min_mtime(EnsureDirs, L) ->
         end
     end,
     infinity,
-    L).
-
--spec max_mtime([file:filename_all()]) -> integer().
-max_mtime(L) ->
-  lists:foldl(
-    fun(File, Acc) ->
-        case file_mtime(File) of
-          {ok, Mtime} ->
-            max(Acc, Mtime);
-          {error, enoent} ->
-            error({missing_source_file, File});
-          {error, Err} ->
-            error({error, File, Err})
-        end
-    end,
-    0,
     L).
 
 ensure_filename_list(B) when is_binary(B) ->
