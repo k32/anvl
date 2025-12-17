@@ -184,10 +184,10 @@ config_module(ProjectRoot) ->
 
 ?MEMO(config_loaded, Dir,
       begin
-        Module = obtain_project_conf_module(Dir),
+        {IsNew, Module} = obtain_project_conf_module(Dir),
         anvl_condition:set_result(#conf_module_of_dir{directory = Dir}, Module),
         Conf = lee_storage:new(lee_persistent_term_storage, ?proj_conf_storage_token(Dir)),
-        load_project_conf(Dir, Module, Conf),
+        load_project_conf(IsNew, Dir, Module, Conf),
         false
       end).
 
@@ -206,7 +206,7 @@ obtain_project_conf_module(Dir) ->
       case compile:file(ConfFile, Options) of
         {ok, Module, Binary} ->
           {module, Module} = code:load_binary(Module, ConfFile, Binary),
-          Module;
+          {true, Module};
         error ->
           ?UNSAT("Failed to compile anvl config file for ~s.", [Dir])
       end;
@@ -217,7 +217,7 @@ obtain_project_conf_module(Dir) ->
         false ->
           ?LOG_WARNING("Directory ~s doesn't contain 'anvl.erl' file. "
                        "Falling back to top level project's config.", [Dir]),
-          config_module(root())
+          {false, anvl_config_module(root())}
       end
   end.
 
@@ -250,7 +250,7 @@ custom_conditions(AdHoc) ->
       anvl_app:halt(1)
   end.
 
-load_project_conf(ProjectDir, Module, Storage) ->
+load_project_conf(IsNew, ProjectDir, Module, Storage) ->
   ConfTree = case erlang:function_exported(Module, conf, 0) of
                true -> Module:conf();
                false -> #{}
@@ -267,7 +267,7 @@ load_project_conf(ProjectDir, Module, Storage) ->
   %% 4. Notify the plugins about the new project:
   _ = [anvl_plugin:init_for_project(Plugin, ProjectDir) || Plugin <- Plugins],
   %% 5. Optionally, run init function.
-  erlang:function_exported(Module, init, 0) andalso
+  IsNew andalso erlang:function_exported(Module, init, 0) andalso
     Module:init(),
   ?LOG_INFO("Loaded project ~p", [ProjectDir]),
   false.
