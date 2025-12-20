@@ -142,7 +142,7 @@ read_patch(pcfg, Model) ->
   Keys = lee_model:get_metatype_index(value, Model),
   maybe
     {ok, Patch} ?= lee_lib:tree_to_patch(Model, ConfTree, Keys),
-    {ok, 0, Patch ++ Overrides}
+    {ok, 0, Overrides ++ Patch}
   end.
 
 %%================================================================================
