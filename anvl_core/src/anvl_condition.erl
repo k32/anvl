@@ -175,18 +175,9 @@ Needless to say, this functionality is an unsound hack meant as a last-resort me
 -spec speculative(speculative()) -> t().
 speculative(Cond) ->
   Body = fun(C) ->
-             inc_waiting_speculative(),
-             receive
-               {done, Bool} ->
-                 dec_waiting_speculative(),
-                 Bool;
-               unsat ->
-                 dec_waiting_speculative(),
-                 unsat(C)
-             end
+             wait_speculative(C)
          end,
   #anvl_memo_thunk{descr = speculative, func = Body, args = [Cond]}.
-
 
 -doc """
 This function declares that the current condition resolves a speculative condition.
@@ -336,6 +327,17 @@ condition_entrypoint(Condition, Parent) ->
 %%================================================================================
 %% Internal functions
 %%================================================================================
+
+wait_speculative(C) ->
+  inc_waiting_speculative(),
+  receive
+    {done, Bool} ->
+      dec_waiting_speculative(),
+      Bool;
+    unsat ->
+      dec_waiting_speculative(),
+      unsat(C)
+  end.
 
 precondition1([], Result, _ChunkSize) ->
   Result;
@@ -532,7 +534,7 @@ deadlock_scan(G, [Pid | Rest]) ->
       end,
       digraph:add_edge(G, WaitingPid, Pid, depends);
     {speculative, Cond} ->
-      digraph:add_vertex(G, Cond, speculative);
+      digraph:add_vertex(G, Pid, {speculative, Cond});
     undefined ->
       ok
   end,
@@ -551,7 +553,7 @@ dump_graph(G, File) ->
     digraph:vertices(G)),
   lists:foreach(
     fun(E) ->
-        {_, V1, V2, L} = digraph:edge(G, E),
+        {_, V1, V2, _L} = digraph:edge(G, E),
         io:format(FD, "~p -> ~p;~n", [V1, V2])
     end,
     digraph:edges(G)),
@@ -620,20 +622,17 @@ dec_waiting() ->
       dec_counter(?cnt_waiting)
   end.
 
-format_thunk({Type, #anvl_memo_thunk{descr = Descr, func = Func, args = Args}}) ->
-  Modifier = case Type of
-               normal ->
-                 [];
-               speculative ->
-                 " (speculative)"
-             end,
+format_thunk({speculative, #anvl_memo_thunk{args = [Target]}}) ->
+  Bin = iolist_to_binary(["[speculative](", io_lib:format("~p", [Target]), ")"]),
+  binary:replace(Bin, <<"\"">>, <<"\\\"">>, [global]);
+format_thunk({normal, #anvl_memo_thunk{descr = Descr, func = Func, args = Args}}) ->
   FN = case is_list(Descr) of
          true ->
            Descr;
          false ->
            io_lib:format("~p", [Func])
        end,
-  Bin = iolist_to_binary([FN, $(, lists:join(", ", [io_lib:format("~p", [Arg]) || Arg <- Args]), $) | Modifier]),
+  Bin = iolist_to_binary([FN, $(, lists:join(", ", [io_lib:format("~p", [Arg]) || Arg <- Args]), $)]),
   binary:replace(Bin, <<"\"">>, <<"\\\"">>, [global]).
 
 inc_waiting_speculative() ->
