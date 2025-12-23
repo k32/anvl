@@ -34,7 +34,7 @@ build_target(Target) ->
 -behavior(gen_server).
 
 %% API:
--export([stats/0, precondition/1, precondition/2, is_changed/1]).
+-export([stats/0, precondition/1, precondition/2, is_changed/1, percent_complete/0]).
 -export([speculative/1, satisfies/1]).
 -export([get_result/1, has_result/1, set_result/2]).
 
@@ -90,6 +90,10 @@ build_target(Target) ->
 -define(cnt_complete, 2).
 -define(cnt_changed, 3).
 -define(cnt_failed, 4).
+-define(cnt_waiting, 5).
+-define(cnt_waiting_speculative, 6).
+-define(anvl_cond_waiting_for, anvl_cond_waiting_for).
+-define(anvl_cond_self, anvl_cond_self).
 -define(gauge_waited, anvl_condition_gauge_waited).
 
 %%================================================================================
@@ -104,11 +108,10 @@ start_link() ->
 -doc "Get various statistics about the run.".
 -spec stats() -> map().
 stats() ->
-  CRef = persistent_term:get(?counters),
-  #{ started => counters:get(CRef, ?cnt_started)
-   , complete => counters:get(CRef, ?cnt_complete)
-   , changed => counters:get(CRef, ?cnt_changed)
-   , failed => counters:get(CRef, ?cnt_failed)
+  #{ started => get_counter(?cnt_started)
+   , complete => get_counter(?cnt_complete)
+   , changed => get_counter(?cnt_changed)
+   , failed => get_counter(?cnt_failed)
    , top_time => stats_top(work_time, anvl_plugin:conf([debug, top, n_time]))
    , top_reds => stats_top(reductions, anvl_plugin:conf([debug, top, n_reds]))
    }.
@@ -172,12 +175,18 @@ Needless to say, this functionality is an unsound hack meant as a last-resort me
 -spec speculative(speculative()) -> t().
 speculative(Cond) ->
   Body = fun(C) ->
+             inc_waiting_speculative(),
              receive
-               {done, Bool} -> Bool;
-               unsat        -> unsat(C)
+               {done, Bool} ->
+                 dec_waiting_speculative(),
+                 Bool;
+               unsat ->
+                 dec_waiting_speculative(),
+                 unsat(C)
              end
          end,
   #anvl_memo_thunk{descr = speculative, func = Body, args = [Cond]}.
+
 
 -doc """
 This function declares that the current condition resolves a speculative condition.
@@ -231,11 +240,23 @@ set_result(Key, Value) ->
   true = ets:insert_new(?results, {Key, Value}),
   Value.
 
+-spec percent_complete() -> number().
+percent_complete() ->
+  Started = n_started(),
+  if Started > 0 ->
+      (100 * n_complete()) div Started;
+     true ->
+      100
+  end.
+
 %%================================================================================
 %% behavior callbacks
 %%================================================================================
 
--record(s, {}).
+-record(s,
+        { started :: pos_integer() | undefined
+        , complete :: pos_integer() | undefined
+        }).
 
 -doc false.
 init([]) ->
@@ -243,7 +264,8 @@ init([]) ->
   ets:new(?tab, [set, named_table, public, {write_concurrency, true}, {read_concurrency, true}, {keypos, 2}]),
   ets:new(?results, [set, named_table, public, {write_concurrency, true}, {read_concurrency, true}, {keypos, 1}]),
   ets:new(?stats_tab, [set, named_table, public, {write_concurrency, true}, {read_concurrency, false}, {keypos, 1}]),
-  persistent_term:put(?counters, counters:new(4, [])),
+  persistent_term:put(?counters, counters:new(6, [write_concurrency])),
+  timer:send_interval(1000, deadlock_detection),
   S = #s{},
   {ok, S}.
 
@@ -256,6 +278,8 @@ handle_cast(_Cast, S) ->
   {noreply, S}.
 
 -doc false.
+handle_info(deadlock_detection, S) ->
+  {noreply, do_deadlock_detection(S)};
 handle_info(_Info, S) ->
   {noreply, S}.
 
@@ -271,6 +295,7 @@ terminate(_Reason, _S) ->
 condition_entrypoint(Condition, Parent) ->
   process_flag(trap_exit, true),
   T0 = erlang:system_time(microsecond),
+  put(?anvl_cond_self, Condition),
   case ets:insert_new(?tab, #in_progress{id = key(Condition), pid = self()}) of
     false ->
       %% Race condition: the same task was spawned by other actor; retry
@@ -317,8 +342,8 @@ precondition1([], Result, _ChunkSize) ->
 precondition1(L, Result0, ChunkSize) ->
   T0 = erlang:system_time(microsecond),
   {Result1, WaitL, Rest} = precondition2(L, Result0, [], 0, ChunkSize),
-  Result2 = lists:foldl(fun({Task, MRef}, Acc) ->
-                           Acc or wait_result(Task, MRef)
+  Result2 = lists:foldl(fun({Task, Pid, MRef}, Acc) ->
+                           Acc or wait_result(Task, Pid, MRef)
                        end,
                        Result1,
                        WaitL),
@@ -335,14 +360,18 @@ precondition2([Cond | CondL], ResultAcc, WaitingAcc, Nwaiting, Nmax) ->
   case precondition_async1(Cond) of
     {done, Result} ->
       precondition2(CondL, Result or ResultAcc, WaitingAcc, Nwaiting, Nmax);
-    {in_progress, Task, MRef} ->
-      precondition2(CondL, ResultAcc, [{Task, MRef} | WaitingAcc], Nwaiting + 1, Nmax)
+    {in_progress, Task, Pid, MRef} ->
+      precondition2(CondL, ResultAcc, [{Task, Pid, MRef} | WaitingAcc], Nwaiting + 1, Nmax)
   end.
 
 
-wait_result(Condition, MRef) ->
+wait_result(Condition, Pid, MRef) ->
+  inc_waiting(),
+  put(?anvl_cond_waiting_for, {Pid, Condition}),
   receive
     {'DOWN', MRef, _, _, Reason} ->
+      dec_waiting(),
+      erase(?anvl_cond_waiting_for),
       case Reason of
         Changed when is_boolean(Changed) ->
           Changed;
@@ -369,7 +398,7 @@ exec(#anvl_memo_thunk{descr = Descr, func = Fun, args = A}) ->
       exit(unsat)
   end.
 
--spec precondition_async1(t()) -> {done, boolean()} | {in_progress, t(), reference()}.
+-spec precondition_async1(t()) -> {done, boolean()} | {in_progress, t(), pid(), reference()}.
 precondition_async1(Condition) ->
   case ets:lookup(?tab, key(Condition)) of
     [#done{changed = Changed}] ->
@@ -377,12 +406,12 @@ precondition_async1(Condition) ->
     [#failed{}] ->
       unsat(Condition);
     [#in_progress{pid = Pid}] ->
-      {in_progress, Condition, monitor(process, Pid)};
+      {in_progress, Condition, Pid, monitor(process, Pid)};
     [] ->
       {Pid, MRef} = spawn_monitor(?MODULE, condition_entrypoint, [Condition, self()]),
       receive
         {Pid, proceed} ->
-          {in_progress, Condition, MRef};
+          {in_progress, Condition, Pid, MRef};
         {'DOWN', MRef, _, _, Reason} ->
           retry = Reason,
           precondition_async1(Condition)
@@ -411,9 +440,6 @@ resolve_speculative(Result) ->
                     end
                 end,
                 get_resolve_conditions()).
-
-inc_counter(Idx) ->
-  counters:add(persistent_term:get(?counters), Idx, 1).
 
 key(#anvl_memo_thunk{func = Fun, args = Args}) ->
   {Fun, Args}.
@@ -459,3 +485,168 @@ time_waited() ->
     undefined -> 0;
     Val -> Val
   end.
+
+do_deadlock_detection(S = #s{started = Started0, complete = Complete0}) ->
+  Started = n_started(),
+  Complete = n_complete(),
+  Incomplete = Started - Complete,
+  Waiting = n_waiting(),
+  if Waiting > 0, Waiting =:= Incomplete, Started0 =:= Started, Complete0 =:= Complete ->
+      %% Counters haven't changed since the last check. It means the
+      %% system haven't made any progress since the last check:
+      logger:critical(
+        "Deadlock: no resolvable conditions left. Complete=~p, Waiting=~p, Incomplete=~p",
+        [Complete, Waiting, Incomplete]),
+      try deadlock_analysis(S)
+      catch
+        EC:Err:Stack ->
+          logger:critical(#{EC => Err, stacktrace => Stack, msg => deadlock_analysis_failed}),
+          anvl_app:exit_result(1)
+      end;
+     true ->
+      S#s{ complete = Complete
+         , started = Started
+         }
+  end.
+
+deadlock_analysis(_) ->
+  G = digraph:new([cyclic, private]),
+  deadlock_scan(G, erlang:processes()),
+  Dump = anvl_fn:workdir(["anvl_cyclic.graph"]),
+  dump_graph(G, Dump),
+  UnresolvedSpeculative = unresolved_speculative(G),
+  [logger:critical("Unresolved speculative condition: ~p", [I]) || I <- UnresolvedSpeculative],
+  anvl_app:exit_result(1).
+
+deadlock_scan(_, []) ->
+  ok;
+deadlock_scan(G, [Pid | Rest]) ->
+  case waiting_for(Pid) of
+    {depends, Cond, WaitingPid, WaitingCond} ->
+      digraph:add_vertex(G, Pid, {normal, Cond}),
+      case digraph:vertex(G, WaitingPid) of
+        false ->
+          digraph:add_vertex(G, WaitingPid, {normal, WaitingCond});
+        _ ->
+          ok
+      end,
+      digraph:add_edge(G, WaitingPid, Pid, depends);
+    {speculative, Cond} ->
+      digraph:add_vertex(G, Cond, speculative);
+    undefined ->
+      ok
+  end,
+  deadlock_scan(G, Rest).
+
+dump_graph(G, File) ->
+  logger:critical("Condition graph dump: ~p", [File]),
+  ok = filelib:ensure_dir(File),
+  {ok, FD} = file:open(File, [write]),
+  io:put_chars(FD, "digraph{\n"),
+  lists:foreach(
+    fun(V) ->
+        {_, Cond} = digraph:vertex(G, V),
+        io:format(FD, "~p [label=\"~s\"];~n", [V, format_thunk(Cond)])
+    end,
+    digraph:vertices(G)),
+  lists:foreach(
+    fun(E) ->
+        {_, V1, V2, L} = digraph:edge(G, E),
+        io:format(FD, "~p -> ~p;~n", [V1, V2])
+    end,
+    digraph:edges(G)),
+  io:put_chars(FD, "}\n"),
+  file:close(FD).
+
+unresolved_speculative(G) ->
+  lists:filter(
+    fun(V) ->
+        case digraph:vertex(G, V) of
+          {_, speculative} ->
+            true;
+          _ ->
+            false
+        end
+    end,
+    digraph:vertices(G)).
+
+waiting_for(Pid) ->
+  case erlang:process_info(Pid, [current_function]) of
+    [{current_function, {?MODULE, wait_result, 3}}] ->
+      maybe
+        [{dictionary, Dict}] ?= erlang:process_info(Pid, [dictionary]),
+        {_, Cond} ?= lists:keyfind(?anvl_cond_self, 1, Dict),
+        {_, {WaitingPid, Waiting}} ?= lists:keyfind(?anvl_cond_waiting_for, 1, Dict),
+        {depends, Cond, WaitingPid, Waiting}
+      else
+        _ -> undefined
+      end;
+    [{current_function, {?MODULE, wait_speculative, 1}}] ->
+      maybe
+        [{dictionary, Dict}] ?= erlang:process_info(Pid, [dictionary]),
+        {_, Cond} ?= lists:keyfind(?anvl_cond_self, 1, Dict),
+        {speculative, Cond}
+      else
+        _ -> undefined
+      end;
+    _ ->
+      undefined
+  end.
+
+n_started() ->
+  get_counter(?cnt_started).
+
+n_complete() ->
+  get_counter(?cnt_complete) + get_counter(?cnt_failed).
+
+n_waiting() ->
+  get_counter(?cnt_waiting) + get_counter(?cnt_waiting_speculative).
+
+inc_waiting() ->
+  case get(?anvl_cond_self) of
+    undefined ->
+      %% Caller is not a condition:
+      ok;
+    _ ->
+      inc_counter(?cnt_waiting)
+  end.
+
+dec_waiting() ->
+  case get(?anvl_cond_self) of
+    undefined ->
+      %% Caller is not a condition:
+      ok;
+    _ ->
+      dec_counter(?cnt_waiting)
+  end.
+
+format_thunk({Type, #anvl_memo_thunk{descr = Descr, func = Func, args = Args}}) ->
+  Modifier = case Type of
+               normal ->
+                 [];
+               speculative ->
+                 " (speculative)"
+             end,
+  FN = case is_list(Descr) of
+         true ->
+           Descr;
+         false ->
+           io_lib:format("~p", [Func])
+       end,
+  Bin = iolist_to_binary([FN, $(, lists:join(", ", [io_lib:format("~p", [Arg]) || Arg <- Args]), $) | Modifier]),
+  binary:replace(Bin, <<"\"">>, <<"\\\"">>, [global]).
+
+inc_waiting_speculative() ->
+  inc_counter(?cnt_waiting_speculative).
+
+dec_waiting_speculative() ->
+  dec_counter(?cnt_waiting_speculative).
+
+inc_counter(Idx) ->
+  counters:add(persistent_term:get(?counters), Idx, 1).
+
+dec_counter(Idx) ->
+  counters:sub(persistent_term:get(?counters), Idx, 1).
+
+get_counter(Idx) ->
+  counters:get(persistent_term:get(?counters), Idx).
