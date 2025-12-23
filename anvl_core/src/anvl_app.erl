@@ -23,13 +23,13 @@
 -behavior(application).
 
 %% escript entrypoint:
--export([main/1, halt/1]).
+-export([main/1]).
 
 %% behavior callbacks:
 -export([start/2, stop/1]).
 
 %% internal exports:
--export([bootstrap/0, prefix/0, help/0]).
+-export([bootstrap/0, prefix/0, help/0, exit_result/1, halt/1]).
 
 -include_lib("kernel/include/logger.hrl").
 -include("anvl.hrl").
@@ -128,6 +128,9 @@ exec_top(Preconditions) ->
               [Complete, Failed, Changed, Dt]),
   format_top("time", TopTime),
   format_top("reductions", TopReds),
+  exit_result(ExitCode).
+
+exit_result(ExitCode) ->
   case anvl_plugin:conf([shell]) of
     false ->
       ?MODULE:halt(ExitCode);

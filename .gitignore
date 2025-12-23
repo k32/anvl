@@ -17,4 +17,4 @@ doc/*
 snabbkaffe
 !vendor/snabbkaffe
 _anvl_build
-test/dummy/src
+test/dummy/src/*.erl

@@ -23,7 +23,7 @@ conf() ->
   EmuArgs = "-dist_listen false -escript main anvl_app",
   Escript = #{apps => [anvl_core, anvl_erlc, anvl_git, anvl_texinfo, lee, typerefl]},
   #{ plugins => [anvl_erlc, anvl_git, anvl_texinfo]
-   , conditions => [install, escript, docs, test, git_tests]
+   , conditions => [install, escript, docs, test, git_tests, deadlock_test]
    , erlang =>
        #{ app_paths =>
             ["${app}", "."]
@@ -66,16 +66,17 @@ apps() ->
 
 ?MEMO(test,
       begin
-        precondition(install()),
         precondition([ self_tests()
                      , compile_c_tests()
                      , dummy_app_tests()
                      , git_tests()
+                     , deadlock_test()
                      ])
       end).
 
 ?MEMO(self_tests,
       begin
+        precondition(install()),
         anvl_lib:exec("anvl", ["@escript", "anvl"]),
         anvl_lib:exec("anvl", ["@erlc", "anvl_core"]),
         1 = anvl_lib:exec_("anvl", ["blah"]),
@@ -85,12 +86,14 @@ apps() ->
 
 ?MEMO(compile_c_tests,
       begin
+        precondition(install()),
         file:del_dir_r("test/compile_c/build"),
         anvl_lib:exec("anvl", ["--log-level", "info", "-d", "test/compile_c"])
       end).
 
 ?MEMO(dummy_app_tests,
       begin
+        precondition(install()),
         file:del_dir_r("test/dummy/_anvl_build"),
         anvl_lib:exec("anvl", ["-d", "test/dummy"]),
         anvl_lib:exec("anvl", ["-d", "test/dummy", "@erlc", "dummy"])
@@ -98,11 +101,20 @@ apps() ->
 
 ?MEMO(git_tests,
       begin
+        precondition(install()),
         file:del_dir_r("test/dummy_git/_anvl_build"),
         file:del_dir_r("test/dummy_git/anvl_lock"),
         anvl_lib:exec("anvl", ["-d", "test/dummy_git", "--log-level", "info", "@erlc", "dummy_git"]),
         %% Should not sync anything:
         anvl_lib:exec("anvl", ["-d", "test/dummy_git", "--log-level", "info", "@erlc", "dummy_git"])
+      end).
+
+?MEMO(deadlock_test,
+      begin
+        precondition(install()),
+        {1, Output} = anvl_lib:exec_("anvl", ["-d", "test/deadlock", "--log-level", "critical"], [collect_output]),
+        [<<"[critical] Deadlock: no resolvable conditions left.", _/binary>> | _] = Output,
+        true
       end).
 
 install_includes(Prefix) ->
