@@ -26,6 +26,9 @@ jobs:
     - name: Bootstrap
       run: |
         ./bootstrap.escript
+    - name: Test
+      run: |
+        anvl test
     - name: Upload HTML files as artifact
       id: html
       uses: actions/upload-pages-artifact@v3
