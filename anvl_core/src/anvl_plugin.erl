@@ -2,7 +2,7 @@
 %% This file is part of anvl, a parallel general-purpose task
 %% execution tool.
 %%
-%% Copyright (C) 2024-2025 k32
+%% Copyright (C) 2024-2026 k32
 %%
 %% This program is free software: you can redistribute it and/or
 %% modify it under the terms of the GNU Lesser General Public License
@@ -71,7 +71,7 @@ Condition: @var{Plugin} has been loaded.
         anvl_core ->
           false;
         _ ->
-          Changed = if Plugin =:= anvl_erlc; Plugin =:= anvl_git; Plugin =:= anvl_texinfo ->
+          Changed = if Plugin =:= anvl_erlc; Plugin =:= anvl_git; Plugin =:= anvl_texinfo; Plugin =:= anvl_rebar3 ->
                         %% Don't recompile builtin plugins:
                         false;
                        true ->
