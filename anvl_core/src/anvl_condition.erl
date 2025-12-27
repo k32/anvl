@@ -27,7 +27,12 @@ Build system = memoization. More specifically,
 
 @example
 build_target(Target) ->
-      memoize(changed(Target) andalso rebuild(Target)).
+  memoize(
+    changed(Target) andalso
+     begin
+       rebuild(Target),
+       true
+     end).
 @end example
 """.
 
@@ -36,7 +41,7 @@ build_target(Target) ->
 %% API:
 -export([stats/0, precondition/1, precondition/2, is_changed/1, percent_complete/0]).
 -export([speculative/1, satisfies/1]).
--export([get_result/1, has_result/1, set_result/2]).
+-export([get_result/1, has_result/1, set_result/2, format_condition/1]).
 
 %% behavior callbacks:
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
@@ -49,6 +54,8 @@ build_target(Target) ->
 -include_lib("kernel/include/logger.hrl").
 -include("anvl_defs.hrl").
 -include("anvl_internals.hrl").
+
+-define(is_speculative(C), (C#anvl_memo_thunk.descr =:= speculative)).
 
 %%================================================================================
 %% Type declarations
@@ -239,6 +246,20 @@ percent_complete() ->
      true ->
       100
   end.
+
+-spec format_condition(t()) -> binary().
+format_condition(C = #anvl_memo_thunk{args = [Target]}) when ?is_speculative(C) ->
+  Bin = iolist_to_binary(["[speculative](", io_lib:format("~p", [Target]), ")"]),
+  binary:replace(Bin, <<"\"">>, <<"\\\"">>, [global]);
+format_condition(#anvl_memo_thunk{descr = Descr, func = Func, args = Args}) ->
+  FN = case is_list(Descr) of
+         true ->
+           Descr;
+         false ->
+           io_lib:format("~p", [Func])
+       end,
+  Bin = iolist_to_binary([FN, $(, lists:join(", ", [io_lib:format("~p", [Arg]) || Arg <- Args]), $)]),
+  binary:replace(Bin, <<"\"">>, <<"\\\"">>, [global]).
 
 %%================================================================================
 %% behavior callbacks
@@ -512,65 +533,57 @@ do_deadlock_detection(S = #s{started = Started0, complete = Complete0}) ->
   end.
 
 deadlock_analysis(_) ->
-  G = digraph:new([cyclic, private]),
-  deadlock_scan(G, erlang:processes()),
+  {Vertices, Edges} = deadlock_scan([], [], erlang:processes()),
   Dump = anvl_fn:workdir(["anvl_cyclic.graph"]),
-  dump_graph(G, Dump),
-  UnresolvedSpeculative = unresolved_speculative(G),
-  [logger:critical("Unresolved speculative condition: ~p", [I]) || I <- UnresolvedSpeculative],
+  dump_graph(Vertices, Edges, Dump),
+  unresolved_speculative(Vertices),
   anvl_app:exit_result(1).
 
-deadlock_scan(_, []) ->
-  ok;
-deadlock_scan(G, [Pid | Rest]) ->
+deadlock_scan(Vertices, Edges, []) ->
+  {Vertices, Edges};
+deadlock_scan(V0, E0, [Pid | Rest]) ->
   case waiting_for(Pid) of
-    {depends, Cond, WaitingPid, WaitingCond} ->
-      digraph:add_vertex(G, Pid, {normal, Cond}),
-      case digraph:vertex(G, WaitingPid) of
-        false ->
-          digraph:add_vertex(G, WaitingPid, {normal, WaitingCond});
-        _ ->
-          ok
-      end,
-      digraph:add_edge(G, WaitingPid, Pid, depends);
+    {depends, Cond, WaitingPid, _WaitingCond} ->
+      V = [{Pid, Cond} | V0],
+      E = [{WaitingPid, Pid} | E0];
     {speculative, Cond} ->
-      digraph:add_vertex(G, Pid, {speculative, Cond});
+      V = [{Pid, Cond} | V0],
+      E = E0;
     undefined ->
-      ok
+      V = V0,
+      E = E0
   end,
-  deadlock_scan(G, Rest).
+  deadlock_scan(V, E, Rest).
 
-dump_graph(G, File) ->
+dump_graph(Vertices, Edges, File) ->
   logger:critical("Condition graph dump: ~p", [File]),
   ok = filelib:ensure_dir(File),
   {ok, FD} = file:open(File, [write]),
   io:put_chars(FD, "digraph{\n"),
   lists:foreach(
-    fun(V) ->
-        {_, Cond} = digraph:vertex(G, V),
-        io:format(FD, "~p [label=\"~s\"];~n", [V, format_thunk(Cond)])
+    fun({V, Cond}) ->
+        io:format(FD, "~p [label=\"~s\"];~n", [V, format_condition(Cond)])
     end,
-    digraph:vertices(G)),
+    Vertices),
   lists:foreach(
-    fun(E) ->
-        {_, V1, V2, _L} = digraph:edge(G, E),
+    fun({V1, V2}) ->
         io:format(FD, "~p -> ~p;~n", [V1, V2])
     end,
-    digraph:edges(G)),
+    Edges),
   io:put_chars(FD, "}\n"),
   file:close(FD).
 
-unresolved_speculative(G) ->
-  lists:filter(
+unresolved_speculative(Vertices) ->
+  lists:foreach(
     fun(V) ->
-        case digraph:vertex(G, V) of
-          {_, speculative} ->
-            true;
+        case V of
+          {_, C} when ?is_speculative(C) ->
+            logger:critical("Unresolved speculative condition: ~s", [format_condition(C)]);
           _ ->
-            false
+            ok
         end
     end,
-    digraph:vertices(G)).
+    Vertices).
 
 waiting_for(Pid) ->
   case erlang:process_info(Pid, [current_function]) of
@@ -621,19 +634,6 @@ dec_waiting() ->
     _ ->
       dec_counter(?cnt_waiting)
   end.
-
-format_thunk({speculative, #anvl_memo_thunk{args = [Target]}}) ->
-  Bin = iolist_to_binary(["[speculative](", io_lib:format("~p", [Target]), ")"]),
-  binary:replace(Bin, <<"\"">>, <<"\\\"">>, [global]);
-format_thunk({normal, #anvl_memo_thunk{descr = Descr, func = Func, args = Args}}) ->
-  FN = case is_list(Descr) of
-         true ->
-           Descr;
-         false ->
-           io_lib:format("~p", [Func])
-       end,
-  Bin = iolist_to_binary([FN, $(, lists:join(", ", [io_lib:format("~p", [Arg]) || Arg <- Args]), $)]),
-  binary:replace(Bin, <<"\"">>, <<"\\\"">>, [global]).
 
 inc_waiting_speculative() ->
   inc_counter(?cnt_waiting_speculative).
