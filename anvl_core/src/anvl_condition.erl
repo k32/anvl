@@ -247,10 +247,13 @@ percent_complete() ->
       100
   end.
 
--spec format_condition(t()) -> binary().
+
+-doc """
+Pretty-print the condition.
+""".
+-spec format_condition(t()) -> iolist().
 format_condition(C = #anvl_memo_thunk{args = [Target]}) when ?is_speculative(C) ->
-  Bin = iolist_to_binary(["[speculative](", io_lib:format("~p", [Target]), ")"]),
-  binary:replace(Bin, <<"\"">>, <<"\\\"">>, [global]);
+  io_lib:format("[speculative](~p)", [Target]);
 format_condition(#anvl_memo_thunk{descr = Descr, func = Func, args = Args}) ->
   FN = case is_list(Descr) of
          true ->
@@ -258,8 +261,7 @@ format_condition(#anvl_memo_thunk{descr = Descr, func = Func, args = Args}) ->
          false ->
            io_lib:format("~p", [Func])
        end,
-  Bin = iolist_to_binary([FN, $(, lists:join(", ", [io_lib:format("~p", [Arg]) || Arg <- Args]), $)]),
-  binary:replace(Bin, <<"\"">>, <<"\\\"">>, [global]).
+  [FN, $(, lists:join(", ", [io_lib:format("~p", [Arg]) || Arg <- Args]), $)].
 
 %%================================================================================
 %% behavior callbacks
@@ -562,7 +564,8 @@ dump_graph(Vertices, Edges, File) ->
   io:put_chars(FD, "digraph{\n"),
   lists:foreach(
     fun({V, Cond}) ->
-        io:format(FD, "~p [label=\"~s\"];~n", [V, format_condition(Cond)])
+        Bin = binary:replace(iolist_to_binary(format_condition(Cond)), <<"\"">>, <<"\\\"">>),
+        io:format(FD, "~p [label=\"~s\"];~n", [V, Bin])
     end,
     Vertices),
   lists:foreach(
