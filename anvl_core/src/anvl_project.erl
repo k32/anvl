@@ -23,6 +23,7 @@ Handler of ANVL project configurations.
 """.
 
 -export([root/0, conf/2, maybe_conf/2, list_conf/2, conditions/0, plugins/1, known_projects/0, loaded/1, anvl_includes_dir/0]).
+-export([add_pre_project_load_hook/1, add_pre_project_load_hook/2]).
 
 %% lee_metatype behavior:
 -export([names/1, create/1, read_patch/2]).
@@ -60,6 +61,8 @@ An optional callback that is executed after loading the plugins and project conf
 Project can use it, for example, to install hooks.
 """.
 -callback init() -> term().
+
+-type pre_project_load_hook() :: fun((dir()) -> _).
 
 -optional_callbacks([conf/0, conf_override/1, init/0]).
 
@@ -120,6 +123,14 @@ conditions() ->
 -spec plugins(Project :: dir()) -> [anvl_plugin:t()].
 plugins(Project) ->
   conf(Project, [plugins]).
+
+-spec add_pre_project_load_hook(pre_project_load_hook()) -> ok.
+add_pre_project_load_hook(Hook) ->
+  anvl_hook:add(pre_project_load_hook, Hook).
+
+-spec add_pre_project_load_hook(integer(), pre_project_load_hook()) -> ok.
+add_pre_project_load_hook(Priority, Hook) ->
+  anvl_hook:add(pre_project_load_hook, Priority, Hook).
 
 %%================================================================================
 %% Lee metatype callbacks
@@ -184,6 +195,7 @@ config_module(ProjectRoot) ->
 
 ?MEMO(config_loaded, Dir,
       begin
+        anvl_hook:foreach(pre_project_load_hook, Dir),
         {IsNew, Module} = obtain_project_conf_module(Dir),
         anvl_condition:set_result(#conf_module_of_dir{directory = Dir}, Module),
         Conf = lee_storage:new(lee_persistent_term_storage, ?proj_conf_storage_token(Dir)),

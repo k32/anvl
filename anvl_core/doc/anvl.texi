@@ -365,6 +365,7 @@ In contrast, ANVL presents these as independent library primitives.
 @include anvl_erlc/doc/chapter.texi
 @include anvl_git/doc/chapter.texi
 @include anvl_texinfo/doc/chapter.texi
+@include anvl_rebar3/doc/chapter.texi
 
 @node Index
 @unnumbered Index

@@ -1,0 +1,6 @@
+%% -*- mode:erlang -*-
+{application, anvl_rebar3,
+ [ {description, "ANVL plugin that adds basic compatibility with rebar3 projects"}
+ , {vsn, "0.0.1"}
+ , {applications, [kernel, anvl_core]}
+ ]}.

@@ -2,7 +2,7 @@
 %% This file is part of anvl, a parallel general-purpose task
 %% execution tool.
 %%
-%% Copyright (C) 2024-2025 k32
+%% Copyright (C) 2024-2026 k32
 %%
 %% This program is free software: you can redistribute it and/or
 %% modify it under the terms of the GNU Lesser General Public License
@@ -33,7 +33,7 @@ A builtin plugin for cloning Git repositories.
 -include_lib("typerefl/include/types.hrl").
 -include_lib("anvl_core/include/anvl.hrl").
 
--type ref() :: {branch, string()} | {tag, string()}.
+-type ref() :: {branch, string()} | {tag, string()} | {ref, string()}.
 
 -reflect_type([ref/0]).
 
@@ -295,6 +295,20 @@ mirror_needs_sync(Mirror, Hash) ->
 %%--------------------------------------------------------------------------
 
 %% Get commit hash corresponding to a branch or a tag
+get_commit_hash(RepoDir, {ref, Ref}) ->
+  case anvl_lib:exec_("git",
+                      ["rev-parse", Ref],
+                      [{cd, RepoDir}, collect_output]) of
+    {0, [Hash]} ->
+      string:trim(Hash);
+    {ExitStatus, Output} ->
+      ?UNSAT( "Could not find commit ~p
+Git exit status: ~p
+Git output: ~p
+Mirror directory: ~p"
+            , [Ref, ExitStatus, Output, RepoDir]
+            )
+  end;
 get_commit_hash(RepoDir, {Kind, Ref}) ->
   Filter = case Kind of
              branch -> "--branches";

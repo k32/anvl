@@ -2,7 +2,7 @@
 %% This file is part of anvl, a parallel general-purpose task
 %% execution tool.
 %%
-%% Copyright (C) 2024-2025 k32
+%% Copyright (C) 2024-2026 k32
 %%
 %% This program is free software: you can redistribute it and/or
 %% modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +21,7 @@
 
 conf() ->
   EmuArgs = "-dist_listen false -escript main anvl_app",
-  Escript = #{apps => [anvl_core, anvl_erlc, anvl_git, anvl_texinfo, lee, typerefl]},
+  Escript = #{apps => [anvl_core, anvl_erlc, anvl_git, anvl_texinfo, anvl_rebar3, lee, typerefl]},
   #{ plugins => [anvl_erlc, anvl_git, anvl_texinfo]
    , conditions => [install, escript, docs, test, git_tests, deadlock_test]
    , erlang =>
@@ -52,7 +52,7 @@ conf() ->
    }.
 
 apps() ->
-  [anvl_core, anvl_erlc, anvl_git, anvl_texinfo].
+  [anvl_core, anvl_erlc, anvl_git, anvl_texinfo, anvl_rebar3].
 
 ?MEMO(install,
       begin

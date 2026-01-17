@@ -1,7 +1,7 @@
 -include("anvl.hrl").
 
 conf() ->
-  #{ plugins => [anvl_erlc]
+  #{ plugins => [anvl_erlc, anvl_rebar3]
    , conditions => [default]
    }.
 

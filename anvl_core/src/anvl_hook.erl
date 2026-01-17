@@ -2,7 +2,7 @@
 %% This file is part of anvl, a parallel general-purpose task
 %% execution tool.
 %%
-%% Copyright (C) 2024-2025 k32
+%% Copyright (C) 2024-2026 k32
 %%
 %% This program is free software: you can redistribute it and/or
 %% modify it under the terms of the GNU Lesser General Public License
@@ -32,7 +32,7 @@ Plugins can declare hook points and inject code into other plugin's hook points.
 
 -type hookpoint() :: term().
 
--type hook() :: fun((map()) -> term()).
+-type hook() :: fun((term()) -> term()).
 
 -define(hooks_tab, anvl_hooks_tab).
 
