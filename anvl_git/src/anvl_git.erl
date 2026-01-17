@@ -57,6 +57,7 @@ and commit @var{Hash} is checked out.
             git_checkout(Dir, Hash),
             true;
           {error, not_a_git_directory} ->
+            ?LOG_NOTICE("Cloning ~s (~p)", [Repo, Hash]),
             maybe_sync_mirror(Repo, Hash),
             ok = filelib:ensure_dir(Dir),
             anvl_lib:exec("git", ["clone", "--local", Mirror, Dir]),
@@ -261,7 +262,7 @@ maybe_sync_mirror(Repo, Hash) ->
     precondition(mirror_synced(Mirror, Repo)).
 
 mirror_needs_sync(Mirror, Hash) ->
-  case is_git_repo(Mirror) of
+  case filelib:is_dir(Mirror) of
     true ->
       case anvl_lib:exec_("git",
                           ["cat-file", "-e", <<Hash/binary, "^{commit}">>],

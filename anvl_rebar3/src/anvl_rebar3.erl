@@ -46,10 +46,10 @@ Generate anvl.erl file from rebar.conf if the former is not found in the project
 -spec maybe_generate_anvl_conf(anvl_project:dir()) -> ok.
 maybe_generate_anvl_conf(Dir) ->
   AnvlConf = filename:join(Dir, "anvl.erl"),
-  Rebar3Conf = filename:join(Dir, "rebar.conf"),
+  Rebar3Conf = filename:join(Dir, "rebar.config"),
   case {filelib:is_file(AnvlConf), filelib:is_file(Rebar3Conf)} of
     {false, true} ->
-      generate_anvl_conf(Rebar3Conf, AnvlConf),
+      ok = generate_anvl_conf(Rebar3Conf, AnvlConf),
       true;
     _ ->
       false
@@ -57,6 +57,7 @@ maybe_generate_anvl_conf(Dir) ->
 
 -spec generate_anvl_conf(file:filename(), file:filename()) -> ok.
 generate_anvl_conf(Rebar3Conf, AnvlConf) ->
+  logger:notice("Translating rebar3 conf ~s to anvl.", [Rebar3Conf]),
   {ok, OldConf} = file:consult(Rebar3Conf),
   Conf = translate_conf(OldConf),
   {ok, FD} = file:open(AnvlConf, [write]),
@@ -69,6 +70,7 @@ generate_anvl_conf(Rebar3Conf, AnvlConf) ->
 
 conf() ->
   ~p.
+
 """,
      [?MODULE, Conf])
   after
