@@ -2,7 +2,7 @@
 %% This file is part of anvl, a parallel general-purpose task
 %% execution tool.
 %%
-%% Copyright (C) 2024-2025 k32
+%% Copyright (C) 2024-2026 k32
 %%
 %% This program is free software: you can redistribute it and/or
 %% modify it under the terms of the GNU Lesser General Public License
@@ -73,7 +73,7 @@ Project can use it, for example, to install hooks.
 %%================================================================================
 
 -spec loaded(dir()) -> anvl_condition:t().
-loaded(Project) ->
+loaded(Project) when is_list(Project) ->
   config_loaded(Project).
 
 -spec conf(dir(), lee:model_key()) -> _Result.

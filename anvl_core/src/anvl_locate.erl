@@ -2,7 +2,7 @@
 %% This file is part of anvl, a parallel general-purpose task
 %% execution tool.
 %%
-%% Copyright (C) 2024-2025 k32
+%% Copyright (C) 2024-2026 k32
 %%
 %% This program is free software: you can redistribute it and/or
 %% modify it under the terms of the GNU Lesser General Public License
@@ -142,5 +142,7 @@ init_for_project(Project) ->
 %% Internal functions
 %%================================================================================
 
-set_dir(Consumer, Id, Dir) ->
+set_dir(Consumer, Id, Dir) when is_binary(Dir) ->
+  set_dir(Consumer, Id, binary_to_list(Dir));
+set_dir(Consumer, Id, Dir) when is_list(Dir) ->
   anvl_condition:set_result(#?MODULE{consumer = Consumer, id = Id}, Dir).
