@@ -2,7 +2,7 @@
 %% This file is part of anvl, a parallel general-purpose task
 %% execution tool.
 %%
-%% Copyright (C) 2024-2025 k32
+%% Copyright (C) 2024-2026 k32
 %%
 %% This program is free software: you can redistribute it and/or
 %% modify it under the terms of the GNU Lesser General Public License
@@ -564,7 +564,7 @@ dump_graph(Vertices, Edges, File) ->
   io:put_chars(FD, "digraph{\n"),
   lists:foreach(
     fun({V, Cond}) ->
-        Bin = binary:replace(iolist_to_binary(format_condition(Cond)), <<"\"">>, <<"\\\"">>),
+        Bin = binary:replace(iolist_to_binary(format_condition(Cond)), <<"\"">>, <<"\\\"">>, [global]),
         io:format(FD, "~p [label=\"~s\"];~n", [V, Bin])
     end,
     Vertices),
