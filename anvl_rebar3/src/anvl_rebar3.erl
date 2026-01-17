@@ -129,13 +129,17 @@ translate_src_dirs(Rebar3Conf) ->
                                         ["src/**"]
                                 end),
   lists:map(
-    fun({Dir, Opts}) ->
-            case proplists:get_value(recursive, Opts, true) of
-                true -> Dir ++ "**";
-                false -> Dir
-            end;
-       (Dir) when is_list(Dir) ->
-            Dir
+    fun(Input) ->
+        Dir = case Input of
+                {Dir0, Opts} ->
+                  case proplists:get_value(recursive, Opts, true) of
+                    true -> Dir0 ++ "**";
+                    false -> Dir0
+                  end;
+                Dir0 when is_list(Dir0) ->
+                  Dir0
+              end,
+        filename:join(["${src_root}", Dir, "*.erl"])
     end,
     SrcDirs ++ ExtraSrcDirs).
 
@@ -145,6 +149,9 @@ translate_git_deps(Rebar3Conf) ->
                                                     Kind =:= branch;
                                                     Kind =:= tag ->
             Item = #{id => Proj, repo => Repo, ref => {Kind, Ref}},
+            [Item | Acc];
+       ({Proj, {git, Repo, Ref}}, Acc) when is_list(Ref) ->
+            Item = #{id => Proj, repo => Repo, ref => Ref},
             [Item | Acc];
        ({Proj, Git}, _Acc) when is_tuple(Git), element(1, Git) =:= Git ->
             ?UNSAT("Cannot translate git dependency without explicit ref ~p: ~p",

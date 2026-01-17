@@ -33,7 +33,7 @@ A builtin plugin for cloning Git repositories.
 -include_lib("typerefl/include/types.hrl").
 -include_lib("anvl_core/include/anvl.hrl").
 
--type ref() :: {branch, string()} | {tag, string()} | {ref, string()}.
+-type ref() :: {branch, string()} | {tag, string()} | {commit, string()} | string().
 
 -reflect_type([ref/0]).
 
@@ -296,9 +296,9 @@ mirror_needs_sync(Mirror, Hash) ->
 %%--------------------------------------------------------------------------
 
 %% Get commit hash corresponding to a branch or a tag
-get_commit_hash(RepoDir, {ref, Ref}) ->
+get_commit_hash(RepoDir, {commit, Hash}) ->
   case anvl_lib:exec_("git",
-                      ["rev-parse", Ref],
+                      ["rev-parse", Hash],
                       [{cd, RepoDir}, collect_output]) of
     {0, [Hash]} ->
       string:trim(Hash);
@@ -307,16 +307,17 @@ get_commit_hash(RepoDir, {ref, Ref}) ->
 Git exit status: ~p
 Git output: ~p
 Mirror directory: ~p"
-            , [Ref, ExitStatus, Output, RepoDir]
+            , [Hash, ExitStatus, Output, RepoDir]
             )
   end;
-get_commit_hash(RepoDir, {Kind, Ref}) ->
-  Filter = case Kind of
-             branch -> "--branches";
-             tag -> "--tags"
+get_commit_hash(RepoDir, Ref) ->
+  Filter = case Ref of
+             {branch, B} -> ["--branches", "-s", B];
+             {tag, T} -> ["--tags", "-s", T];
+             _ when is_list(Ref) -> ["-s", Ref]
            end,
   case anvl_lib:exec_("git",
-                      ["show-ref", Filter, "-s", Ref],
+                      ["show-ref" | Filter],
                       [{cd, RepoDir}, collect_output]) of
     {0, [Hash]} ->
       string:trim(Hash);
