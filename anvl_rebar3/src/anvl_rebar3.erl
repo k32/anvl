@@ -77,6 +77,7 @@ conf() ->
     file:close(FD)
   end.
 
+-spec translate_conf(proplists:proplist()) -> map().
 translate_conf(Rebar3Conf) ->
   #{ plugins => [anvl_git, anvl_erlc, anvl_rebar3]
    , [deps, git] => translate_git_deps(Rebar3Conf)
