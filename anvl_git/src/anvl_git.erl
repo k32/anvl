@@ -179,7 +179,7 @@ project_model() ->
            #{ id =>
                 {[value],
                  #{ oneliner => "Identifier of the git dependency"
-                  , type => anvl_locate:id()
+                  , type => anvl_locate:dependency()
                   }}
             , repo =>
                 {[value],

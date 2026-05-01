@@ -2,7 +2,7 @@
 %% This file is part of anvl, a parallel general-purpose task
 %% execution tool.
 %%
-%% Copyright (C) 2024-2025 k32
+%% Copyright (C) 2024-2026 k32
 %%
 %% This program is free software: you can redistribute it and/or
 %% modify it under the terms of the GNU Lesser General Public License
@@ -43,7 +43,6 @@ main(CLIArgs) ->
   set_logger_conf(),
   application:set_env(anvl, cli_args, CLIArgs),
   {ok, _} = application:ensure_all_started(anvl_core),
-  anvl_plugin:init(),
   precondition(anvl_project:loaded(anvl_project:root())),
   case anvl_project:conditions() of
     [] ->
@@ -78,7 +77,7 @@ halt(ExitCode) ->
 bootstrap() ->
   {ok, _} = ?MODULE:start(normal, []),
   application:set_env(anvl_core, include_dir, "anvl_core/include"),
-  anvl_plugin:init(),
+  anvl_sup:start_link(),
   _ = precondition(anvl_erlc:escript(anvl_project:root(), stage2)),
   ok.
 
@@ -96,6 +95,8 @@ prefix() ->
 
 %% @hidden
 start(_StartType, _StartArgs) ->
+  anvl_locate:tab(),
+  anvl_resource:tab(),
   anvl_hook:init(),
   anvl_sup:start_link().
 

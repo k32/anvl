@@ -2,7 +2,7 @@
 %% This file is part of anvl, a parallel general-purpose task
 %% execution tool.
 %%
-%% Copyright (C) 2025 k32
+%% Copyright (C) 2025-2026 k32
 %%
 %% This program is free software: you can redistribute it and/or
 %% modify it under the terms of the GNU Lesser General Public License
@@ -41,7 +41,7 @@ Output type.
 -doc """
 Directory component.
 """.
--type component() :: string() | atom().
+-type component() :: binary() | string() | atom().
 
 %%================================================================================
 %% API functions

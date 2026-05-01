@@ -6,7 +6,7 @@
 %% This file is part of anvl, a parallel general-purpose task
 %% execution tool.
 %%
-%% Copyright (C) 2024-2025 k32
+%% Copyright (C) 2024-2026 k32
 %%
 %% This program is free software: you can redistribute it and/or
 %% modify it under the terms of the GNU Lesser General Public License
@@ -33,6 +33,7 @@ main(_Args) ->
          , {i, "vendor/erlang_qq/include"}
          , {i, "vendor/typerefl/include"}
          , {i, "vendor/lee/include"}
+         , nowarn_undefined_behaviour
          ],
   Files = [ "vendor/erlang_qq/src/erlang_qq.erl"
           , "vendor/typerefl/src/typerefl_trans.erl"
