@@ -106,6 +106,7 @@ List global configuration for a key.
 list_conf(Key) ->
   lee:list(?conf_storage, Key).
 
+-doc false.
 -spec get_project_model() -> [lee:model_module()].
 get_project_model() ->
   gen_server:call(?MODULE, get_project_model).
@@ -233,9 +234,11 @@ do_load_config(S = #s{m = Model}) ->
       anvl_app:halt(1)
   end.
 
+-doc false.
 metamodel() ->
   metamodel(true).
 
+-doc false.
 metamodel(Complete) ->
   [ lee:base_metamodel()
   , lee_metatype:create(lee_os_env, #{prefix => "ANVL_", priority => 0})
@@ -248,6 +251,7 @@ metamodel(Complete) ->
   , lee_metatype:create(anvl_resource)
   ].
 
+-doc false.
 project_metamodel() ->
   [ lee_metatype:create(lee_undocumented)
   , lee_metatype:create(lee_value)
@@ -264,11 +268,13 @@ set_root() ->
   persistent_term:put(?anvl_root_project_dir, Root),
   ok.
 
+-doc false.
 start_link_plugin(Plugin) ->
   proc_lib:start_link(?MODULE, plugin_entrypoint, [Plugin]).
 
 %% Spawn a process for each plugin, helpful if they need to create
 %% some resource tied to the lifetime of a process, e.g. an ets table.
+-doc false.
 plugin_entrypoint(Plugin) ->
   Plugin:init(),
   proc_lib:init_ack(ok),

@@ -203,6 +203,7 @@ init_for_project(Project) ->
     K <- Keys],
   ok.
 
+-doc false.
 tab() ->
   ets:new(?path_tab, [named_table, ordered_set, public, {keypos, 1}]).
 

@@ -145,10 +145,7 @@ init() ->
 -doc false.
 -spec init_for_project(anvl_project:t()) -> ok.
 init_for_project(Project) ->
-  IsGitEnabled = lists:member(
-                   anvl_git,
-                   anvl_project:conf(Project, [plugins])),
-  IsGitEnabled andalso
+  lists:member(anvl_git, anvl_project:plugins(Project)) andalso
     anvl_locate:add_hook(
       fun(Kind, Dependency) ->
           locate_in_project(Project, Kind, Dependency)

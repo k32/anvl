@@ -30,7 +30,6 @@ Handler of ANVL project configurations.
         , list_conf/2
         , conditions/0
         , plugins/1
-        , known_projects/0
         , loaded/1
         , anvl_includes_dir/0
         , is_project/1
@@ -87,18 +86,28 @@ Project can use it, for example, to install hooks.
 %% API
 %%================================================================================
 
+-doc """
+Condition: project configuariont is loaded.
+""".
 -spec loaded(t()) -> anvl_condition:t().
 loaded(Project) when is_binary(Project) ->
   loaded(binary_to_list(Project));
 loaded(Project) when is_list(Project) ->
   config_loaded(Project).
 
+-doc """
+Get a value from project configuration.
+""".
 -spec conf(t(), lee:model_key()) -> _Result.
 conf(ProjectRoot, Key) when is_binary(ProjectRoot) ->
   conf(binary_to_list(ProjectRoot), Key);
 conf(ProjectRoot, Key) when is_list(ProjectRoot) ->
   lee:get(?proj_conf_storage(ProjectRoot), Key).
 
+-doc """
+Get a value from project configuration,
+non-throwing version.
+""".
 -spec maybe_conf(t(), lee:model_key()) -> {ok, _Result} | undefined.
 maybe_conf(ProjectRoot, Key) ->
   try
@@ -109,18 +118,14 @@ maybe_conf(ProjectRoot, Key) ->
       undefined
   end.
 
+-doc """
+List project configuration.
+""".
 -spec list_conf(t(), lee:model_key()) -> list().
 list_conf(ProjectRoot, Key) when is_binary(ProjectRoot) ->
   list_conf(binary_to_list(ProjectRoot), Key);
 list_conf(ProjectRoot, Key) when is_list(ProjectRoot) ->
   lee:list(?proj_conf_storage(ProjectRoot), Key).
-
--spec known_projects() -> [t()].
-known_projects() ->
-  Root = root(),
-  %% FIXME:
-  Others = [],
-  [Root | Others].
 
 -doc """
 Return directory of the root project.
@@ -156,7 +161,7 @@ add_pre_project_load_hook(Priority, Hook) ->
 -doc """
 Get parent project.
 
-This function defaults to @code{root()} if
+This function defaults to @code{root()} if project cannot be determined.
 """.
 -spec parent() -> t().
 parent() ->
@@ -166,7 +171,9 @@ parent() ->
   end.
 
 -doc """
+Switch current project.
 
+All child conditions will inherit it.
 """.
 -spec switch_project(t()) -> ok.
 switch_project(Project) ->
