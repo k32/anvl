@@ -83,11 +83,15 @@ Project can use it, for example, to install hooks.
 %%================================================================================
 
 -spec loaded(dir()) -> anvl_condition:t().
+loaded(Project) when is_binary(Project) ->
+  loaded(binary_to_list(Project));
 loaded(Project) when is_list(Project) ->
   config_loaded(Project).
 
 -spec conf(dir(), lee:model_key()) -> _Result.
-conf(ProjectRoot, Key) ->
+conf(ProjectRoot, Key) when is_binary(ProjectRoot) ->
+  conf(binary_to_list(ProjectRoot), Key);
+conf(ProjectRoot, Key) when is_list(ProjectRoot) ->
   lee:get(?proj_conf_storage(ProjectRoot), Key).
 
 -spec maybe_conf(dir(), lee:model_key()) -> {ok, _Result} | undefined.
@@ -101,7 +105,9 @@ maybe_conf(ProjectRoot, Key) ->
   end.
 
 -spec list_conf(dir(), lee:model_key()) -> list().
-list_conf(ProjectRoot, Key) ->
+list_conf(ProjectRoot, Key) when is_binary(ProjectRoot) ->
+  list_conf(binary_to_list(ProjectRoot), Key);
+list_conf(ProjectRoot, Key) when is_list(ProjectRoot) ->
   lee:list(?proj_conf_storage(ProjectRoot), Key).
 
 -spec known_projects() -> [dir()].

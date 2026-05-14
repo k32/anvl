@@ -26,17 +26,17 @@ but acts as a broker between dependency resolver plugins (such as @ref{Git Built
 and dependency consumers.
 
 Consumer of the external dependency supplies the following parameters:
-@itemize
+@enumerate
 @item
 @code{Kind}, a type of a dependency that needs resolution.
-kinds serve as "namespaces" for the dependencies.
-For example,
+Kinds serve as "namespaces" for dependencies,
+for example,
 they allow to distinguish dependencies for different languages used within the project.
 @item
 @code{Dependency}, a term identifying the dependency.
 @item
 @code{SubDirFun}, a function that can identify a sub-dependency by inspecting contents of a directory.
-@end itemize
+@end enumerate
 
 For each @i{kind} @code{anvl_locate} maintains a search path,
 that is a list of directories.
@@ -241,6 +241,9 @@ set_location(Kind, Dependency, Owner, PathEntry, Dir) ->
   Loc = #{ project => Project
          , dir     => Dir
          },
+  ?LOG_DEBUG(
+     "Location of ~p:~p was set to ~s. Project: ~s",
+     [Kind, Dependency, Dir, Project]),
   anvl_condition:set_result(#?result_key{kind = Kind, dep = Dependency}, Loc).
 
 -spec search_path(kind(), dependency(), subdirectory_fun(), [file:filename()]) ->
@@ -258,12 +261,13 @@ search_path(Kind, Id, SubDirFun, [{Owner, PathEntry} | Path]) ->
 try_expand_path(Kind, Dependency) ->
   Fun = fun(Hook, Acc) ->
             case Hook(Kind, Dependency) of
-              {Changed, []} ->
+              {Changed, []} when is_boolean(Changed) ->
                 {true, Acc orelse Changed};
-              {Changed, NewEntries} ->
+              {Changed, NewEntries} when is_boolean(Changed),
+                                         is_list(NewEntries) ->
                 [add_path(Kind, Prio, Owner, Dir) ||
                   {Owner, Prio, Dir} <- NewEntries],
                 {false, Acc orelse Changed}
             end
         end,
-  anvl_hook:traverse(Fun, undefined, ?hookpoint).
+  anvl_hook:traverse(Fun, false, ?hookpoint).

@@ -33,9 +33,15 @@ A builtin plugin for cloning Git repositories.
 -include_lib("typerefl/include/types.hrl").
 -include_lib("anvl_core/include/anvl.hrl").
 
--type ref() :: {branch, string()} | {tag, string()} | {commit, string()} | string().
+-type ref() :: {branch, string()}
+             | {tag, string()}
+             | {commit, string()}
+             | string().
 
--reflect_type([ref/0]).
+-type provides() :: undefined
+                  | [{anvl_locate:kind(), anvl_locate:dependency()}].
+
+-reflect_type([ref/0, provides/0]).
 
 -doc """
 Condition: repository @var{Repo} is cloned to directory @var{Dir},
@@ -139,15 +145,15 @@ init() ->
 -doc false.
 -spec init_for_project(anvl_project:dir()) -> ok.
 init_for_project(Project) ->
-  Prio = case anvl_project:root() of
-           Project -> -50;
-           _       -> -100
-         end,
-  anvl_locate:add_hook(
-    fun(#{consumer := Consumer, id := Id}) ->
-        locate_in_project(Project, Consumer, Id)
-    end,
-    Prio).
+  IsGitEnabled = lists:member(
+                   anvl_git,
+                   anvl_project:conf(Project, [plugins])),
+  IsGitEnabled andalso
+    anvl_locate:add_hook(
+      fun(Kind, Dependency) ->
+          locate_in_project(Project, Kind, Dependency)
+      end),
+  ok.
 
 -doc false.
 model() ->
@@ -173,36 +179,73 @@ project_model() ->
   #{deps =>
       #{git =>
           {[map],
-           #{ key_elements => [[id]]
+           #{ key_elements => [[repo]]
             , oneliner => "Git dependencies"
             },
-           #{ id =>
-                {[value],
-                 #{ oneliner => "Identifier of the git dependency"
-                  , type => anvl_locate:dependency()
-                  }}
-            , repo =>
+           #{ repo =>
                 {[value],
                  #{ oneliner => "URL of the Git repo"
                   , type => string()
+                  }}
+            %% , uid =>
+            %%     {[value],
+            %%      #{ oneliner => "Unique identifier of the dependency"
+            %%       , doc => """
+            %%                Normally, this field is not needed.
+            %%                It can be used to when multiple dependencies use the same Git repository.
+            %%                """
+            %%       , type => term()
+            %%       , default => undefined
+            %%       }}
+            , provides =>
+                {[value],
+                 #{ oneliner => "List of dependencies provided by the repository"
+                  , doc => """
+                           This field can be used to resolve dependency conditionally.
+                           If it is set to @code{undefined},
+                           then ANVL will always check out the repository during dependency resolution,
+                           since it doesn't have information what resources it provides.
+                           """
+                  , type => provides()
+                  , default => undefined
                   }}
             , ref =>
                 {[value],
                  #{ oneliner => "Reference to checkout"
                   , type => ref()
                   }}
+            , priority =>
+                {[value],
+                 #{ oneliner => "Priority of this repository in the dependency resolution"
+                  , type => integer()
+                  , default => 0
+                  }}
             }}}}.
 
-locate_in_project(Project, Consumer, Id) ->
-  case anvl_project:list_conf(Project, [deps, git, {Id}]) of
-    [] ->
-      false;
-    [Key] ->
-      Repo = anvl_project:conf(Project, Key ++ [repo]),
-      Ref = anvl_project:conf(Project, Key ++ [ref]),
-      Changed = precondition(dependency_resolved(Project, Consumer, Id, Repo, Ref)),
-      {Changed, dir(Consumer, Id)}
-  end.
+locate_in_project(Project, Kind, Dependency) ->
+  GitDeps = anvl_project:list_conf(Project, [deps, git, {}]),
+  lists:foldl(
+    fun([deps, git, {Repo} = K], {ChangedAcc, PathAcc}) ->
+        Provides = anvl_project:conf(Project, [deps, git, K, provides]),
+        IsCandidate = case Provides of
+                        undefined -> true;
+                        _ -> lists:member({Kind, Dependency}, Provides)
+                      end,
+        case IsCandidate of
+          false ->
+            {ChangedAcc, PathAcc};
+          true ->
+            Ref = anvl_project:conf(Project, [deps, git, K, ref]),
+            Prio = anvl_project:conf(Project, [deps, git, K, priority]),
+            Changed = precondition(dependency_resolved(Project, Kind, Dependency, Repo, Ref)),
+            Dir = dir(Kind, Dependency),
+            { ChangedAcc orelse Changed
+            , [{Project, Prio, Dir} | PathAcc]
+            }
+        end
+    end,
+    {false, []},
+    GitDeps).
 
 ?MEMO(dependency_resolved, Project, Consumer, Id, Repo, Ref,
       begin
