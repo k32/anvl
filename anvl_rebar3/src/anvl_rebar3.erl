@@ -43,7 +43,7 @@ A plugin that adds basic compatibility with rebar3 projects.
 -doc """
 Generate anvl.erl file from rebar.conf if the former is not found in the project directory.
 """.
--spec maybe_generate_anvl_conf(anvl_project:dir()) -> ok.
+-spec maybe_generate_anvl_conf(anvl_project:t()) -> ok.
 maybe_generate_anvl_conf(Dir) ->
   AnvlConf = filename:join(Dir, "anvl.erl"),
   Rebar3Conf = filename:join(Dir, "rebar.config"),

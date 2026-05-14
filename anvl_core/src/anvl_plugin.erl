@@ -63,7 +63,7 @@ An ANVL API for managing plugins.
 
 -callback init() -> ok.
 
--callback init_for_project(anvl_project:dir()) -> ok.
+-callback init_for_project(anvl_project:t()) -> ok.
 
 -optional_callbacks([conditions/1]).
 
@@ -121,7 +121,7 @@ set_complete() ->
   gen_server:call(?MODULE, set_complete).
 
 -doc false.
--spec init_for_project(module(), anvl_project:dir()) -> ok.
+-spec init_for_project(module(), anvl_project:t()) -> ok.
 init_for_project(Plugin, Dir) ->
   Plugin:init_for_project(Dir).
 

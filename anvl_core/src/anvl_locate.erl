@@ -102,7 +102,7 @@ A function that tries to locate a dependency in a local directory.
 
 -type locate_hook_ret() ::
         { _Changed :: boolean()
-        , [{anvl_project:dir(), _Prio :: integer(), file:filename()}]
+        , [{anvl_project:t(), _Prio :: integer(), file:filename()}]
         }.
 
 -type locate_hook() :: fun((kind(), dependency()) -> locate_hook_ret()).
@@ -137,7 +137,7 @@ or to parent project that declared the dependency otherwise.
 """.
 -spec location(kind(), dependency()) ->
         #{ dir     := file:filename()
-         , project := anvl_project:dir()
+         , project := anvl_project:t()
          }.
 location(Kind, Id) ->
   anvl_condition:get_result(#?result_key{kind = Kind, dep = Id}).
@@ -163,7 +163,7 @@ Add a local directory to the search path.
 
 Entries with higher @code{Prio} are searched first.
 """.
--spec add_path(kind(), integer(), anvl_project:dir(), file:filename()) -> ok.
+-spec add_path(kind(), integer(), anvl_project:t(), file:filename()) -> ok.
 add_path(Kind, Prio0, Owner, Path) ->
   Prio = case anvl_project:root() of
            Owner -> Prio0;
@@ -175,7 +175,7 @@ add_path(Kind, Prio0, Owner, Path) ->
 -doc """
 Get local search path for the given dependency type or @code{'_'} (wildcard).
 """.
--spec get_path(kind() | '_') -> [{anvl_project:dir(), file:filename()}].
+-spec get_path(kind() | '_') -> [{anvl_project:t(), file:filename()}].
 get_path(Consumer) ->
   MS = {{#path{kind = Consumer, path = '$1', _ = '_'}, '$2'}, [], [{{'$2', '$1'}}]},
   ets:select(?path_tab, [MS]).
@@ -232,7 +232,7 @@ tab() ->
           end
       end).
 
--spec set_location(kind(), dependency(), anvl_project:dir(), file:filename(), file:filename()) -> ok.
+-spec set_location(kind(), dependency(), anvl_project:t(), file:filename(), file:filename()) -> ok.
 set_location(Kind, Dependency, Owner, PathEntry, Dir) ->
   Project = case anvl_project:is_project(PathEntry) of
               true  -> PathEntry;

@@ -2,7 +2,7 @@
 %% This file is part of anvl, a parallel general-purpose task
 %% execution tool.
 %%
-%% Copyright (C) 2024-2025 k32
+%% Copyright (C) 2024-2026 k32
 %%
 %% This program is free software: you can redistribute it and/or
 %% modify it under the terms of the GNU Lesser General Public License
@@ -172,7 +172,7 @@ available() ->
 Condition: all texinfo sources listend in the project configuration
 are compiled to all formats requested by the project.
 """.
--spec compiled(anvl_project:dir()) -> anvl_condition:t().
+-spec compiled(anvl_project:t()) -> anvl_condition:t().
 ?MEMO(compiled, Project,
       begin
         Formats = anvl_project:conf(Project, [texinfo, formats]),
@@ -188,7 +188,7 @@ are compiled to all formats requested by the project.
 Condition: a source file @var{DocSrc} in project @var{Project}
 is compiled to format @var{Format}.
 """.
--spec compiled(anvl_project:dir(), file:filename(), doc_format()) -> anvl_condition:t().
+-spec compiled(anvl_project:t(), file:filename(), doc_format()) -> anvl_condition:t().
 ?MEMO(compiled, Project, DocSrc, Format,
       begin
         Dir = doc_dir([]),

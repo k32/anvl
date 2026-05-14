@@ -23,6 +23,8 @@ Handler of ANVL project configurations.
 """.
 
 -export([ root/0
+        , parent/0
+        , switch_project/1
         , conf/2
         , maybe_conf/2
         , list_conf/2
@@ -52,7 +54,10 @@ Handler of ANVL project configurations.
 -define(mt_conf_tree_key, [?MODULE, conf_tree]).
 -define(mt_conf_overrides, [?MODULE, overrides]).
 
--type dir() :: file:filename_all().
+-doc """
+Projects are identified by the directory name containing @file{anvl.erl}.
+""".
+-type t() :: file:filename().
 
 -type conf_tree() :: #{atom() | [atom()] => conf_tree() | [conf_tree()] | term()}.
 
@@ -64,7 +69,7 @@ Handler of ANVL project configurations.
 -doc """
 @xref{Project Configuration Override}
 """.
--callback conf_override(dir()) -> lee:patch().
+-callback conf_override(t()) -> lee:patch().
 
 -doc """
 An optional callback that is executed after loading the plugins and project configuration.
@@ -72,29 +77,29 @@ Project can use it, for example, to install hooks.
 """.
 -callback init() -> term().
 
--type pre_project_load_hook() :: fun((dir()) -> _).
+-type pre_project_load_hook() :: fun((t()) -> _).
 
 -optional_callbacks([conf/0, conf_override/1, init/0]).
 
--export_type([dir/0, conf_tree/0]).
+-export_type([t/0, conf_tree/0]).
 
 %%================================================================================
 %% API
 %%================================================================================
 
--spec loaded(dir()) -> anvl_condition:t().
+-spec loaded(t()) -> anvl_condition:t().
 loaded(Project) when is_binary(Project) ->
   loaded(binary_to_list(Project));
 loaded(Project) when is_list(Project) ->
   config_loaded(Project).
 
--spec conf(dir(), lee:model_key()) -> _Result.
+-spec conf(t(), lee:model_key()) -> _Result.
 conf(ProjectRoot, Key) when is_binary(ProjectRoot) ->
   conf(binary_to_list(ProjectRoot), Key);
 conf(ProjectRoot, Key) when is_list(ProjectRoot) ->
   lee:get(?proj_conf_storage(ProjectRoot), Key).
 
--spec maybe_conf(dir(), lee:model_key()) -> {ok, _Result} | undefined.
+-spec maybe_conf(t(), lee:model_key()) -> {ok, _Result} | undefined.
 maybe_conf(ProjectRoot, Key) ->
   try
     Val = conf(ProjectRoot, Key),
@@ -104,13 +109,13 @@ maybe_conf(ProjectRoot, Key) ->
       undefined
   end.
 
--spec list_conf(dir(), lee:model_key()) -> list().
+-spec list_conf(t(), lee:model_key()) -> list().
 list_conf(ProjectRoot, Key) when is_binary(ProjectRoot) ->
   list_conf(binary_to_list(ProjectRoot), Key);
 list_conf(ProjectRoot, Key) when is_list(ProjectRoot) ->
   lee:list(?proj_conf_storage(ProjectRoot), Key).
 
--spec known_projects() -> [dir()].
+-spec known_projects() -> [t()].
 known_projects() ->
   Root = root(),
   %% FIXME:
@@ -121,7 +126,7 @@ known_projects() ->
 Return directory of the root project.
 Root project is the one where @command{anvl} was called.
 """.
--spec root() -> dir().
+-spec root() -> t().
 root() ->
   persistent_term:get(?anvl_root_project_dir).
 
@@ -136,7 +141,7 @@ conditions() ->
                         Plugins),
   custom_conditions(AdHoc) ++ lists:append(AdHoc).
 
--spec plugins(Project :: dir()) -> [anvl_plugin:t()].
+-spec plugins(Project :: t()) -> [anvl_plugin:t()].
 plugins(Project) ->
   conf(Project, [plugins]).
 
@@ -147,6 +152,31 @@ add_pre_project_load_hook(Hook) ->
 -spec add_pre_project_load_hook(integer(), pre_project_load_hook()) -> ok.
 add_pre_project_load_hook(Priority, Hook) ->
   anvl_hook:add(pre_project_load_hook, Priority, Hook).
+
+-doc """
+Get parent project.
+
+This function defaults to @code{root()} if
+""".
+-spec parent() -> t().
+parent() ->
+  case group_leader_to_project(group_leader()) of
+    undefined -> root();
+    Proj      -> Proj
+  end.
+
+-doc """
+
+""".
+-spec switch_project(t()) -> ok.
+switch_project(Project) ->
+  case project_to_group_leader(Project) of
+    Pid when is_pid(Pid) ->
+      group_leader(Pid, self()),
+      ok;
+    undefined ->
+      exit({no_such_project, Project})
+  end.
 
 %%================================================================================
 %% Lee metatype callbacks
@@ -223,6 +253,7 @@ config_module(ProjectRoot) ->
         anvl_condition:set_result(#conf_module_of_dir{directory = Dir}, Module),
         Conf = lee_storage:new(lee_persistent_term_storage, ?proj_conf_storage_token(Dir)),
         load_project_conf(IsNew, Dir, Module, Conf),
+        set_project_gl(Dir, self()),
         false
       end).
 
@@ -346,3 +377,26 @@ read_project_conf(ProjectDir, ConfTree, Overrides, Data0) ->
 
 project_config_file(Dir) ->
   filename:join(Dir, "anvl.erl").
+
+%% Currently we use group leader as a project marker. This is,
+%% obviously, a hack. A more reliable method should be implemented
+%% eventually. Changing the group leader has undesirable side effects:
+%% for example, application controller won't force stop processes when
+%% `anvl_core' application is stopped. But stopping anvl_core is
+%% currently not supported anyway.
+-record(anvl_gl2project_pt, {pid :: pid()}).
+-record(anvl_project2gl_pt, {project :: t()}).
+
+-spec set_project_gl(t(), pid()) -> ok.
+set_project_gl(Project, Pid) ->
+  persistent_term:put(#anvl_gl2project_pt{pid = Pid}, Project),
+  persistent_term:put(#anvl_project2gl_pt{project = Project}, Pid),
+  ok.
+
+-spec group_leader_to_project(pid()) -> t() | undefined.
+group_leader_to_project(Pid) ->
+  persistent_term:get(#anvl_gl2project_pt{pid = Pid}, undefined).
+
+-spec project_to_group_leader(t()) -> pid() | undefined.
+project_to_group_leader(Project) ->
+  persistent_term:get(#anvl_project2gl_pt{project = Project}, undefined).

@@ -62,7 +62,7 @@ Build context: a summary of options and data about the application
 that is available at its build time.
 """.
 -type context() ::
-        #{ project := anvl_project:dir()
+        #{ project := anvl_project:t()
          , app := atom()
          , src_root := file:filename_all()
          , build_root := file:filename_all()
@@ -95,8 +95,8 @@ This type is an extention of @ref{t:anvl_erlc:context/0,context/0}.
 -define(app_info(PROFILE, APP), {?MODULE, app_info, PROFILE, APP}).
 -define(context(PROFILE, APP), {?MODULE, context, PROFILE, APP}).
 
--record(erlc_pre_compile_hook, {project :: anvl_project:dir()}).
--record(erlc_app_spec_hook, {project :: anvl_project:dir()}).
+-record(erlc_pre_compile_hook, {project :: anvl_project:t()}).
+-record(erlc_app_spec_hook, {project :: anvl_project:t()}).
 
 -reflect_type([profile/0, compile_options/0, escript_name/0, context/0, application_spec/0]).
 
@@ -112,7 +112,7 @@ app_file(Ctx) ->
 beam_file(#{build_dir := BuildDir}, Module) ->
   filename:join([BuildDir, "ebin", atom_to_list(Module) ++ ".beam"]).
 
--spec add_app_spec_hook(anvl_project:dir(), fun((application_spec()) -> application_spec())) -> ok.
+-spec add_app_spec_hook(anvl_project:t(), fun((application_spec()) -> application_spec())) -> ok.
 add_app_spec_hook(Project, Hook) ->
   anvl_hook:add(#erlc_app_spec_hook{project = Project}, Hook).
 
@@ -121,7 +121,7 @@ Add a pre-compile hook.
 Functions hooked there will run after the dependencies are satisfied,
 but before building the application itself.
 """.
--spec add_pre_compile_hook(anvl_project:dir(), fun((context()) -> boolean())) -> ok.
+-spec add_pre_compile_hook(anvl_project:t(), fun((context()) -> boolean())) -> ok.
 add_pre_compile_hook(Project, Fun) ->
   anvl_hook:add(#erlc_pre_compile_hook{project = Project}, Fun).
 
@@ -605,7 +605,7 @@ app_src(App, AppRoot) ->
       ?UNSAT("Malformed or missing ~s file ~p", [File, Error])
   end.
 
--spec app_src_path(anvl_project:dir(), application()) -> file:filename().
+-spec app_src_path(anvl_project:t(), application()) -> file:filename().
 app_src_path(AppRoot, App) ->
   template("${root}/src/${app}.app.src", #{app => App, root => AppRoot}, path).
 

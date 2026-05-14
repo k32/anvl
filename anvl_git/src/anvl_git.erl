@@ -143,7 +143,7 @@ init() ->
   ok = anvl_resource:declare(git, 5).
 
 -doc false.
--spec init_for_project(anvl_project:dir()) -> ok.
+-spec init_for_project(anvl_project:t()) -> ok.
 init_for_project(Project) ->
   IsGitEnabled = lists:member(
                    anvl_git,
