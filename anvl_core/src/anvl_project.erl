@@ -23,8 +23,6 @@ Handler of ANVL project configurations.
 """.
 
 -export([ root/0
-        , parent/0
-        , switch_project/1
         , conf/2
         , maybe_conf/2
         , list_conf/2
@@ -158,33 +156,6 @@ add_pre_project_load_hook(Hook) ->
 add_pre_project_load_hook(Priority, Hook) ->
   anvl_hook:add(pre_project_load_hook, Priority, Hook).
 
--doc """
-Get parent project.
-
-This function defaults to @code{root()} if project cannot be determined.
-""".
--spec parent() -> t().
-parent() ->
-  case group_leader_to_project(group_leader()) of
-    undefined -> root();
-    Proj      -> Proj
-  end.
-
--doc """
-Switch current project.
-
-All child conditions will inherit it.
-""".
--spec switch_project(t()) -> ok.
-switch_project(Project) ->
-  case project_to_group_leader(Project) of
-    Pid when is_pid(Pid) ->
-      group_leader(Pid, self()),
-      ok;
-    undefined ->
-      exit({no_such_project, Project})
-  end.
-
 %%================================================================================
 %% Lee metatype callbacks
 %%================================================================================
@@ -260,7 +231,6 @@ config_module(ProjectRoot) ->
         anvl_condition:set_result(#conf_module_of_dir{directory = Dir}, Module),
         Conf = lee_storage:new(lee_persistent_term_storage, ?proj_conf_storage_token(Dir)),
         load_project_conf(IsNew, Dir, Module, Conf),
-        set_project_gl(Dir, self()),
         false
       end).
 
@@ -384,26 +354,3 @@ read_project_conf(ProjectDir, ConfTree, Overrides, Data0) ->
 
 project_config_file(Dir) ->
   filename:join(Dir, "anvl.erl").
-
-%% Currently we use group leader as a project marker. This is,
-%% obviously, a hack. A more reliable method should be implemented
-%% eventually. Changing the group leader has undesirable side effects:
-%% for example, application controller won't force stop processes when
-%% `anvl_core' application is stopped. But stopping anvl_core is
-%% currently not supported anyway.
--record(anvl_gl2project_pt, {pid :: pid()}).
--record(anvl_project2gl_pt, {project :: t()}).
-
--spec set_project_gl(t(), pid()) -> ok.
-set_project_gl(Project, Pid) ->
-  persistent_term:put(#anvl_gl2project_pt{pid = Pid}, Project),
-  persistent_term:put(#anvl_project2gl_pt{project = Project}, Pid),
-  ok.
-
--spec group_leader_to_project(pid()) -> t() | undefined.
-group_leader_to_project(Pid) ->
-  persistent_term:get(#anvl_gl2project_pt{pid = Pid}, undefined).
-
--spec project_to_group_leader(t()) -> pid() | undefined.
-project_to_group_leader(Project) ->
-  persistent_term:get(#anvl_project2gl_pt{project = Project}, undefined).
