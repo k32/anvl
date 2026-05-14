@@ -2,7 +2,7 @@
 %% This file is part of anvl, a parallel general-purpose task
 %% execution tool.
 %%
-%% Copyright (C) 2025 k32
+%% Copyright (C) 2025-2026 k32
 %%
 %% This program is free software: you can redistribute it and/or
 %% modify it under the terms of the GNU Lesser General Public License
@@ -126,19 +126,16 @@ project_model() ->
     , deps =>
         #{local =>
             {[map],
-             #{ oneliner => "Local search paths used by locate"
-              , key_elements => [[dir]]
+             #{ oneliner => "Local dependency search path"
+              , key_elements => [[kind], [dir]]
               },
              #{ dir =>
                   {[value],
-                   #{ oneliner => "Search path"
+                   #{ oneliner => "Directory"
                     , doc      =>
                         """
-                        Supported substitutions:
-                        @itemize
-                        @item @code{$@{id@}}
-                        @item @code{$@{consumer@}}
-                        @end itemize
+                        Add directories to the search path using a
+                        wildcard pattern relative to the project root.
                         """
                     , type     => string()
                     }}
@@ -148,11 +145,10 @@ project_model() ->
                     , type     => integer()
                     , default  => 0
                     }}
-              , consumer =>
+              , kind =>
                   {[value],
                    #{ oneliner => "Limit scope of the search path the specified consumers"
-                    , type     => anvl_locate:consumer_filter()
-                    , default  => all
+                    , type     => anvl_locate:kind()
                     }}
               }}}
     }.

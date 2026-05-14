@@ -41,7 +41,7 @@ build_target(Target) ->
 %% API:
 -export([stats/0, precondition/1, precondition/2, is_changed/1, percent_complete/0]).
 -export([speculative/1, satisfies/1]).
--export([get_result/1, has_result/1, set_result/2, format_condition/1]).
+-export([get_result/1, maybe_get_result/1, has_result/1, set_result/2, format_condition/1]).
 
 %% behavior callbacks:
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
@@ -222,6 +222,15 @@ get_result(Key) ->
       Value;
     _ ->
       error({no_result, Key})
+  end.
+
+-spec maybe_get_result(_Key) -> {value, _Value} | false.
+maybe_get_result(Key) ->
+  case ets:lookup(?results, Key) of
+    [{_, Value}] ->
+      {value, Value};
+    _ ->
+      false
   end.
 
 -spec has_result(_Key) -> boolean().

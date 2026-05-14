@@ -22,7 +22,17 @@
 Handler of ANVL project configurations.
 """.
 
--export([root/0, conf/2, maybe_conf/2, list_conf/2, conditions/0, plugins/1, known_projects/0, loaded/1, anvl_includes_dir/0]).
+-export([ root/0
+        , conf/2
+        , maybe_conf/2
+        , list_conf/2
+        , conditions/0
+        , plugins/1
+        , known_projects/0
+        , loaded/1
+        , anvl_includes_dir/0
+        , is_project/1
+        ]).
 -export([add_pre_project_load_hook/1, add_pre_project_load_hook/2]).
 
 %% lee_metatype behavior:
@@ -73,11 +83,15 @@ Project can use it, for example, to install hooks.
 %%================================================================================
 
 -spec loaded(dir()) -> anvl_condition:t().
+loaded(Project) when is_binary(Project) ->
+  loaded(binary_to_list(Project));
 loaded(Project) when is_list(Project) ->
   config_loaded(Project).
 
 -spec conf(dir(), lee:model_key()) -> _Result.
-conf(ProjectRoot, Key) ->
+conf(ProjectRoot, Key) when is_binary(ProjectRoot) ->
+  conf(binary_to_list(ProjectRoot), Key);
+conf(ProjectRoot, Key) when is_list(ProjectRoot) ->
   lee:get(?proj_conf_storage(ProjectRoot), Key).
 
 -spec maybe_conf(dir(), lee:model_key()) -> {ok, _Result} | undefined.
@@ -91,7 +105,9 @@ maybe_conf(ProjectRoot, Key) ->
   end.
 
 -spec list_conf(dir(), lee:model_key()) -> list().
-list_conf(ProjectRoot, Key) ->
+list_conf(ProjectRoot, Key) when is_binary(ProjectRoot) ->
+  list_conf(binary_to_list(ProjectRoot), Key);
+list_conf(ProjectRoot, Key) when is_list(ProjectRoot) ->
   lee:list(?proj_conf_storage(ProjectRoot), Key).
 
 -spec known_projects() -> [dir()].
@@ -172,6 +188,13 @@ anvl_includes_dir() ->
       Dir
   end.
 
+-doc """
+Return @code{true} if input directory is an ANVL project.
+""".
+-spec is_project(file:filename()) -> boolean().
+is_project(Dir) ->
+  filelib:is_file(project_config_file(Dir)).
+
 %%================================================================================
 %% Internal functions
 %%================================================================================
@@ -204,7 +227,7 @@ config_module(ProjectRoot) ->
       end).
 
 obtain_project_conf_module(Dir) ->
-  ConfFile = filename:join(Dir, "anvl.erl"),
+  ConfFile = project_config_file(Dir),
   case filelib:is_file(ConfFile) of
     true ->
       Module = anvl_config_module(Dir),
@@ -320,3 +343,6 @@ read_project_conf(ProjectDir, ConfTree, Overrides, Data0) ->
       [logger:critical(E) || E <- Errors],
       ?UNSAT("Project model is invalid! (Likely caused by a plugin)", [])
   end.
+
+project_config_file(Dir) ->
+  filename:join(Dir, "anvl.erl").

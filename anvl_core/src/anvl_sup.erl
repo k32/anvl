@@ -2,7 +2,7 @@
 %% This file is part of anvl, a parallel general-purpose task
 %% execution tool.
 %%
-%% Copyright (C) 2024-2025 k32
+%% Copyright (C) 2024-2026 k32
 %%
 %% This program is free software: you can redistribute it and/or
 %% modify it under the terms of the GNU Lesser General Public License
@@ -23,13 +23,19 @@
 -behavior(supervisor).
 
 %% API:
--export([start_link/0, start_link_resource_sup/0, init_plugins/0, ensure_resource/1]).
+-export([ start_link/0
+        , init_plugins/0
+        , ensure_resource/1
+        , ensure_plugin/1
+        ]).
 
 %% behavior callbacks:
 -export([init/1]).
 
 %% internal exports:
--export([]).
+-export([ start_link_resource_sup/0
+        , start_link_plugin_sup/0
+        ]).
 
 -export_type([]).
 
@@ -39,6 +45,7 @@
 
 -define(SUP, ?MODULE).
 -define(RES_SUP, anvl_resource_sup).
+-define(PLUG_SUP, anvl_plugin_sup).
 
 -spec start_link() -> supervisor:startlink_ret().
 start_link() ->
@@ -48,12 +55,19 @@ start_link() ->
 start_link_resource_sup() ->
   supervisor:start_link({local, ?RES_SUP}, ?MODULE, resources).
 
+-spec start_link_plugin_sup() -> supervisor:startlink_ret().
+start_link_plugin_sup() ->
+  supervisor:start_link({local, ?PLUG_SUP}, ?MODULE, plugins).
+
 init_plugins() ->
   {ok, _} = supervisor:start_child(?SUP, worker(anvl_plugin)),
   ok.
 
 ensure_resource(Resource) ->
   supervisor:start_child(?RES_SUP, [Resource]).
+
+ensure_plugin(Plugin) ->
+  supervisor:start_child(?PLUG_SUP, [Plugin]).
 
 %%================================================================================
 %% behavior callbacks
@@ -66,15 +80,36 @@ init(top) ->
                  , shutdown => infinity
                  , type     => supervisor
                  },
-  Children = [ResourceSup, worker(anvl_condition)],
+  PluginSup = #{ id       => plugin
+               , start    => {?MODULE, start_link_plugin_sup, []}
+               , restart  => permanent
+               , shutdown => infinity
+               , type     => supervisor
+               },
+  Children = [ ResourceSup
+             , PluginSup
+             , worker(anvl_condition)
+             , worker(anvl_plugin) %% Plugin manager
+             ],
   SupFlags = #{ strategy      => one_for_one
               , intensity     => 0
               , period        => 10
               , auto_shutdown => never
               },
   {ok, {SupFlags, Children}};
+init(plugins) ->
+  SupFlags = #{ strategy      => simple_one_for_one
+              , intensity     => 0
+              , period        => 1
+              },
+  Children = #{ id       => worker
+              , type     => worker
+              , restart  => permanent
+              , shutdown => 5_000
+              , start    => {anvl_plugin, start_link_plugin, []}
+              },
+  {ok, {SupFlags, [Children]}};
 init(resources) ->
-  anvl_resource:tab(),
   Children = [#{ id       => resource
                , start    => {anvl_resource, start_link, []}
                , shutdown => 100

@@ -354,12 +354,11 @@ project_model() ->
 
 -doc false.
 init() ->
-  ok = anvl_resource:declare(erlc, 1),
-  ok.
+  anvl_resource:declare(erlc, 100).
 
 -doc false.
-init_for_project(_Project) ->
-  ok.
+init_for_project(Project) ->
+  anvl_locate:add_path(otp_application, 0, Project, Project).
 
 -doc false.
 conditions(ProjectRoot) ->
@@ -528,11 +527,6 @@ Precondition: module defined in the same application is compiled and loaded.
 %% Internal functions
 %%================================================================================
 
--spec app_context(profile(), application()) -> context().
-app_context(Profile, App) ->
-  _ = precondition(app_compiled(Profile, App)),
-  persistent_term:get(?context(Profile, App)).
-
 get_escripts(ProjectRoot) ->
   [begin
       Escripts = anvl_plugin:conf(Key ++ [names]),
@@ -663,68 +657,25 @@ non_otp_apps(Apps) ->
 %% Locating application sources
 %%--------------------------------------------------------------------------------
 
--spec src_root(profile(), application()) -> file:filename_all() | builtin.
+-spec src_root(profile(), application()) -> {file:filename(), file:filename()}.
 src_root(_Profile, App) ->
-  _ = precondition(sources_discovered(App)),
-  get_app_location(App).
+  _ = precondition(anvl_locate:located(otp_application, fun locate_in_project/3, App)),
+  #{project := Proj, dir := Dir} = anvl_locate:location(otp_application, App),
+  {Proj, Dir}.
 
--spec sources_discovered(application()) -> anvl_condition:t().
-?MEMO(sources_discovered, App,
-      begin
-        ParentProject = anvl_project:root(),
-        case locate_in_project(ParentProject, App) of
-          {ok, AppRoot} ->
-            set_app_location(App, anvl_project:root(), AppRoot),
-            false;
-          undefined ->
-            Changed = precondition(anvl_locate:located(?MODULE, App)),
-            ChildProject = anvl_locate:dir(?MODULE, App),
-            Loaded = precondition(anvl_project:loaded(ChildProject)),
-            case locate_in_project(ChildProject, App) of
-              {ok, AppRoot} ->
-                set_app_location(App, ChildProject, AppRoot),
-                Changed or Loaded;
-              undefined ->
-                ?UNSAT("Application ~p is not found in project ~p, as requested by ~p", [App, ChildProject, ParentProject])
-            end
-        end
-      end).
-
-locate_in_project(Project, App) ->
-  traverse_locate_methods(
-    [fun() ->
-         AppRoot = filename:join(
-                     Project,
-                     template(Template, #{app => App}, path)),
+locate_in_project(otp_application, App, Project) ->
+  precondition(anvl_project:loaded(Project)),
+  AppPathTemplates = pcfg(Project, [app_paths]),
+  (fun Go([]) ->
+         false;
+       Go([Template|Rest]) ->
+         SubDir = template(Template, #{app => App}, path),
+         AppRoot = filename:join(Project, SubDir),
          case filelib:is_file(app_src_path(AppRoot, App)) of
-           true ->
-             {ok, AppRoot};
-           false ->
-             undefined
+           true  -> {value, SubDir};
+           false -> Go(Rest)
          end
-     end
-     || Template <- pcfg(Project, [app_paths])]).
-
--spec traverse_locate_methods([Fun]) -> {ProjectDir, SrcDir} when
-    Fun :: fun(() -> {Changed, ProjectDir, SrcDir} | undefined),
-    ProjectDir :: file:filename(),
-    SrcDir :: file:filename(),
-    Changed :: boolean().
-traverse_locate_methods([]) ->
-  undefined;
-traverse_locate_methods([Fun | Rest]) ->
-  case Fun() of
-    undefined -> traverse_locate_methods(Rest);
-    Result -> Result
-  end.
-
--define(app_location, anvl_erlc_app_location).
-
-set_app_location(App, Project, SrcRoot) ->
-  anvl_condition:set_result({?app_location, App}, {Project, SrcRoot}).
-
-get_app_location(App) ->
-  anvl_condition:get_result({?app_location, App}).
+    end)(AppPathTemplates).
 
 %%--------------------------------------------------------------------------------
 %% Misc

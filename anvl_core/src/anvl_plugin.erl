@@ -25,13 +25,22 @@ An ANVL API for managing plugins.
 -behavior(gen_server).
 
 %% API:
--export([conf/1, list_conf/1, init/0, loaded/1]).
+-export([conf/1, list_conf/1, loaded/1]).
 
 %% gen_server:
 -export([init/1, handle_call/3, handle_cast/2, terminate/2]).
 
 %% Internal exports
--export([start_link/0, metamodel/0, project_metamodel/0, get_project_model/0, load_config/0, set_complete/0, init_for_project/2]).
+-export([ start_link/0
+        , start_link_plugin/1
+        , metamodel/0
+        , project_metamodel/0
+        , get_project_model/0
+        , load_config/0
+        , set_complete/0
+        , init_for_project/2
+        , plugin_entrypoint/1
+        ]).
 
 -reflect_type([t/0]).
 
@@ -78,18 +87,10 @@ Condition: @var{Plugin} has been loaded.
                         precondition(anvl_erlc:app_compiled(default, Plugin))
                     end,
           load_model(Plugin),
-          Plugin:init(),
+          anvl_sup:ensure_plugin(Plugin),
           ?LOG_INFO("Loaded plugin ~p", [Plugin]),
           Changed
       end).
-
--doc false.
-init() ->
-  ok = anvl_sup:init_plugins(),
-  load_config(),
-  set_root(),
-  conf([help, run]) andalso anvl_app:help(),
-  ok.
 
 -doc """
 Get global configuration for a key.
@@ -142,9 +143,14 @@ start_link() ->
 
 -doc false.
 init([]) ->
-  S = #s{},
   lee_storage:new(lee_persistent_term_storage, ?tool_conf_storage_token),
-  do_load_model(anvl_core, S).
+  maybe
+    {ok, S0} ?= do_load_model(anvl_core, #s{}),
+    {reply, ok, S} ?= do_load_config(S0),
+    conf([help, run]) andalso anvl_app:help(),
+    set_root(),
+    {ok, S}
+  end.
 
 -doc false.
 handle_call(load_config, _From, S) ->
@@ -185,6 +191,7 @@ load_model(Plugins) ->
       erlang:raise(EC, Err, Stack)
   end.
 
+%% FIXME: do not crash
 do_load_model(Module, S0 = #s{model = M0}) ->
   T0 = erlang:system_time(microsecond),
   S1 = load_project_model(Module, S0),
@@ -214,6 +221,7 @@ load_configuration_model(S = #s{model = M, complete = Complete}) ->
       error(badmodel)
   end.
 
+%% FIXME: do not crash
 do_load_config(S = #s{m = Model}) ->
   case lee:init_config(Model, ?conf_storage) of
     {ok, ?conf_storage, _Warnings} ->
@@ -255,3 +263,15 @@ set_root() ->
   logger:debug("Root project is ~s", [Root]),
   persistent_term:put(?anvl_root_project_dir, Root),
   ok.
+
+start_link_plugin(Plugin) ->
+  proc_lib:start_link(?MODULE, plugin_entrypoint, [Plugin]).
+
+%% Spawn a process for each plugin, helpful if they need to create
+%% some resource tied to the lifetime of a process, e.g. an ets table.
+plugin_entrypoint(Plugin) ->
+  Plugin:init(),
+  proc_lib:init_ack(ok),
+  receive
+  after infinity -> ok
+  end.
