@@ -660,7 +660,7 @@ non_otp_apps(Apps) ->
 -spec src_root(profile(), application()) -> {file:filename(), file:filename()}.
 src_root(_Profile, App) ->
   _ = precondition(anvl_locate:located(otp_application, fun locate_in_project/3, App)),
-  #{path_entry := Proj, dir := Dir} = anvl_locate:location(otp_application, App),
+  #{project := Proj, dir := Dir} = anvl_locate:location(otp_application, App),
   {Proj, Dir}.
 
 locate_in_project(otp_application, App, Project) ->

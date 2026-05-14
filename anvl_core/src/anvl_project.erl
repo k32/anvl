@@ -22,7 +22,17 @@
 Handler of ANVL project configurations.
 """.
 
--export([root/0, conf/2, maybe_conf/2, list_conf/2, conditions/0, plugins/1, known_projects/0, loaded/1, anvl_includes_dir/0]).
+-export([ root/0
+        , conf/2
+        , maybe_conf/2
+        , list_conf/2
+        , conditions/0
+        , plugins/1
+        , known_projects/0
+        , loaded/1
+        , anvl_includes_dir/0
+        , is_project/1
+        ]).
 -export([add_pre_project_load_hook/1, add_pre_project_load_hook/2]).
 
 %% lee_metatype behavior:
@@ -172,6 +182,13 @@ anvl_includes_dir() ->
       Dir
   end.
 
+-doc """
+Return @code{true} if input directory is an ANVL project.
+""".
+-spec is_project(file:filename()) -> boolean().
+is_project(Dir) ->
+  filelib:is_file(project_config_file(Dir)).
+
 %%================================================================================
 %% Internal functions
 %%================================================================================
@@ -204,7 +221,7 @@ config_module(ProjectRoot) ->
       end).
 
 obtain_project_conf_module(Dir) ->
-  ConfFile = filename:join(Dir, "anvl.erl"),
+  ConfFile = project_config_file(Dir),
   case filelib:is_file(ConfFile) of
     true ->
       Module = anvl_config_module(Dir),
@@ -320,3 +337,6 @@ read_project_conf(ProjectDir, ConfTree, Overrides, Data0) ->
       [logger:critical(E) || E <- Errors],
       ?UNSAT("Project model is invalid! (Likely caused by a plugin)", [])
   end.
+
+project_config_file(Dir) ->
+  filename:join(Dir, "anvl.erl").

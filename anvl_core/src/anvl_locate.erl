@@ -130,11 +130,14 @@ located(Kind, SubDirFun, Dependency) ->
 
 -doc """
 Return location of a resolved dependency.
+
+@code{project} field of the return map is set to
+a path entry where the @code{dir} is located if the path entry is an ANVL project
+or to parent project that declared the dependency otherwise.
 """.
 -spec location(kind(), dependency()) ->
-        #{ path_entry => anvl_project:dir()
-         , dir => file:filename()
-         , owner => anvl_project:dir()
+        #{ dir     := file:filename()
+         , project := anvl_project:dir()
          }.
 location(Kind, Id) ->
   anvl_condition:get_result(#?result_key{kind = Kind, dep = Id}).
@@ -231,9 +234,12 @@ tab() ->
 
 -spec set_location(kind(), dependency(), anvl_project:dir(), file:filename(), file:filename()) -> ok.
 set_location(Kind, Dependency, Owner, PathEntry, Dir) ->
-  Loc = #{ owner => Owner
-         , path_entry => PathEntry
-         , dir => Dir
+  Project = case anvl_project:is_project(PathEntry) of
+              true  -> PathEntry;
+              false -> Owner
+            end,
+  Loc = #{ project => Project
+         , dir     => Dir
          },
   anvl_condition:set_result(#?result_key{kind = Kind, dep = Dependency}, Loc).
 
