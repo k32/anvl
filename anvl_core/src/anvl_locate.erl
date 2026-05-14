@@ -70,12 +70,12 @@ This step is delegated to other plugins.
 """.
 
 %% API:
--export([located/3, location/2, add_hook/2, add_hook/1, add_path/3, get_path/1]).
+-export([located/3, location/2, add_hook/2, add_hook/1, add_path/4, get_path/1]).
 
 %% Internal exports:
 -export([init/0, init_for_project/1, tab/0]).
 
--export_type([locate_hook/0]).
+-export_type([locate_hook/0, locate_hook_ret/0]).
 
 -include_lib("typerefl/include/types.hrl").
 -include_lib("kernel/include/logger.hrl").
@@ -100,11 +100,17 @@ A function that tries to locate a dependency in a local directory.
 """.
 -type subdirectory_fun() :: fun((kind(), dependency(), file:filename()) -> {value, file:filename()} | false).
 
--type locate_hook() :: fun((kind(), dependency()) -> anvl_condition:t()).
+-type locate_hook_ret() ::
+        { _Changed :: boolean()
+        , [{anvl_project:dir(), _Prio :: integer(), file:filename()}]
+        }.
+
+-type locate_hook() :: fun((kind(), dependency()) -> locate_hook_ret()).
 
 -reflect_type([kind/0, dependency/0]).
 
--record(?MODULE, {kind :: kind(), dep :: dependency()}).
+-define(result_key, ?MODULE).
+-record(?result_key, {kind :: kind(), dep :: dependency()}).
 
 -define(hookpoint, ?MODULE).
 
@@ -120,14 +126,18 @@ Condition: external dependency @var{Dep} has been located.
 """.
 -spec located(kind(), subdirectory_fun(), dependency()) -> anvl_condition:t().
 located(Kind, SubDirFun, Dependency) ->
-  located_with_path(Kind, SubDirFun, Dependency, get_path(Kind), 0).
+  located_with_path(Kind, SubDirFun, Dependency, get_path(Kind)).
 
 -doc """
-Return a directory containing a resolved dependency.
+Return location of a resolved dependency.
 """.
--spec location(kind(), dependency()) -> {file:filename(), file:filename()}.
+-spec location(kind(), dependency()) ->
+        #{ path_entry => anvl_project:dir()
+         , dir => file:filename()
+         , owner => anvl_project:dir()
+         }.
 location(Kind, Id) ->
-  anvl_condition:get_result(#?MODULE{kind = Kind, dep = Id}).
+  anvl_condition:get_result(#?result_key{kind = Kind, dep = Id}).
 
 -doc """
 Equivalent to @code{add_hook(Fun, 0)}.
@@ -150,17 +160,21 @@ Add a local directory to the search path.
 
 Entries with higher @code{Prio} are searched first.
 """.
--spec add_path(kind(), integer(), file:filename()) -> ok.
-add_path(Kind, Prio, Path) ->
-  ets:insert(?path_tab, {#path{kind = Kind, prio = -Prio, path = Path}}),
+-spec add_path(kind(), integer(), anvl_project:dir(), file:filename()) -> ok.
+add_path(Kind, Prio0, Owner, Path) ->
+  Prio = case anvl_project:root() of
+           Owner -> Prio0;
+           _     -> Prio0 - 100
+         end,
+  ets:insert(?path_tab, {#path{kind = Kind, prio = -Prio, path = Path}, Owner}),
   ok.
 
 -doc """
 Get local search path for the given dependency type or @code{'_'} (wildcard).
 """.
--spec get_path(kind() | '_') -> [file:filename()].
+-spec get_path(kind() | '_') -> [{anvl_project:dir(), file:filename()}].
 get_path(Consumer) ->
-  MS = {{#path{kind = Consumer, path = '$1', _ = '_'}}, [], ['$1']},
+  MS = {{#path{kind = Consumer, path = '$1', _ = '_'}, '$2'}, [], [{{'$2', '$1'}}]},
   ets:select(?path_tab, [MS]).
 
 %%================================================================================
@@ -179,7 +193,7 @@ init_for_project(Project) ->
      [deps, local, {Kind, Pattern} = Id] = K,
      Prio = anvl_project:conf(Project, [deps, local, Id, priority]),
      SubDirs = filelib:wildcard(Pattern, Project),
-     [add_path(Kind, Prio, filename:join(Project, D)) ||
+     [add_path(Kind, Prio, Project, filename:join(Project, D)) ||
        D <- SubDirs,
        filelib:is_dir(D)]
    end ||
@@ -193,53 +207,57 @@ tab() ->
 %% Internal functions
 %%================================================================================
 
--spec located_with_path(kind(), subdirectory_fun(), dependency(), [file:filename()], integer()) -> anvl_condition:t().
-?MEMO(located_with_path, Kind, SubDirFun, Dependency, Path, Order,
-      case anvl_condition:maybe_get_result(#?MODULE{kind = Kind, dep = Dependency}) of
+-spec located_with_path(kind(), subdirectory_fun(), dependency(), [file:filename()]) -> anvl_condition:t().
+?MEMO(located_with_path, Kind, SubDirFun, Dependency, Path,
+      case anvl_condition:maybe_get_result(#?result_key{kind = Kind, dep = Dependency}) of
         {value, _Dir} ->
           false;
         false ->
           case search_path(Kind, Dependency, SubDirFun, Path) of
-            {value, Dir, SubDir} ->
-              set_location(Kind, Dependency, Dir, SubDir),
+            {value, Owner, PathEntry, Dir} ->
+              set_location(Kind, Dependency, Owner, PathEntry, Dir),
               false;
             false ->
-              _ = try_expand_path(Kind, Dependency, Order - 1),
+              _ = try_expand_path(Kind, Dependency),
               NewPath = get_path(Kind),
               case length(NewPath) > length(Path) of
                 true ->
-                  precondition(located_with_path(Kind, SubDirFun, Dependency, NewPath, Order - 1));
+                  precondition(located_with_path(Kind, SubDirFun, Dependency, NewPath));
                 false ->
                   ?UNSAT("Failed to locate dependency ~p of kind ~p", [Dependency, Kind])
               end
           end
       end).
 
-set_location(Kind, Dependency, Dir, SubDir) ->
-  anvl_condition:set_result(#?MODULE{kind = Kind, dep = Dependency}, {Dir, SubDir}).
+-spec set_location(kind(), dependency(), anvl_project:dir(), file:filename(), file:filename()) -> ok.
+set_location(Kind, Dependency, Owner, PathEntry, Dir) ->
+  Loc = #{ owner => Owner
+         , path_entry => PathEntry
+         , dir => Dir
+         },
+  anvl_condition:set_result(#?result_key{kind = Kind, dep = Dependency}, Loc).
 
 -spec search_path(kind(), dependency(), subdirectory_fun(), [file:filename()]) ->
-        {value, Dir, SubDir} | false
-  when Dir :: file:filename(),
-       SubDir :: file:filename().
+        {value, file:filename(), file:filename(), file:filename()} | false.
 search_path(_Kind, _Id, _SubDirFun, []) ->
   false;
-search_path(Kind, Id, SubDirFun, [Dir | Path]) ->
-  case SubDirFun(Kind, Id, Dir) of
+search_path(Kind, Id, SubDirFun, [{Owner, PathEntry} | Path]) ->
+  case SubDirFun(Kind, Id, PathEntry) of
     {value, Subdir} ->
-      {value, Dir, Subdir};
+      {value, Owner, PathEntry, filename:join(PathEntry, Subdir)};
     false ->
       search_path(Kind, Id, SubDirFun, Path)
   end.
 
-try_expand_path(Kind, Dependency, Order) ->
+try_expand_path(Kind, Dependency) ->
   Fun = fun(Hook, Acc) ->
             case Hook(Kind, Dependency) of
-              false ->
-                {true, Acc};
-              {Changed, Dir} ->
-                add_path(Kind, Order, Dir),
-                {false, Changed}
+              {Changed, []} ->
+                {true, Acc orelse Changed};
+              {Changed, NewEntries} ->
+                [add_path(Kind, Prio, Owner, Dir) ||
+                  {Owner, Prio, Dir} <- NewEntries],
+                {false, Acc orelse Changed}
             end
         end,
   anvl_hook:traverse(Fun, undefined, ?hookpoint).
