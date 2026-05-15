@@ -31,10 +31,16 @@ A plugin that adds basic compatibility with rebar3 projects.
 -export([init/0, init_for_project/1, model/0, project_model/0]).
 
 -include_lib("anvl_core/include/anvl.hrl").
+-include_lib("typerefl/include/types.hrl").
 
 %%================================================================================
 %% Type declarations
 %%================================================================================
+
+-type rebar_hook() :: {atom(), string()}
+                    | {string(), atom(), string()}.
+
+-reflect_type([rebar_hook/0]).
 
 %%================================================================================
 %% API functions
@@ -86,6 +92,10 @@ translate_conf(Rebar3Conf) ->
         , compile_options => translate_compile_opts(Rebar3Conf)
         , sources => translate_src_dirs(Rebar3Conf)
         }
+   , rebar3 =>
+       #{ pre_hooks => proplists:get_value(pre_hooks, Rebar3Conf, [])
+        , post_hooks => proplists:get_value(post_hooks, Rebar3Conf, [])
+        }
    }.
 
 %%================================================================================
@@ -97,7 +107,9 @@ init() ->
   anvl_project:add_pre_project_load_hook(fun maybe_generate_anvl_conf/1).
 
 -doc false.
-init_for_project(_Project) ->
+init_for_project(Project) ->
+  lists:member(anvl_rebar3, anvl_project:plugins(Project)) andalso
+    setup_rebar3_hooks(Project),
   ok.
 
 -doc false.
@@ -106,7 +118,20 @@ model() ->
 
 -doc false.
 project_model() ->
-  #{}.
+  #{rebar3 =>
+      #{ pre_hooks =>
+           {[value],
+            #{ oneliner => "rebar3's pre_hooks"
+             , type => list(rebar_hook())
+             , default => []
+             }}
+       , post_hooks =>
+           {[value],
+            #{ oneliner => "rebar3's post_hooks"
+             , type => list(rebar_hook())
+             , default => []
+             }}
+       }}.
 
 %%================================================================================
 %% Internal functions
@@ -144,6 +169,10 @@ translate_src_dirs(Rebar3Conf) ->
     end,
     SrcDirs ++ ExtraSrcDirs).
 
+%%--------------------------------------------------------------------------------
+%% Git
+%%--------------------------------------------------------------------------------
+
 translate_git_deps(Rebar3Conf) ->
   lists:foldl(
     fun({Proj, {git, Repo, {Kind, Ref}}}, Acc) when Kind =:= ref;
@@ -162,3 +191,36 @@ translate_git_deps(Rebar3Conf) ->
     end,
     [],
     proplists:get_value(deps, Rebar3Conf, [])).
+
+%%--------------------------------------------------------------------------------
+%% Hooks
+%%--------------------------------------------------------------------------------
+
+setup_rebar3_hooks(Project) ->
+  setup_pre_compile_hooks(get_platform(), Project).
+
+setup_pre_compile_hooks(Platform, Project) ->
+  filter_hooks(Platform, Project, pre_hooks, compile).
+
+filter_hooks(Platform, Project, Key, Action) ->
+  lists:filtermap(
+    fun(Hook) ->
+        case Hook of
+          {PlatformFilter, Action, Script} ->
+            check_platform(PlatformFilter, Platform) andalso
+              {true, Script};
+          {Action, Script} ->
+            {true, Script};
+          _ ->
+            false
+        end
+    end,
+    anvl_project:conf(Project, [rebar3, Key])).
+
+%% FIXME:
+check_platform(_PlatformFilter, _Platform) ->
+  true.
+
+%% FIXME:
+get_platform() ->
+  "linux".
