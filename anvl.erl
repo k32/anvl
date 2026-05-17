@@ -65,9 +65,8 @@ apps() ->
         Prefix = filename:join(os:getenv("HOME"), ".local"),
         precondition([escript(), docs()]) or
           install_includes(Prefix) or
-          install(Prefix, "${prefix}/bin/anvl", "anvl", 8#755) or
-          (anvl_texinfo:available() andalso
-           install(Prefix, "${prefix}/share/anvl/info/anvl.info", "_anvl_build/doc/anvl.info", 8#644))
+          install(Prefix, "${prefix}/bin/anvl", anvl_fn:rootdir(["anvl"]), 8#755) or
+          install_docs(Prefix)
       end).
 
 ?MEMO(test,
@@ -133,7 +132,7 @@ apps() ->
       end).
 
 install_includes(Prefix) ->
-  {0, Files} = anvl_lib:exec_("git", ["ls-files"], [collect_output]),
+  {ok, Files} = anvl_git:ls_files(anvl_project:root(), []),
   lists:foldl(
     fun(Src, Acc) ->
         case filename:extension(Src) of
@@ -143,6 +142,14 @@ install_includes(Prefix) ->
     end,
     false,
     Files).
+
+install_docs(Prefix) ->
+  anvl_texinfo:available() andalso
+    install(
+      Prefix,
+      "${prefix}/share/anvl/info/anvl.info",
+      anvl_fn:rootdir(["_anvl_build/doc/anvl.info"]),
+      8#644).
 
 install(Prefix, Template, Src, Mode) ->
   Dest = patsubst(Template, Src, #{prefix => Prefix}),
@@ -155,7 +162,7 @@ install(Prefix, Template, Src, Mode) ->
     end.
 
 escript() ->
-  anvl_erlc:escript(".", anvl).
+  anvl_erlc:escript(anvl_project:root(), anvl).
 
 ?MEMO(docs,
       case anvl_texinfo:available() of

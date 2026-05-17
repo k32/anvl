@@ -195,10 +195,10 @@ init_for_project(Project) ->
   [begin
      [deps, local, {Kind, Pattern} = Id] = K,
      Prio = anvl_project:conf(Project, [deps, local, Id, priority]),
-     SubDirs = filelib:wildcard(Pattern, Project),
-     [add_path(Kind, Prio, Project, filename:join(Project, D)) ||
-       D <- SubDirs,
-       filelib:is_dir(D)]
+     SubDirs = anvl_fn:wildcard(Pattern, Project),
+     [add_path(Kind, Prio, Project, I) ||
+       I <- SubDirs,
+       filelib:is_dir(I)]
    end ||
     K <- Keys],
   ok.
@@ -228,7 +228,7 @@ tab() ->
                 true ->
                   precondition(located_with_path(Kind, SubDirFun, Dependency, NewPath));
                 false ->
-                  ?UNSAT("Failed to locate dependency ~p of kind ~p", [Dependency, Kind])
+                  ?UNSAT("Failed to locate dependency ~p of kind ~p~n", [Dependency, Kind])
               end
           end
       end).

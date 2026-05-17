@@ -180,7 +180,7 @@ are compiled to all formats requested by the project.
         precondition([compiled(Project, Src, Format) ||
                        Format <- Formats,
                        Pattern <- Sources,
-                       Src <- filelib:wildcard(Pattern, Project)
+                       Src <- anvl_fn:wildcard(Pattern, Project)
                      ])
       end).
 
@@ -204,14 +204,14 @@ is compiled to format @var{Format}.
         newer(DocSrc, DocTarget) or true andalso
           begin
             filelib:ensure_dir(DocTarget),
-            Options = anvl_project:conf(Project, [texinfo, compile, {Format}, options]),
+            CustomArgs = anvl_project:conf(Project, [texinfo, compile, {Format}, options]),
             ?LOG_NOTICE("Creating ~s", [DocTarget]),
-            anvl_lib:exec("texi2any", Options ++
-                                      [ "-I", Dir
-                                      , "--" ++ atom_to_list(Format)
-                                      , "-o", Output
-                                      , DocSrc
-                                      ])
+            Args = CustomArgs ++ [ "-I", Dir
+                                 , "--" ++ atom_to_list(Format)
+                                 , "-o", Output
+                                 , DocSrc
+                                 ],
+            anvl_lib:exec("texi2any", Args, [{cd, Project}])
           end
       end).
 

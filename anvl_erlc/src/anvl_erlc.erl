@@ -236,11 +236,11 @@ module(Profile, Module) ->
   anvl_condition:speculative({erlang_module_compiled, Profile, Module}).
 
 -doc "Condition: escript has been built.".
--spec escript(file:filename_all(), string()) -> anvl_condition:t().
-?MEMO(escript, ProjectRoot, EscriptName,
+-spec escript(anvl_project:t(), string()) -> anvl_condition:t().
+?MEMO(escript, Project, EscriptName,
       begin
-        precondition(anvl_project:loaded(ProjectRoot)),
-        do_escript(ProjectRoot, EscriptName)
+        precondition(anvl_project:loaded(Project)),
+        do_escript(Project, EscriptName)
       end).
 
 -doc """
@@ -593,14 +593,14 @@ Precondition: module defined in the same application is compiled and loaded.
 %% Internal functions
 %%================================================================================
 
-get_escripts(ProjectRoot) ->
+get_escripts(Project) ->
   [begin
       Escripts = anvl_plugin:conf(Key ++ [names]),
-      [escript(ProjectRoot, I) || I <- Escripts]
+      [escript(Project, I) || I <- Escripts]
    end
    || Key <- anvl_plugin:list_conf([anvl_erlc, escript, {}])].
 
-get_compile_apps(_ProjectRoot) ->
+get_compile_apps(_Project) ->
   [begin
      Profile = anvl_plugin:conf(Key ++ [profile]),
      Apps = anvl_plugin:conf(Key ++ [apps]),

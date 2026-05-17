@@ -23,8 +23,9 @@ This module contains functions for composing and manipulating directory and file
 """.
 
 %% API:
--export([ workdir/1, workdir/2
+-export([ workdir/1, workdir/2, rootdir/1
         , ensure_type/2, stringify_atoms/1
+        , wildcard/2
         ]).
 
 -export_type([type/0, component/0]).
@@ -53,6 +54,17 @@ Return a filename within the working directory by joining the list of components
 -spec workdir([component()]) -> file:filename().
 workdir(Components) ->
   Base = filename:absname(anvl_plugin:conf([workdir])),
+  case Components of
+    [] -> Base;
+    _  -> filename:join([Base | stringify_atoms(Components)])
+  end.
+
+-doc """
+Return a filename relative to the root project.
+""".
+-spec rootdir([component()]) -> file:filename().
+rootdir(Components) ->
+  Base = anvl_project:root(),
   case Components of
     [] -> Base;
     _  -> filename:join([Base | stringify_atoms(Components)])
@@ -91,6 +103,14 @@ stringify_atoms(L) ->
        I
    end
    || I <- L].
+
+-doc """
+Run @code{filelib:wildcard/2} in a specified directory,
+which is added to every found path.
+""".
+-spec wildcard(string(), file:filename()) -> [file:filename()].
+wildcard(Pattern, Dir) ->
+  [filename:join(Dir, I) || I <- filelib:wildcard(Pattern, Dir)].
 
 %%================================================================================
 %% Internal functions
