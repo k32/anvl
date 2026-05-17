@@ -29,6 +29,7 @@ A builtin plugin for compiling Erlang applications.
 -export([add_pre_compile_hook/2, add_app_spec_hook/2]).
 -export([app_info/2, escript/2, app_compiled/2, module/2]).
 -export([app_file/1, beam_file/2]).
+-export([app_closure/2, app_path/2, xref_passed/1]).
 
 %% behavior callbacks:
 -export([model/0, project_model/0, init/0, init_for_project/1, conditions/1]).
@@ -126,6 +127,72 @@ add_pre_compile_hook(Project, Fun) ->
   anvl_hook:add(#erlc_pre_compile_hook{project = Project}, Fun).
 
 -doc """
+Return a path to the library.
+
+Note: library will be built as a side-effect.
+""".
+-spec app_path(profile(), application()) -> file:filename().
+app_path(Profile, App) ->
+  case lists:member(App, otp_apps()) of
+    true ->
+      case code:lib_dir(App) of
+        L when is_list(L) ->
+          L;
+        Err ->
+          error({Err, App})
+      end;
+    false ->
+      #{build_dir := Dir} = app_info(Profile, App),
+      Dir
+  end.
+
+-doc """
+Return a closure of dependencies for a given set of OTP applications.
+Note: this function builds all applications.
+
+Return value is a tuple with the following elements:
+@enumerate
+@item Non-OTP applications and non-OTP dependencies
+@item Dependencies built into OTP
+@end enumerate
+""".
+-spec app_closure(profile(), [application()]) -> {[application()], [application()]}.
+app_closure(Profile, Apps) ->
+  _ = precondition([app_compiled(Profile, App) || App <- Apps]),
+  do_app_closure(Profile, Apps, ordsets:new(), ordsets:new()).
+
+-doc """
+Condition: @url{https://www.erlang.org/doc/apps/tools/xref.html, XRef} analysis passed for a profile.
+""".
+?MEMO(xref_passed, Profile,
+      begin
+        Apps = pcfg(anvl_project:root(), Profile, [static_checks, apps]),
+        Analysis = pcfg(anvl_project:root(), Profile, [static_checks, xref, analysis]),
+        {NonOTPApps, OTPApps} = app_closure(Profile, Apps),
+        Closure = NonOTPApps ++ OTPApps,
+        %% Run analysis:
+        {ok, Serv} = xref:start([]),
+        ok = xref:set_library_path(
+               Serv,
+               [filename:join(app_path(Profile, I), "ebin") || I <- Closure -- Apps]),
+        try
+          OptsForAdd = [{warnings, false}, {verbose, false}, {builtins, true}],
+          [begin
+             Dir = app_path(Profile, App),
+             case xref:add_application(Serv, Dir, [{name, App} | OptsForAdd]) of
+               {ok, App} ->
+                 ok;
+               Err ->
+                 ?UNSAT("Failed adding ~p to xref: ~p", [App, Err])
+             end
+           end || App <- Apps],
+          xref_warnings(Profile, [{I, xref:analyze(Serv, I)} || I <- Analysis], [])
+        after
+          xref:stop(Serv)
+        end
+      end).
+
+-doc """
 Condition: OTP application has been compiled with the given profile.
 """.
 -spec app_compiled(Profile :: profile(), Application :: application()) -> anvl_condition:t().
@@ -207,7 +274,7 @@ app_info(Profile, App) ->
 -doc false.
 model() ->
   Profile = {[value, cli_param],
-             #{ type => atom()
+             #{ type => profile()
               , default_ref => [anvl_erlc, profile]
               , cli_operand => "profile"
               , cli_short => $p
@@ -216,7 +283,7 @@ model() ->
       #{ profile =>
            {[value, cli_param, os_env],
              #{ oneliner => "Default profile used by eligible Erlang-related targets"
-              , type => atom()
+              , type => profile()
               , default => default
               , cli_operand => "erlc-profile"
               , os_env => "ERLC_PROFILE"
@@ -257,6 +324,15 @@ model() ->
              , profile =>
                  Profile
              }}
+       , xref =>
+           {[map, cli_action],
+            #{ oneliner => "Run xref analysis on the root project"
+             , key_elements => [[profile]]
+             , cli_operand => "erl_xref"
+             },
+            #{ profile =>
+                 Profile
+             }}
        }}.
 
 -doc false.
@@ -282,6 +358,29 @@ project_model() ->
           #{ type => list()
            , default => [debug_info]
            }}
+     , static_checks =>
+         #{ apps =>
+              {[value],
+               #{ oneliner => "Set of OTP applications to statically analyze"
+                , type => list(application())
+                , default => []
+                }}
+          , xref =>
+              #{ analysis =>
+                   {[value],
+                    #{ oneliner => "List of xref analyses to run"
+                     , doc => """
+                              See @url{https://www.erlang.org/doc/apps/tools/xref.html#t:analysis/0}.
+                              """
+                     , type => list()
+                     , default =>
+                         [ undefined_function_calls
+                         , locals_not_used
+                         , deprecated_function_calls
+                         ]
+                     }}
+               }
+          }
      },
   Overrides = lee_model:map_vals(
                 fun(Key, {MTs, Attrs0}) ->
@@ -362,7 +461,7 @@ init_for_project(Project) ->
 
 -doc false.
 conditions(ProjectRoot) ->
-  get_compile_apps(ProjectRoot) ++ get_escripts(ProjectRoot).
+  get_compile_apps(ProjectRoot) ++ get_escripts(ProjectRoot) ++ get_xrefs(ProjectRoot).
 
 %%================================================================================
 %% Condition implementations
@@ -538,9 +637,16 @@ get_compile_apps(_ProjectRoot) ->
   [begin
      Profile = anvl_plugin:conf(Key ++ [profile]),
      Apps = anvl_plugin:conf(Key ++ [apps]),
-     [anvl_erlc:app_compiled(Profile, I) || I <- Apps]
+     [app_compiled(Profile, I) || I <- Apps]
    end
    || Key <- anvl_plugin:list_conf([anvl_erlc, compile, {}])].
+
+get_xrefs(_ProjectRoot) ->
+  [begin
+     Profile = anvl_plugin:conf(Key ++ [profile]),
+     xref_passed(Profile)
+   end
+   || Key <- anvl_plugin:list_conf([anvl_erlc, xref, {}])].
 
 -doc "Clean ebin directory of files that don't have sources".
 clean_orphans(Sources, Context) ->
@@ -643,15 +749,18 @@ list_app_sources(Ctx = #{sources := SrcPatterns}) ->
                 end,
                 SrcPatterns).
 
+otp_apps() ->
+  [compiler, erts, kernel, sasl, stdlib,
+   mnesia, odbc,
+   os_mon, snmp,
+   asn1, crypto, diameter, eldap, erl_interface, ftp, inets, jinterface, megaco, public_key, ssh, ssl, tftp, wx, xmerl,
+   debugger, dialyzer, et, observer, parsetools, reltool, runtime_tools, syntax_tools, tools,
+   common_test, eunit,
+   edoc, erl_docgen].
+
 non_otp_apps(Apps) ->
   %% FIXME: find a nicer way to get this list
-  Apps -- [compiler, erts, kernel, sasl, stdlib,
-           mnesia, odbc,
-           os_mon, snmp,
-           asn1, crypto, diameter, eldap, erl_interface, ftp, inets, jinterface, megaco, public_key, ssh, ssl, tftp, wx, xmerl,
-           debugger, dialyzer, et, observer, parsetools, reltool, runtime_tools, syntax_tools, tools,
-           common_test, eunit,
-           edoc, erl_docgen].
+  Apps -- otp_apps().
 
 %%--------------------------------------------------------------------------------
 %% Locating application sources
@@ -680,6 +789,62 @@ locate_in_project(otp_application, App, Project) ->
 %%--------------------------------------------------------------------------------
 %% Misc
 %%--------------------------------------------------------------------------------
+
+do_app_closure(_Profile, [], AccNonOTP, AccOTP) ->
+  {AccNonOTP, AccOTP};
+do_app_closure(Profile, [App | Rest], AccNonOTP0, AccOTP0) ->
+  case lists:member(App, otp_apps()) of
+    true ->
+      do_app_closure(
+        Profile,
+        Rest,
+        AccNonOTP0,
+        ordsets:add_element(App, AccOTP0));
+    false ->
+      case ordsets:is_element(App, AccNonOTP0) of
+        true ->
+          do_app_closure(
+            Profile,
+            Rest,
+            AccNonOTP0,
+            AccOTP0);
+        false ->
+          AccNonOTP1 = ordsets:add_element(App, AccNonOTP0),
+          #{spec := {application, _, AppSpec}} = app_info(Profile, App),
+          Deps = proplists:get_value(applications, AppSpec, []),
+          {AccNonOTP, AccOTP} = do_app_closure(
+                                  Profile,
+                                  Deps,
+                                  AccNonOTP1,
+                                  AccOTP0),
+          do_app_closure(
+            Profile,
+            Rest,
+            AccNonOTP,
+            AccOTP)
+      end
+  end.
+
+xref_warnings(Profile, [], Result) ->
+  case Result of
+    [] ->
+      false;
+    _ ->
+      ?UNSAT("Analysis failed for profile ~p~n~s", [Profile, Result])
+  end;
+xref_warnings(Profile, [Analysis | Rest], Result) ->
+  case Analysis of
+    {_Type, {ok, []}} ->
+      xref_warnings(Profile, Rest, Result);
+    {Type, Error} ->
+      Msg = case Error of
+              {ok, Warnings} ->
+                io_lib:format("  ~p:~n    ~p~n", [Type, Warnings]);
+              {error, Module, Err} ->
+                io_lib:format("  ~p failed for ~p: ~p~n", [Type, Module, Err])
+            end,
+      xref_warnings(Profile, Rest, [Msg | Result])
+  end.
 
 ensure_string(Bin) when is_binary(Bin) ->
   binary_to_list(Bin);

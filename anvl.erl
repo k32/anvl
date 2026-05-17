@@ -38,6 +38,9 @@ conf() ->
                , emu_args => EmuArgs ++ " -anvl_core include_dir \"anvl_core/include\""
                }
             ]
+        , static_checks =>
+            #{ apps => apps()
+             }
         }
    , [deps, local] =>
        [#{ dir => "vendor/*"

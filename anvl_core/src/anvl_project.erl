@@ -40,7 +40,7 @@ Handler of ANVL project configurations.
 -export([parse_transform/2]).
 
 -include_lib("lee/include/lee.hrl").
-
+-include_lib("typerefl/include/types.hrl").
 -include("anvl.hrl").
 -include("anvl_internals.hrl").
 
@@ -54,7 +54,12 @@ Handler of ANVL project configurations.
 -doc """
 Projects are identified by the directory name containing @file{anvl.erl}.
 """.
--type t() :: file:filename().
+-type t() :: string().
+
+-doc """
+Filter for selecting projects.
+""".
+-type filter() :: root.
 
 -type conf_tree() :: #{atom() | [atom()] => conf_tree() | [conf_tree()] | term()}.
 
@@ -78,7 +83,8 @@ Project can use it, for example, to install hooks.
 
 -optional_callbacks([conf/0, conf_override/1, init/0]).
 
--export_type([t/0, conf_tree/0]).
+-reflect_type([t/0, filter/0]).
+-export_type([conf_tree/0]).
 
 %%================================================================================
 %% API

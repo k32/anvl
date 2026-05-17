@@ -2,5 +2,5 @@
 {application, anvl_erlc,
  [ {description, "ANVL plugin for compiling Erlang code"}
  , {vsn, "0.0.1"}
- , {applications, [kernel, compiler, anvl_core]}
+ , {applications, [kernel, stdlib, compiler, tools, dialyzer, anvl_core]}
  ]}.
