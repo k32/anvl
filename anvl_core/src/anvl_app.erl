@@ -29,10 +29,11 @@
 -export([start/2, stop/1]).
 
 %% internal exports:
--export([bootstrap/0, prefix/0, help/0, exit_result/1, halt/1]).
+-export([bootstrap/0, prefix/0, help/0, exit_result/1]).
 
 -include_lib("kernel/include/logger.hrl").
 -include("anvl.hrl").
+-compile({no_auto_import, [halt/1]}).
 
 %%================================================================================
 %% API
@@ -47,7 +48,7 @@ main(CLIArgs) ->
   case anvl_project:conditions() of
     [] ->
       ?LOG_CRITICAL("No default condition is specified in anvl.erl. Nothing to do"),
-      ?MODULE:halt(1);
+      exit_result(1);
     Toplevel ->
       anvl_plugin:set_complete(),
       exec_top(Toplevel)
@@ -59,14 +60,22 @@ help() ->
   user_drv ! {self(), {open_editor, Info}},
   receive
     {_Drv, {editor_data, _}} ->
-      ?MODULE:halt(1)
+      halt(1)
   end.
 
-%% @doc Stop the `escript'
--spec halt(char()) -> no_return().
-halt(ExitCode) ->
-  logger_std_h:filesync(default),
-  erlang:halt(ExitCode).
+-doc """
+Exit the application with the given exit code,
+unless @option{--shell} option is supplied.
+""".
+-spec exit_result(byte()) -> no_return().
+exit_result(ExitCode) ->
+  case anvl_plugin:conf([shell]) of
+    false ->
+      halt(ExitCode);
+    true ->
+      shell:start_interactive(),
+      receive after infinity -> ok end
+  end.
 
 %%================================================================================
 %% Internal exports
@@ -131,15 +140,6 @@ exec_top(Preconditions) ->
   format_top("reductions", TopReds),
   exit_result(ExitCode).
 
-exit_result(ExitCode) ->
-  case anvl_plugin:conf([shell]) of
-    false ->
-      ?MODULE:halt(ExitCode);
-    true ->
-      shell:start_interactive(),
-      receive after infinity -> ok end
-  end.
-
 format_top(_, []) ->
   ok;
 format_top("time", Top) ->
@@ -171,5 +171,15 @@ load_root_project_conf() ->
   try precondition(anvl_project:loaded(anvl_project:root()))
   catch
     exit:{unsat, _} ->
-      ?MODULE:halt(1)
+      exit_result(1)
   end.
+
+%%================================================================================
+%% Misc.
+%%================================================================================
+
+%% @doc Stop the `escript'
+-spec halt(char()) -> no_return().
+halt(ExitCode) ->
+  logger_std_h:filesync(default),
+  erlang:halt(ExitCode).
