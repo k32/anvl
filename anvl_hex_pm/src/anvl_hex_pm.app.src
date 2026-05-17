@@ -1,0 +1,6 @@
+%% -*- mode:erlang -*-
+{application, anvl_hex_pm,
+ [ {description, "ANVL plugin for fetching packages from hex.pm"}
+ , {vsn, "0.0.1"}
+ , {applications, [kernel, stdlib, ssl, inets, typerefl, anvl_core]}
+ ]}.

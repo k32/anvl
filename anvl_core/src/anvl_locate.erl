@@ -70,7 +70,14 @@ This step is delegated to other plugins.
 """.
 
 %% API:
--export([located/3, location/2, add_hook/2, add_hook/1, add_path/4, get_path/1]).
+-export([ located/3
+        , resolve_lock/5
+        , location/2
+        , add_hook/2
+        , add_hook/1
+        , add_path/4
+        , get_path/1
+        ]).
 
 %% Internal exports:
 -export([init/0, init_for_project/1, tab/0]).
@@ -173,6 +180,40 @@ add_path(Kind, Prio0, Owner, Path) ->
   ok.
 
 -doc """
+A helper function that plugins can use to implement dependency locking.
+
+If plugin uses this function,
+it must implement the following callback:
+
+@code{resolve_version(Package, Tag) -> binary()}
+""".
+-spec resolve_lock(
+        anvl_plugin:t(),
+        fun(() -> Hash),
+        anvl_project:t(),
+        kind(),
+        Package
+       ) -> {Changed, Hash} when
+    Package :: atom() | binary() | string(),
+    Changed :: boolean(),
+    Hash :: binary().
+resolve_lock(Plugin, Resolve, Project, Kind, Package) ->
+  Root = anvl_project:root(),
+  case read_lock(Plugin, Root, Kind, Package) of
+    {ok, Hash} ->
+      {false, Hash};
+    undefined ->
+      case Project =/= Root andalso read_lock(Plugin, Project, Kind, Package) of
+        {ok, Hash} ->
+          ok;
+        _ ->
+          Hash = Resolve()
+      end,
+      write_lock(Plugin, Root, Kind, Package, Hash),
+      {true, Hash}
+  end.
+
+-doc """
 Get local search path for the given dependency type or @code{'_'} (wildcard).
 """.
 -spec get_path(kind() | '_') -> [{anvl_project:t(), file:filename()}].
@@ -242,7 +283,7 @@ set_location(Kind, Dependency, Owner, PathEntry, Dir) ->
   Loc = #{ project => Project
          , dir     => Dir
          },
-  ?LOG_DEBUG(
+  ?LOG_INFO(
      "Location of ~p:~p was set to ~s. Project: ~s",
      [Kind, Dependency, Dir, Project]),
   anvl_condition:set_result(#?result_key{kind = Kind, dep = Dependency}, Loc).
@@ -272,3 +313,21 @@ try_expand_path(Kind, Dependency) ->
             end
         end,
   anvl_hook:traverse(Fun, false, ?hookpoint).
+
+write_lock(Plugin, Project, Kind, Id, Hash) ->
+  ?LOG_NOTICE("Locking ~p:~p:~p to ~s", [Plugin, Kind, Id, Hash]),
+  LockFile = lock_file(Plugin, Project, Kind, Id),
+  ok = filelib:ensure_dir(LockFile),
+  ok = file:write_file(LockFile, Hash).
+
+read_lock(Plugin, Project, Kind, Package) ->
+  case file:read_file(lock_file(Plugin, Project, Kind, Package)) of
+    {ok, _} = Ret ->
+      Ret;
+    {error, enoent} ->
+      undefined
+  end.
+
+lock_file(Plugin, Project, Kind, Id) ->
+  Ctx = #{proj => Project, plugin => Plugin, kind => Kind, id => Id},
+  template("${proj}/anvl_lock/${plugin}/${kind}/${id}", Ctx, path).

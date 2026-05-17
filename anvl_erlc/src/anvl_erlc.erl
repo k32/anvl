@@ -100,7 +100,12 @@ This type is an extention of @ref{t:anvl_erlc:context/0,context/0}.
 -record(erlc_pre_compile_hook, {project :: anvl_project:t()}).
 -record(erlc_app_spec_hook, {project :: anvl_project:t()}).
 
--reflect_type([profile/0, compile_options/0, escript_name/0, context/0, application_spec/0]).
+-reflect_type([ profile/0
+              , compile_options/0
+              , escript_name/0
+              , application/0
+              , application_spec/0
+              ]).
 
 %%================================================================================
 %% API functions

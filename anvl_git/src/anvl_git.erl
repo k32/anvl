@@ -25,13 +25,15 @@ A builtin plugin for cloning Git repositories.
 -behavior(anvl_plugin).
 
 %% API:
--export([sources_prepared/3, ls_files/2]).
+-export([sources_prepared/3, ls_files/2, find_commit/2]).
 
 %% behavior callbacks:
 -export([model/0, project_model/0, init/0, init_for_project/1]).
 
 -include_lib("typerefl/include/types.hrl").
 -include_lib("anvl_core/include/anvl.hrl").
+
+-type repo() :: string().
 
 -type ref() :: {branch, string()}
              | {tag, string()}
@@ -41,7 +43,7 @@ A builtin plugin for cloning Git repositories.
 -type provides() :: undefined
                   | [{anvl_locate:kind(), anvl_locate:dependency()}].
 
--reflect_type([ref/0, provides/0]).
+-reflect_type([repo/0, ref/0, provides/0]).
 
 -doc """
 Condition: repository @var{Repo} is cloned to directory @var{Dir},
@@ -57,7 +59,7 @@ and commit @var{Hash} is checked out.
             %% Already prepared:
             false;
           {ok, Other} ->
-            ?LOG_NOTICE("Switching ~s from ~s to ~s", [Repo, Other, Hash]),
+            ?LOG_INFO("Switching ~s from ~s to ~s", [Repo, Other, Hash]),
             maybe_sync_mirror(Repo, Hash),
             git_fetch(Dir),
             git_checkout(Dir, Hash),
@@ -134,6 +136,15 @@ ls_files(Dir, Options) ->
       Err
   end.
 
+-doc """
+Resolve git reference into a commit hash.
+""".
+-spec find_commit(repo(), ref()) -> binary().
+find_commit(Repo, Ref) ->
+  Mirror = mirror_dir(Repo),
+  _ = precondition(mirror_synced(Mirror, Repo)),
+  get_commit_hash(Mirror, Ref).
+
 %%--------------------------------------------------------------------------
 %% anvl callbacks
 %%--------------------------------------------------------------------------
@@ -148,6 +159,7 @@ init_for_project(Project) ->
   lists:member(anvl_git, anvl_project:plugins(Project)) andalso
     anvl_locate:add_hook(
       fun(Kind, Dependency) ->
+          ?LOG_INFO("Locating ~p:~p", [Kind, Dependency]),
           locate_in_project(Project, Kind, Dependency)
       end),
   ok.
@@ -182,7 +194,7 @@ project_model() ->
            #{ repo =>
                 {[value],
                  #{ oneliner => "URL of the Git repo"
-                  , type => string()
+                  , type => repo()
                   }}
             %% , uid =>
             %%     {[value],
@@ -256,40 +268,15 @@ locate_in_project(Project, Kind, Dependency) ->
 %% Lock management
 %%--------------------------------------------------------------------------
 
-locked(Project, Consumer, Id, Repo, Ref) ->
-  Root = anvl_project:root(),
-  case read_lock(Root, Consumer, Id) of
-    {ok, Hash} ->
-      {false, Hash};
-    undefined ->
-      case Project =/= Root andalso read_lock(Project, Consumer, Id) of
-        {ok, Hash} ->
-          ok;
-        _ ->
-          Hash = resolve_hash(Repo, Ref)
-      end,
-      write_lock(Root, Consumer, Id, Hash),
-      {true, Hash}
-  end.
-
-resolve_hash(Repo, Ref) ->
-  Mirror = mirror_dir(Repo),
-  _ = precondition(mirror_synced(Mirror, Repo)),
-  get_commit_hash(Mirror, Ref).
-
-write_lock(Project, Consumer, Id, Hash) ->
-  ?LOG_NOTICE("Locking ~p/~p to ~s", [Consumer, Id, Hash]),
-  LockFile = lock_file(Project, Consumer, Id),
-  ok = filelib:ensure_dir(LockFile),
-  ok = file:write_file(LockFile, Hash).
-
-read_lock(Project, Consumer, Id) ->
-  case file:read_file(lock_file(Project, Consumer, Id)) of
-    {ok, _} = Ret ->
-      Ret;
-    {error, enoent} ->
-      undefined
-  end.
+locked(Project, Kind, Id, Repo, Ref) ->
+  anvl_locate:resolve_lock(
+    ?MODULE,
+    fun() ->
+        find_commit(Repo, Ref)
+    end,
+    Project,
+    Kind,
+    Id).
 
 %%--------------------------------------------------------------------------
 %% Mirror management
@@ -410,10 +397,6 @@ Output:
 %%--------------------------------------------------------------------------
 %% Locations
 %%--------------------------------------------------------------------------
-
-lock_file(Project, Consumer, Id) ->
-  Ctx = #{proj => Project, consumer => Consumer, id => Id},
-  template("${proj}/anvl_lock/git/${consumer}/${id}", Ctx, path).
 
 mirror_dir(Repo) ->
   filename:join(

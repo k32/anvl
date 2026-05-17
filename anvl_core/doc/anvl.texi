@@ -41,7 +41,7 @@
 @copying
 A general-purpose parallel task execution tool.
 
-Copyright @copyright{} 2024-2025
+Copyright @copyright{} 2024-2026
 
 @quotation
 Permission is granted to copy, distribute and/or modify this document
@@ -365,6 +365,7 @@ In contrast, ANVL presents these as independent library primitives.
 @include anvl_erlc/doc/chapter.texi
 @include anvl_git/doc/chapter.texi
 @include anvl_texinfo/doc/chapter.texi
+@include anvl_hex_pm/doc/chapter.texi
 @include anvl_rebar3/doc/chapter.texi
 
 @node Index

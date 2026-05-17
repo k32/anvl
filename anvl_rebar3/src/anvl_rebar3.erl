@@ -149,10 +149,16 @@ translate_git_deps(Rebar3Conf) ->
     fun({Proj, {git, Repo, {Kind, Ref}}}, Acc) when Kind =:= ref;
                                                     Kind =:= branch;
                                                     Kind =:= tag ->
-            Item = #{id => Proj, repo => Repo, ref => {Kind, Ref}},
+            Item = #{ repo => Repo
+                    , ref => {Kind, Ref}
+                    , provides => [{otp_application, Proj}]
+                    },
             [Item | Acc];
        ({Proj, {git, Repo, Ref}}, Acc) when is_list(Ref) ->
-            Item = #{id => Proj, repo => Repo, ref => Ref},
+            Item = #{ repo => Repo
+                    , ref => Ref
+                    , provides => [{otp_application, Proj}]
+                    },
             [Item | Acc];
        ({Proj, Git}, _Acc) when is_tuple(Git), element(1, Git) =:= Git ->
             ?UNSAT("Cannot translate git dependency without explicit ref ~p: ~p",
