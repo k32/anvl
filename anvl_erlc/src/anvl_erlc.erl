@@ -310,14 +310,7 @@ model() ->
                  Profile
              }}
        , xref =>
-           {[map, cli_action],
-            #{ oneliner => "Run xref analysis on the root project"
-             , key_elements => [[profile]]
-             , cli_operand => "erl_xref"
-             },
-            #{ profile =>
-                 Profile
-             }}
+           anvl_erlc_xref:model(Profile)
        }}.
 
 -doc false.
@@ -351,20 +344,7 @@ project_model() ->
                 , default => []
                 }}
           , xref =>
-              #{ analysis =>
-                   {[value],
-                    #{ oneliner => "List of predefined xref analyses to run"
-                     , doc => """
-                              See @url{https://www.erlang.org/doc/apps/tools/xref.html#t:analysis/0}.
-                              """
-                     , type => list()
-                     , default =>
-                         [ undefined_function_calls
-                         , locals_not_used
-                         , deprecated_function_calls
-                         ]
-                     }}
-               }
+              anvl_erlc_xref:project_model()
           }
      },
   Overrides = lee_model:map_vals(

@@ -26,10 +26,11 @@ A wrapper for @url{https://www.erlang.org/doc/apps/tools/xref.html, XRef} tool.
 -export([passed/1]).
 
 %% internal exports:
--export([conditions/0]).
+-export([conditions/0, model/1, project_model/0]).
 
 -export_type([]).
 
+-include_lib("typerefl/include/types.hrl").
 -include_lib("anvl_core/include/anvl.hrl").
 -include_lib("kernel/include/logger.hrl").
 
@@ -88,6 +89,34 @@ conditions() ->
      passed(Profile)
    end
    || Key <- anvl_plugin:list_conf([anvl_erlc, xref, {}])].
+
+-doc false.
+model(Profile) ->
+  {[map, cli_action],
+   #{ oneliner => "Run xref analysis on the root project"
+    , key_elements => [[profile]]
+    , cli_operand => "erl_xref"
+    },
+   #{ profile =>
+        Profile
+    }}.
+
+-doc false.
+project_model() ->
+  #{ analysis =>
+       {[value],
+        #{ oneliner => "List of predefined xref analyses to run"
+         , doc => """
+                  See @url{https://www.erlang.org/doc/apps/tools/xref.html#t:analysis/0}.
+                  """
+         , type => list()
+         , default =>
+             [ undefined_function_calls
+             , locals_not_used
+             , deprecated_function_calls
+             ]
+         }}
+   }.
 
 %%================================================================================
 %% Internal functions
