@@ -43,7 +43,7 @@ main(CLIArgs) ->
   set_logger_conf(),
   application:set_env(anvl, cli_args, CLIArgs),
   {ok, _} = application:ensure_all_started(anvl_core),
-  precondition(anvl_project:loaded(anvl_project:root())),
+  load_root_project_conf(),
   case anvl_project:conditions() of
     [] ->
       ?LOG_CRITICAL("No default condition is specified in anvl.erl. Nothing to do"),
@@ -166,3 +166,10 @@ set_logger_conf() ->
 %%================================================================================
 %% Configuration handling
 %%================================================================================
+
+load_root_project_conf() ->
+  try precondition(anvl_project:loaded(anvl_project:root()))
+  catch
+    exit:{unsat, _} ->
+      ?MODULE:halt(1)
+  end.
