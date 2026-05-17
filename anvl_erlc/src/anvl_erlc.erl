@@ -20,16 +20,17 @@
 -module(anvl_erlc).
 -moduledoc #{format => "text/texinfo"}.
 -moduledoc """
-A builtin plugin for compiling Erlang applications.
+A wrapper for erlc,
+the Erlang compiler.
 """.
 
 -behavior(anvl_plugin).
 
 %% API:
--export([add_pre_compile_hook/2, add_app_spec_hook/2]).
+-export([add_pre_compile_hook/2, add_app_spec_hook/2, pcfg/2, pcfg/3]).
 -export([app_info/2, escript/2, app_compiled/2, module/2]).
 -export([app_file/1, beam_file/2]).
--export([app_closure/2, app_path/2, xref_passed/1]).
+-export([app_closure/2, app_path/2]).
 
 %% behavior callbacks:
 -export([model/0, project_model/0, init/0, init_for_project/1, conditions/1]).
@@ -162,35 +163,19 @@ app_closure(Profile, Apps) ->
   do_app_closure(Profile, Apps, ordsets:new(), ordsets:new()).
 
 -doc """
-Condition: @url{https://www.erlang.org/doc/apps/tools/xref.html, XRef} analysis passed for a profile.
+Helper function that gets project configuration from Erlang subtree.
 """.
-?MEMO(xref_passed, Profile,
-      begin
-        Apps = pcfg(anvl_project:root(), Profile, [static_checks, apps]),
-        Analysis = pcfg(anvl_project:root(), Profile, [static_checks, xref, analysis]),
-        {NonOTPApps, OTPApps} = app_closure(Profile, Apps),
-        Closure = NonOTPApps ++ OTPApps,
-        %% Run analysis:
-        {ok, Serv} = xref:start([]),
-        ok = xref:set_library_path(
-               Serv,
-               [filename:join(app_path(Profile, I), "ebin") || I <- Closure -- Apps]),
-        try
-          OptsForAdd = [{warnings, false}, {verbose, false}, {builtins, true}],
-          [begin
-             Dir = app_path(Profile, App),
-             case xref:add_application(Serv, Dir, [{name, App} | OptsForAdd]) of
-               {ok, App} ->
-                 ok;
-               Err ->
-                 ?UNSAT("Failed adding ~p to xref: ~p", [App, Err])
-             end
-           end || App <- Apps],
-          xref_warnings(Profile, [{I, xref:analyze(Serv, I)} || I <- Analysis], [])
-        after
-          xref:stop(Serv)
-        end
-      end).
+-spec pcfg(anvl_project:t(), lee:key()) -> _.
+pcfg(Project, Key) ->
+  anvl_project:conf(Project, [erlang | Key]).
+
+-doc """
+Helper function that gets project configuration from Erlang subtree
+with overrides for the given profile.
+""".
+-spec pcfg(anvl_project:t(), profile(), lee:key()) -> _.
+pcfg(Project, Profile, Key) ->
+  anvl_project:conf(Project, [erlang, overrides, {Profile} | Key]).
 
 -doc """
 Condition: OTP application has been compiled with the given profile.
@@ -368,7 +353,7 @@ project_model() ->
           , xref =>
               #{ analysis =>
                    {[value],
-                    #{ oneliner => "List of xref analyses to run"
+                    #{ oneliner => "List of predefined xref analyses to run"
                      , doc => """
                               See @url{https://www.erlang.org/doc/apps/tools/xref.html#t:analysis/0}.
                               """
@@ -461,7 +446,9 @@ init_for_project(Project) ->
 
 -doc false.
 conditions(ProjectRoot) ->
-  get_compile_apps(ProjectRoot) ++ get_escripts(ProjectRoot) ++ get_xrefs(ProjectRoot).
+  get_compile_apps(ProjectRoot) ++
+    get_escripts(ProjectRoot) ++
+    anvl_erlc_xref:conditions().
 
 %%================================================================================
 %% Condition implementations
@@ -641,13 +628,6 @@ get_compile_apps(_ProjectRoot) ->
    end
    || Key <- anvl_plugin:list_conf([anvl_erlc, compile, {}])].
 
-get_xrefs(_ProjectRoot) ->
-  [begin
-     Profile = anvl_plugin:conf(Key ++ [profile]),
-     xref_passed(Profile)
-   end
-   || Key <- anvl_plugin:list_conf([anvl_erlc, xref, {}])].
-
 -doc "Clean ebin directory of files that don't have sources".
 clean_orphans(Sources, Context) ->
   Orphans = filelib:wildcard(beam_of_erl("*.erl", Context)) -- [beam_of_erl(Src, Context) || Src <- Sources],
@@ -825,34 +805,7 @@ do_app_closure(Profile, [App | Rest], AccNonOTP0, AccOTP0) ->
       end
   end.
 
-xref_warnings(Profile, [], Result) ->
-  case Result of
-    [] ->
-      false;
-    _ ->
-      ?UNSAT("Analysis failed for profile ~p~n~s", [Profile, Result])
-  end;
-xref_warnings(Profile, [Analysis | Rest], Result) ->
-  case Analysis of
-    {_Type, {ok, []}} ->
-      xref_warnings(Profile, Rest, Result);
-    {Type, Error} ->
-      Msg = case Error of
-              {ok, Warnings} ->
-                io_lib:format("  ~p:~n    ~p~n", [Type, Warnings]);
-              {error, Module, Err} ->
-                io_lib:format("  ~p failed for ~p: ~p~n", [Type, Module, Err])
-            end,
-      xref_warnings(Profile, Rest, [Msg | Result])
-  end.
-
 ensure_string(Bin) when is_binary(Bin) ->
   binary_to_list(Bin);
 ensure_string(L) when is_list(L) ->
   L.
-
-pcfg(ProjectRoot, Key) ->
-  anvl_project:conf(ProjectRoot, [erlang | Key]).
-
-pcfg(ProjectRoot, Profile, Key) ->
-  anvl_project:conf(ProjectRoot, [erlang, overrides, {Profile} | Key]).
