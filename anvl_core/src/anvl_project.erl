@@ -226,9 +226,9 @@ parse_transform(Forms, Opts) ->
 
 -record(conf_module_of_dir, {directory}).
 
-config_module(ProjectRoot) ->
-  anvl_condition:precondition(config_loaded(ProjectRoot)),
-  anvl_condition:get_result(#conf_module_of_dir{directory = ProjectRoot}).
+config_module(Project) ->
+  anvl_condition:precondition(config_loaded(Project)),
+  anvl_condition:get_result(#conf_module_of_dir{directory = Project}).
 
 ?MEMO(config_loaded, Dir,
       begin

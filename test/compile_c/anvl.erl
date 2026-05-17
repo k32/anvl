@@ -15,7 +15,7 @@ conf() ->
       begin
         Executable = "build/hello",
         %% Collect source files:
-        Sources = filelib:wildcard(filename:join(anvl_project:root(), "c_src/*.c")),
+        Sources = anvl_fn:wildcard("c_src/*.c", anvl_project:root()),
         %% Derive names of object files:
         Objs = lists:map(fun obj_name/1, Sources),
         precondition([source_compiled(Src, obj_name(Src)) || Src <- Sources]) or
