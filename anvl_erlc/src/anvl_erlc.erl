@@ -275,6 +275,8 @@ model() ->
              }}
        , xref =>
            anvl_erlc_xref:model(Profile)
+       , dialyzer =>
+           anvl_erlc_dialyzer:model(Profile)
        }}.
 
 -doc false.
@@ -309,6 +311,8 @@ project_model() ->
                 }}
           , xref =>
               anvl_erlc_xref:project_model()
+          , dialyzer =>
+              anvl_erlc_dialyzer:project_model()
           }
      },
   Overrides = lee_model:map_vals(
@@ -445,7 +449,6 @@ do_compile_app(Profile, App) ->
     clean_orphans(Sources, Context) or
     copy_includes(Context) or
     render_app_spec(AppSrcProperties, Sources, Context).
-
 
 do_escript(ProjectRoot, EscriptName) ->
   Cfg = fun(Key) ->
