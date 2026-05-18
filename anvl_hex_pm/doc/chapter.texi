@@ -1,4 +1,8 @@
 @node hex.pm Builtin ANVL Plugin
 @chapter hex.pm, Builtin ANVL Plugin
 
+A simple client for @url{https://hex.pm/} package manager.
+
+It only supports fetching tarballs from the CDN.
+
 @lee{anvl_hex_pm,ANVL hex.pm}
