@@ -47,7 +47,7 @@ Generate anvl.erl file from rebar.conf if the former is not found in the project
 maybe_generate_anvl_conf(Dir) ->
   AnvlConf = filename:join(Dir, "anvl.erl"),
   Rebar3Conf = filename:join(Dir, "rebar.config"),
-  case {filelib:is_file(AnvlConf), filelib:is_file(Rebar3Conf)} of
+  case {filelib:is_regular(AnvlConf), filelib:is_regular(Rebar3Conf)} of
     {false, true} ->
       ok = generate_anvl_conf(Rebar3Conf, AnvlConf),
       true;

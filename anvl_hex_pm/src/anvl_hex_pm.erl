@@ -255,7 +255,7 @@ local_dir(Kind, Package) ->
 %% Condition: tarball of a certain version is downloaded to the cache.
 ?MEMO(cached, Package, Lock,
       begin
-        case filelib:is_file(cached_filename(Package, Lock)) of
+        case filelib:is_regular(cached_filename(Package, Lock)) of
           true ->
             false;
           false ->

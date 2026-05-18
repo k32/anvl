@@ -207,7 +207,7 @@ Return @code{true} if input directory is an ANVL project.
 """.
 -spec is_project(file:filename()) -> boolean().
 is_project(Dir) ->
-  filelib:is_file(project_config_file(Dir)).
+  filelib:is_regular(project_config_file(Dir)).
 
 %%================================================================================
 %% Internal functions
@@ -242,7 +242,7 @@ config_module(Project) ->
 
 obtain_project_conf_module(Dir) ->
   ConfFile = project_config_file(Dir),
-  case filelib:is_file(ConfFile) of
+  case filelib:is_regular(ConfFile) of
     true ->
       Module = anvl_config_module(Dir),
       Options = [ {d, 'PROJECT', Module}
