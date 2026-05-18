@@ -445,6 +445,7 @@ do_compile_app(Profile, App) ->
   ?LOG_INFO("Added ~p to the erlang load path (~s)", [App, code:lib_dir(App)]),
   %% Build BEAM files:
   CompHook or
+    manage_priv(Context) or
     precondition([beam(Src, CRef) || Src <- Sources]) or
     clean_orphans(Sources, Context) or
     copy_includes(Context) or
@@ -623,6 +624,25 @@ get_compile_apps(_Project) ->
      [app_compiled(Profile, I) || I <- Apps]
    end
    || Key <- anvl_plugin:list_conf([anvl_erlc, compile, {}])].
+
+-doc "Copy priv files from the source directory to build directory".
+manage_priv(#{src_root := SrcRoot, build_dir := BuildDir}) ->
+  Srcs = filelib:wildcard("priv/**", anvl_lib:ensure_string(SrcRoot)),
+  lists:foldl(
+    fun(Item, Acc) ->
+        Src = filename:join(SrcRoot, Item),
+        Target = filename:join(BuildDir, Item),
+        case filelib:is_regular(Src) andalso newer(Src, Target) of
+          false ->
+            Acc;
+          true ->
+            ?LOG_DEBUG("Copying priv file: ~s -> ~s", [Src, Target]),
+            {ok, _} = file:copy(Src, Target),
+            true
+        end
+    end,
+    false,
+    Srcs).
 
 -doc "Clean ebin directory of files that don't have sources".
 clean_orphans(Sources, Context) ->
