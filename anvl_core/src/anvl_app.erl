@@ -181,5 +181,6 @@ load_root_project_conf() ->
 %% @doc Stop the `escript'
 -spec halt(char()) -> no_return().
 halt(ExitCode) ->
+  application:stop(anvl_core),
   logger_std_h:filesync(default),
   erlang:halt(ExitCode).

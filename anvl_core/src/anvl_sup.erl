@@ -88,7 +88,7 @@ init(top) ->
                },
   Children = [ ResourceSup
              , PluginSup
-             , worker(anvl_condition)
+             , worker(anvl_condition, 60_000)
              , worker(anvl_plugin) %% Plugin manager
              ],
   SupFlags = #{ strategy      => one_for_one
@@ -125,9 +125,12 @@ init(resources) ->
 %%================================================================================
 
 worker(Module) ->
+  worker(Module, 5_000).
+
+worker(Module, Shutdown) ->
   #{ id       => Module
    , start    => {Module, start_link, []}
-   , shutdown => 5_000
+   , shutdown => Shutdown
    , restart  => permanent
    , type     => worker
    }.

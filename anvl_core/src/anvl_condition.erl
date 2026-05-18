@@ -103,6 +103,8 @@ build_target(Target) ->
 -define(anvl_cond_self, anvl_cond_self).
 -define(gauge_waited, anvl_condition_gauge_waited).
 
+-define(aborted, anvl_condition_abort).
+
 %%================================================================================
 %% API functions
 %%================================================================================
@@ -306,19 +308,26 @@ handle_cast(_Cast, S) ->
 -doc false.
 handle_info(deadlock_detection, S) ->
   {noreply, do_deadlock_detection(S)};
+handle_info({'EXIT', _From, shutdown}, S) ->
+  {stop, shutdown, S};
 handle_info(_Info, S) ->
   {noreply, S}.
 
 -doc false.
 terminate(_Reason, _S) ->
+  persistent_term:put(anvl_condition_terminating, true),
+  wait_unfinished_jobs(),
   ok.
 
 %%================================================================================
 %% Internal exports
 %%================================================================================
 
+%% Note: update running_conditions() if this function changes
 -doc false.
 condition_entrypoint(Condition, Parent) ->
+  persistent_term:get(anvl_condition_terminating, false) andalso
+    exit(?aborted),
   process_flag(trap_exit, true),
   T0 = erlang:system_time(microsecond),
   put(?anvl_cond_self, Condition),
@@ -348,6 +357,7 @@ condition_entrypoint(Condition, Parent) ->
           LogLevel = case Err of
                        unsat      -> debug;
                        {unsat, _} -> debug;
+                       ?aborted   -> debug;
                        _          -> error
                      end,
           ?LOG(LogLevel, "!!! Failed ~p~n~p:~p~nStacktrace:~n~p", [Condition, EC, Err, Stack]),
@@ -415,8 +425,12 @@ wait_result(Condition, Pid, MRef) ->
         noproc ->
           is_changed(Condition);
         failed ->
-          unsat(Condition)
-      end
+          unsat(Condition);
+        ?aborted ->
+          exit(?aborted)
+      end;
+    {'EXIT', _From, ?aborted} ->
+      exit(?aborted)
   end.
 
 exec(#anvl_memo_thunk{descr = Descr, func = Fun, args = A}) ->
@@ -450,8 +464,12 @@ precondition_async1(Condition) ->
         {Pid, proceed} ->
           {in_progress, Condition, Pid, MRef};
         {'DOWN', MRef, _, _, Reason} ->
-          retry = Reason,
-          precondition_async1(Condition)
+          case Reason of
+            retry ->
+              precondition_async1(Condition);
+            ?aborted ->
+              exit(?aborted)
+          end
       end
   end.
 
@@ -462,6 +480,44 @@ get_resolve_conditions() ->
   case get(?resolve_conditions) of
     undefined -> [];
     L         -> L
+  end.
+
+wait_unfinished_jobs() ->
+  case n_started() =:= n_complete() of
+    true ->
+      ok;
+    false ->
+      Conditions = running_conditions(),
+      case Conditions of
+        [] ->
+          ok;
+        _ ->
+          ?LOG_NOTICE("Waiting for ~p unfinished jobs...", [length(Conditions)]),
+          wait_unfinished_jobs([{I, monitor(process, I)} || I <- Conditions]),
+          wait_unfinished_jobs()
+      end
+  end.
+
+running_conditions() ->
+  lists:filter(
+    fun(Pid) ->
+        case process_info(Pid, [initial_call]) of
+          [{_, {?MODULE, condition_entrypoint, 2}}] ->
+            true;
+          _ ->
+            false
+        end
+    end,
+    processes()).
+
+wait_unfinished_jobs([]) ->
+  ok;
+wait_unfinished_jobs([{Pid, MRef} | Rest]) ->
+  exit(Pid, ?aborted),
+  %% io:format("Waiting for ~p~n", [erlang:process_info(Pid, [current_stacktrace])]),
+  receive
+    {'DOWN', MRef, _, _, _} ->
+      wait_unfinished_jobs(Rest)
   end.
 
 resolve_speculative(Result) ->
