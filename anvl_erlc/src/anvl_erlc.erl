@@ -679,17 +679,31 @@ render_app_spec(AppSrcProperties, Sources, Context) ->
   end.
 
 app_src(App, AppRoot) ->
-  File = app_src_path(AppRoot, App),
-  case file:consult(File) of
-    {ok, [{application, App, Properties}]} when is_list(Properties) ->
-      Properties;
-    Error ->
-      ?UNSAT("Malformed or missing ~s file ~p", [File, Error])
+  maybe
+    {ok, File} ?= app_src_path(AppRoot, App),
+    {ok, [{application, App, Properties}]} ?= file:consult(File),
+    true ?= is_list(Properties),
+    Properties
+  else
+    false ->
+      ?UNSAT("Malformed application properties in ~p.app.src", [App]);
+    Err ->
+      ?UNSAT("Malformed or missing ~p.app.src file: ~p", [App, Err])
   end.
 
 -spec app_src_path(anvl_project:t(), application()) -> file:filename().
 app_src_path(AppRoot, App) ->
-  template("${root}/src/${app}.app.src", #{app => App, root => AppRoot}, path).
+  Candidates =
+    [ template("${root}/src/${app}.app.src", #{app => App, root => AppRoot}, path)
+      %% Used by cowboy and friends:
+    , template("${root}/ebin/${app}.app", #{app => App, root => AppRoot}, path)
+    ],
+  case lists:search(fun filelib:is_file/1, Candidates) of
+    {value, File} ->
+      {ok, File};
+    false ->
+      {error, no_app_file}
+  end.
 
 module_of_erl(Src) ->
   list_to_atom(filename:basename(Src, ".erl")).
@@ -756,9 +770,9 @@ locate_in_project(otp_application, App, Project) ->
        Go([Template|Rest]) ->
          SubDir = template(Template, #{app => App}, path),
          AppRoot = filename:join(Project, SubDir),
-         case filelib:is_file(app_src_path(AppRoot, App)) of
-           true  -> {value, SubDir};
-           false -> Go(Rest)
+         case app_src_path(AppRoot, App) of
+           {ok, _}    -> {value, SubDir};
+           {error, _} -> Go(Rest)
          end
     end)(AppPathTemplates).
 
