@@ -2,7 +2,7 @@
 %% This file is part of anvl, a parallel general-purpose task
 %% execution tool.
 %%
-%% Copyright (C) 2024-2025 k32
+%% Copyright (C) 2024-2026 k32
 %%
 %% This program is free software: you can redistribute it and/or
 %% modify it under the terms of the GNU Lesser General Public License
@@ -26,6 +26,7 @@ A collection of functions useful for implementing conditions.
 -export([template/3, patsubst/3, patsubst/2]).
 -export([newer/2, newer/3, max_mtime/1, hash/1]).
 -export([exec/2, exec/3, exec_/2, exec_/3]).
+-export([ensure_string/1]).
 
 -export_type([template_vars/0]).
 
@@ -248,6 +249,12 @@ exec_(Command, Args, Options) ->
 -spec hash(any()) -> binary().
 hash(Term) ->
   binary:encode_hex(crypto:hash(sha256, term_to_iovec(Term)), lowercase).
+
+-spec ensure_string(binary() | string()) -> string().
+ensure_string(Bin) when is_binary(Bin) ->
+  binary_to_list(Bin);
+ensure_string(L) when is_list(L) ->
+  L.
 
 %%================================================================================
 %% Internal functions

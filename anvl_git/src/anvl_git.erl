@@ -166,11 +166,15 @@ init_for_project(Project) ->
 
 -doc false.
 model() ->
+  CacheSuffix = "gitmirror",
+  CacheDir = filename:join(filename:basedir(user_cache, "anvl"), CacheSuffix),
+  CacheDirWithoutHome = "~/.cache/anvl/" ++ CacheSuffix,
   #{git =>
       #{ local_mirror_dir =>
            {[value, os_env],
             #{ oneliner => "Local Git mirror directory"
-             , default => filename:join(filename:basedir(user_cache, "anvl"), "gitmirror")
+             , default => CacheDir
+             , default_str => CacheDirWithoutHome
              , type => string()
              }}
        , max_jobs =>

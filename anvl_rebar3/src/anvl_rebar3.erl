@@ -79,8 +79,9 @@ conf() ->
 
 -spec translate_conf(proplists:proplist()) -> map().
 translate_conf(Rebar3Conf) ->
-  #{ plugins => [anvl_git, anvl_erlc, anvl_rebar3]
+  #{ plugins => [anvl_git, anvl_erlc, anvl_hex_pm, anvl_rebar3]
    , [deps, git] => translate_git_deps(Rebar3Conf)
+   , [deps, hex_pm] => translate_hex_deps(Rebar3Conf)
    , erlang =>
        #{ app_paths => translate_app_paths(Rebar3Conf)
         , compile_options => translate_compile_opts(Rebar3Conf)
@@ -144,20 +145,36 @@ translate_src_dirs(Rebar3Conf) ->
     end,
     SrcDirs ++ ExtraSrcDirs).
 
-translate_git_deps(Rebar3Conf) ->
+translate_hex_deps(Rebar3Conf) ->
   lists:foldl(
-    fun({Proj, {git, Repo, {Kind, Ref}}}, Acc) when Kind =:= ref;
-                                                    Kind =:= branch;
-                                                    Kind =:= tag ->
-            Item = #{ repo => Repo
-                    , ref => {Kind, Ref}
-                    , provides => [{otp_application, Proj}]
+    fun({Package, Vsn}, Acc) when is_list(Vsn) ->
+            Item = #{ id => Package
+                    , version => Vsn
                     },
             [Item | Acc];
-       ({Proj, {git, Repo, Ref}}, Acc) when is_list(Ref) ->
+       (Package, Acc) when is_atom(Package) ->
+            Item = #{ id => Package
+                    , version => latest
+                    },
+            [Item | Acc];
+       (_, Acc) ->
+            Acc
+    end,
+    [],
+    proplists:get_value(deps, Rebar3Conf, [])).
+
+translate_git_deps(Rebar3Conf) ->
+  lists:foldl(
+    fun({_Proj, {git, Repo, {Kind, Ref}}}, Acc) when Kind =:= ref;
+                                                     Kind =:= branch;
+                                                     Kind =:= tag ->
+            Item = #{ repo => Repo
+                    , ref => {Kind, Ref}
+                    },
+            [Item | Acc];
+       ({_Proj, {git, Repo, Ref}}, Acc) when is_list(Ref) ->
             Item = #{ repo => Repo
                     , ref => Ref
-                    , provides => [{otp_application, Proj}]
                     },
             [Item | Acc];
        ({Proj, Git}, _Acc) when is_tuple(Git), element(1, Git) =:= Git ->

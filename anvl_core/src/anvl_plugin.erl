@@ -80,7 +80,11 @@ Condition: @var{Plugin} has been loaded.
         anvl_core ->
           false;
         _ ->
-          Changed = if Plugin =:= anvl_erlc; Plugin =:= anvl_git; Plugin =:= anvl_texinfo; Plugin =:= anvl_rebar3 ->
+          Changed = if Plugin =:= anvl_erlc;
+                       Plugin =:= anvl_git;
+                       Plugin =:= anvl_texinfo;
+                       Plugin =:= anvl_hex_pm;
+                       Plugin =:= anvl_rebar3 ->
                         %% Don't recompile builtin plugins:
                         false;
                        true ->
@@ -231,7 +235,7 @@ do_load_config(S = #s{m = Model}) ->
       logger:critical("Invalid configuration"),
       [logger:critical(E) || E <- Errors],
       [logger:warning(E) || E <- Warnings],
-      anvl_app:halt(1)
+      anvl_app:exit_result(1)
   end.
 
 -doc false.

@@ -470,7 +470,7 @@ do_escript(ProjectRoot, EscriptName) ->
       Bins = lists:map(fun({SrcFile, ArchiveFile}) ->
                            case file:read_file(SrcFile) of
                              {ok, Bin}  ->
-                               {ensure_string(ArchiveFile), Bin};
+                               {anvl_lib:ensure_string(ArchiveFile), Bin};
                              Error ->
                                ?UNSAT("Cannot read file ~s (-> ~s) required by escript ~p (~p)",
                                       [SrcFile, ArchiveFile, EscriptName, Error])
@@ -631,7 +631,7 @@ clean_orphans(Sources, Context) ->
 
 -doc "Copy hrl files to the build directory".
 copy_includes(#{build_dir := BuildDir, src_root := SrcRoot}) ->
-  Includes = filelib:wildcard(ensure_string(filename:join([SrcRoot, "include", "*.hrl"]))),
+  Includes = filelib:wildcard(anvl_lib:ensure_string(filename:join([SrcRoot, "include", "*.hrl"]))),
   lists:foldl(fun(Src, Acc) ->
                   Dst = filename:join([BuildDir, "include", filename:basename(Src)]),
                   case newer(Src, Dst) of
@@ -789,8 +789,3 @@ do_app_closure(Profile, [App | Rest], AccNonOTP0, AccOTP0) ->
             AccOTP)
       end
   end.
-
-ensure_string(Bin) when is_binary(Bin) ->
-  binary_to_list(Bin);
-ensure_string(L) when is_list(L) ->
-  L.
