@@ -61,7 +61,7 @@ build_target(Target) ->
 %% Type declarations
 %%================================================================================
 
--opaque t() ::
+-type t() ::
           #anvl_memo_thunk{
              descr :: _,
              func :: function(),
@@ -70,10 +70,11 @@ build_target(Target) ->
 
 -type speculative() :: term().
 
+-type cond_key() :: {function(), list()}.
+
 -record(done,
-        { id :: t()
+        { id :: cond_key()
         , changed :: boolean()
-        , stats :: proplists:proplist()
         }).
 
 -record(failed,
@@ -82,7 +83,7 @@ build_target(Target) ->
         }).
 
 -record(in_progress,
-        { id :: t()
+        { id :: cond_key()
         , pid :: pid()
         }).
 
@@ -540,6 +541,7 @@ resolve_speculative(Result) ->
                 end,
                 get_resolve_conditions()).
 
+-spec key(t()) -> cond_key().
 key(#anvl_memo_thunk{func = Fun, args = Args}) ->
   {Fun, Args}.
 

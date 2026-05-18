@@ -39,7 +39,7 @@ A collection of functions useful for implementing conditions.
 %% Type declarations
 %%================================================================================
 
--type template_vars() :: #{atom() | binary() => string()}.
+-type template_vars() :: #{atom() | binary() => binary() | string() | atom()}.
 -type filename_pattern() :: string().
 
 -reflect_type([filename_pattern/0]).

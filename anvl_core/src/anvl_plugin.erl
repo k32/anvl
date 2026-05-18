@@ -55,9 +55,9 @@ An ANVL API for managing plugins.
 
 -type t() :: module().
 
--callback model() -> lee:model_module().
+-callback model() -> lee:lee_module().
 
--callback project_model() -> lee:model_module().
+-callback project_model() -> lee:lee_module().
 
 -callback conditions(file:filename_all()) -> [[anvl_condition:t()]].
 
@@ -111,7 +111,7 @@ list_conf(Key) ->
   lee:list(?conf_storage, Key).
 
 -doc false.
--spec get_project_model() -> [lee:model_module()].
+-spec get_project_model() -> [lee:lee_module()].
 get_project_model() ->
   gen_server:call(?MODULE, get_project_model).
 

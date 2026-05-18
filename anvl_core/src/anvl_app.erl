@@ -40,6 +40,7 @@
 %%================================================================================
 
 %% @doc Entrypoint for `anvl' escript.
+-spec main([string()]) -> no_return().
 main(CLIArgs) ->
   set_logger_conf(),
   application:set_env(anvl, cli_args, CLIArgs),
@@ -54,6 +55,7 @@ main(CLIArgs) ->
       exec_top(Toplevel)
   end.
 
+-spec help() -> no_return().
 help() ->
   os:putenv("VISUAL", "info"),
   {ok, Info} = file:read_file(filename:join(prefix(), "share/anvl/info/anvl.info")),

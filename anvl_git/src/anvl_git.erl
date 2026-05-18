@@ -312,6 +312,7 @@ mirror_needs_sync(Mirror, Hash) ->
       true
   end.
 
+-spec mirror_synced(file:filename(), repo()) -> anvl_condition:t().
 ?MEMO(mirror_synced, Mirror, Repo,
       begin
           anvl_resource:with(

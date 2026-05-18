@@ -218,7 +218,7 @@ is compiled to format @var{Format}.
 -doc """
 Render documentation for an Erlang application @var{App} compiled in profile @var{Profile}.
 """.
--spec erl_doc(Profile :: anvl_erlc:profile(), App :: anvl_erc:application()) -> anvl_condition:t().
+-spec erl_doc(Profile :: anvl_erlc:profile(), App :: anvl_erlc:application()) -> anvl_condition:t().
 ?MEMO(erl_doc, Profile, App,
       begin
         OutDir = doc_dir([atom_to_list(App)]),
@@ -249,7 +249,7 @@ Render documentation for an Erlang module.
 """.
 -spec erl_module_doc(
         OutputDir :: file:filename(),
-        AppInfo :: anvl_erc:app_info(),
+        AppInfo :: anvl_erlc:app_info(),
         Mod :: module()
        ) -> anvl_condition:t().
 ?MEMO(erl_module_doc, OutDir, Ctx = #{app := App}, Mod,
