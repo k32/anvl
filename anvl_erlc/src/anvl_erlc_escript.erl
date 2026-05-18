@@ -25,7 +25,9 @@ See @url{https://www.erlang.org/doc/apps/stdlib/escript.html}.
 """.
 
 -export([created/2, conditions/1]).
+-export([model/0, project_model/0]).
 
+-include_lib("typerefl/include/types.hrl").
 -include_lib("kernel/include/logger.hrl").
 -include_lib("anvl_core/include/anvl.hrl").
 
@@ -33,13 +35,16 @@ See @url{https://www.erlang.org/doc/apps/stdlib/escript.html}.
 %% Type declarations
 %%================================================================================
 
+-type name() :: atom().
+
+-reflect_type([name/0]).
 
 %%================================================================================
 %% API functions
 %%================================================================================
 
 -doc "Condition: escript has been built.".
--spec created(anvl_project:t(), string()) -> anvl_condition:t().
+-spec created(anvl_project:t(), name()) -> anvl_condition:t().
 ?MEMO(created, Project, EscriptName,
       begin
         precondition(anvl_project:loaded(Project)),
@@ -49,16 +54,73 @@ See @url{https://www.erlang.org/doc/apps/stdlib/escript.html}.
 -doc false.
 -spec conditions(anvl_project:t()) -> [anvl_condition:t()].
 conditions(Project) ->
-  [begin
-      Escripts = anvl_plugin:conf(Key ++ [names]),
-      [created(Project, I) || I <- Escripts]
-   end
-   || Key <- anvl_plugin:list_conf([anvl_erlc, escript, {}])].
+  [created(Project, Name) ||
+    Key <- anvl_plugin:list_conf([anvl_erlc, escript, {}]),
+    Name <- anvl_plugin:conf(Key ++ [names])].
+
+-doc false.
+model() ->
+  {[map, cli_action],
+   #{ oneliner => "Build an escript"
+    , key_elements => [[names]]
+    , cli_operand => "escript"
+    },
+   #{ names =>
+        {[value, cli_positional],
+         #{ oneliner => "Names of the escripts to build"
+          , type => nonempty_list(anvl_erlc_escript:name())
+          , cli_arg_position => rest
+          }}
+    }}.
+
+-doc false.
+project_model() ->
+  {[map],
+   #{ oneliner => "Define an escript"
+    , key_elements => [[name]]
+    },
+   #{ name =>
+        {[value],
+         #{ oneliner => "Escript name"
+          , type => anvl_erlc_escript:name()
+          }}
+    , apps =>
+        {[value],
+         #{ oneliner => "OTP applications included in the escript"
+          , type => list(anvl_erlc:application())
+          }}
+    , emu_args =>
+        {[value],
+         #{ oneliner => "BEAM emulator flags"
+          , type => string()
+          , default => ""
+          }}
+    , files =>
+        {[value],
+         #{ oneliner => "Patterns of files included in the escript"
+          , type => list(anvl_lib:filename_pattern())
+          , default => ["priv/**", "ebin/**"]
+          }}
+    , profile =>
+        {[value],
+         #{ oneliner => "Profile used to compile applications"
+          , type => anvl_erlc:profile()
+          , default => default
+          }}
+    , archive_options =>
+        {[value],
+         #{ type => list()
+          , default => [ {compress, all}
+                       , {uncompress, {add, [".beam", ".app"]}}
+                       ]
+          }}
+    }}.
 
 %%================================================================================
 %% Internal functions
 %%================================================================================
 
+-spec do_escript(anvl_project:t(), name()) -> boolean().
 do_escript(ProjectRoot, EscriptName) ->
   Cfg = fun(Key) ->
             anvl_project:conf(ProjectRoot, [erlang, escript, {EscriptName}] ++ Key)

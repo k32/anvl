@@ -57,8 +57,6 @@ the Erlang compiler.
          , compile_options => list()
          }.
 
--type escript_name() :: atom().
-
 -doc """
 Build context: a summary of options and data about the application
 that is available at its build time.
@@ -103,7 +101,6 @@ This type is an extention of @ref{t:anvl_erlc:context/0,context/0}.
 
 -reflect_type([ profile/0
               , compile_options/0
-              , escript_name/0
               , application/0
               , application_spec/0
               ]).
@@ -230,19 +227,6 @@ model() ->
               , cli_operand => "erlc-profile"
               , os_env => "ERLC_PROFILE"
               }}
-       , escript =>
-           {[map, cli_action],
-            #{ oneliner => "Build an escript"
-             , key_elements => [[names]]
-             , cli_operand => "escript"
-             },
-            #{ names =>
-                 {[value, cli_positional],
-                  #{ oneliner => "Names of the escripts to build"
-                   , type => nonempty_list(escript_name())
-                   , cli_arg_position => rest
-                   }}
-             }}
        , jobs =>
            {[value, cli_param, os_env, anvl_resource],
             #{ oneliner => "Maximum number of parallel compiler jobs"
@@ -266,6 +250,8 @@ model() ->
              , profile =>
                  Profile
              }}
+       , escript =>
+           anvl_erlc_escript:model()
        , xref =>
            anvl_erlc_xref:model(Profile)
        , dialyzer =>
@@ -356,46 +342,7 @@ project_model() ->
              , default => ["apps/${app}", "."]
              }}
        , escript =>
-           {[map],
-            #{ oneliner => "Define an escript"
-             , key_elements => [[name]]
-             },
-            #{ name =>
-                 {[value],
-                  #{ oneliner => "Escript name"
-                   , type => escript_name()
-                   }}
-             , apps =>
-                 {[value],
-                  #{ oneliner => "OTP applications included in the escript"
-                   , type => list(application())
-                   }}
-             , emu_args =>
-                 {[value],
-                  #{ oneliner => "BEAM emulator flags"
-                   , type => string()
-                   , default => ""
-                   }}
-             , files =>
-                 {[value],
-                  #{ oneliner => "Patterns of files included in the escript"
-                   , type => list(anvl_lib:filename_pattern())
-                   , default => ["priv/**", "ebin/**"]
-                   }}
-             , profile =>
-                 {[value],
-                  #{ oneliner => "Profile used to compile applications"
-                   , type => profile()
-                   , default => default
-                   }}
-             , archive_options =>
-                 {[value],
-                  #{ type => list()
-                   , default => [ {compress, all}
-                                , {uncompress, {add, [".beam", ".app"]}}
-                                ]
-                   }}
-             }}
+           anvl_erlc_escript:project_model()
        }}.
 
 -doc false.
