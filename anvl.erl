@@ -63,7 +63,7 @@ apps() ->
 ?MEMO(install,
       begin
         Prefix = filename:join(os:getenv("HOME"), ".local"),
-        precondition([escript(), docs()]) or
+        precondition([escript(), docs(), static_checks()]) or
           install_includes(Prefix) or
           install(Prefix, "${prefix}/bin/anvl", anvl_fn:rootdir(["anvl"]), 8#755) or
           install_docs(Prefix)
@@ -163,6 +163,9 @@ install(Prefix, Template, Src, Mode) ->
 
 escript() ->
   anvl_erlc:escript(anvl_project:root(), anvl).
+
+static_checks() ->
+  anvl_erlc_xref:passed(default).
 
 ?MEMO(docs,
       case anvl_texinfo:available() of
