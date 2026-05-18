@@ -167,7 +167,7 @@ escript() ->
 ?MEMO(static_checks,
       precondition(
         [ anvl_erlc_xref:passed(default)
-        , anvl_erlc_dialyzer:passed(default, false)
+        , anvl_erlc_dialyzer:passed(default)
         ])).
 
 ?MEMO(docs,

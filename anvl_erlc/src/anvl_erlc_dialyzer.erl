@@ -23,7 +23,7 @@ A wrapper for @url{https://www.erlang.org/doc/apps/dialyzer/dialyzer.html, Dialy
 """.
 
 %% API:
--export([passed/2]).
+-export([passed/1]).
 
 %% internal exports:
 -export([conditions/0, model/1, project_model/0]).
@@ -47,25 +47,22 @@ Condition: @url{https://www.erlang.org/doc/apps/dialyzer/dialyzer.html, Dialyzer
 
 Parameters for this condition are set in the project configuration.
 """.
--spec passed(anvl_erlc:profile(), boolean()) -> anvl_condition:t().
-?MEMO(passed, Profile, Incremental,
+-spec passed(anvl_erlc:profile()) -> anvl_condition:t().
+?MEMO(passed, Profile,
       begin
         ?LOG_NOTICE("Running Dialyzer for profile ~p", [Profile]),
         Apps = anvl_erlc:pcfg(anvl_project:root(), Profile, [static_checks, apps]),
         {NonOTPApps, OTPApps} = anvl_erlc:app_closure(Profile, Apps),
         Closure = NonOTPApps ++ OTPApps,
         BasePLTApps = Closure -- Apps,
-        case Incremental of
-          false ->
-            _ = precondition(plt_built(Profile, "base", BasePLTApps)),
-            Result = dialyzer:run(
-                       [ {analysis_type, succ_typings}
-                       , {check_plt, false}
-                       , {init_plt, plt_file(Profile, "base")}
-                       , {files, app_beams(Profile, Apps)}
-                       ]),
-            process_result(Profile, Result)
-        end
+        _ = precondition(plt_built(Profile, "base", BasePLTApps)),
+        Result = dialyzer:run(
+                   [ {analysis_type, succ_typings}
+                   , {check_plt, false}
+                   , {init_plt, plt_file(Profile, "base")}
+                   , {files, app_beams(Profile, Apps)}
+                   ]),
+        process_result(Profile, Result)
       end).
 
 %%================================================================================
@@ -74,12 +71,8 @@ Parameters for this condition are set in the project configuration.
 
 -doc false.
 conditions() ->
-  [begin
-     Profile = anvl_plugin:conf(Key ++ [profile]),
-     Incremental = anvl_plugin:conf(Key ++ [incremental]),
-     passed(Profile, Incremental)
-   end
-   || Key <- anvl_plugin:list_conf([anvl_erlc, dialyzer, {}])].
+  [passed(anvl_plugin:conf(Key ++ [profile])) ||
+    Key <- anvl_plugin:list_conf([anvl_erlc, dialyzer, {}])].
 
 -doc false.
 model(Profile) ->
@@ -90,14 +83,14 @@ model(Profile) ->
     },
    #{ profile =>
         Profile
-    , incremental =>
-        {[value, cli_param],
-         #{ oneliner => "Run dialyzer in incremental mode"
-          , type => boolean()
-          , default => false
-          , cli_short => $i
-          , cli_operand => "incremental"
-          }}
+    %% , incremental =>
+    %%     {[value, cli_param],
+    %%      #{ oneliner => "Run dialyzer in incremental mode"
+    %%       , type => boolean()
+    %%       , default => false
+    %%       , cli_short => $i
+    %%       , cli_operand => "incremental"
+    %%       }}
     }}.
 
 -doc false.
