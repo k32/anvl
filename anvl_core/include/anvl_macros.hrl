@@ -2,7 +2,7 @@
 %% This file is part of anvl, a parallel general-purpose task
 %% execution tool.
 %%
-%% Copyright (C) 2024-2025 k32
+%% Copyright (C) 2024-2026 k32
 %%
 %% This program is free software: you can redistribute it and/or
 %% modify it under the terms of the GNU Lesser General Public License
@@ -61,5 +61,13 @@ NAME(__A, __B, __C, __D) ->
 -define(MEMO(NAME, A, B, C, D, E, BODY),
 NAME(__A, __B, __C, __D, __E) ->
    ?MEMO_THUNK(?MEMO_NAMESPACE ":" ??NAME, fun(A, B, C, D, E) -> BODY end, [__A, __B, __C, __D, __E])).
+
+-define(MEMO(NAME, A, B, C, D, E, F, BODY),
+NAME(__A, __B, __C, __D, __E, __F) ->
+   ?MEMO_THUNK(?MEMO_NAMESPACE ":" ??NAME, fun(A, B, C, D, E, F) -> BODY end, [__A, __B, __C, __D, __E, __F])).
+
+-define(MEMO(NAME, A, B, C, D, E, F, G, BODY),
+NAME(__A, __B, __C, __D, __E, __F, __G) ->
+   ?MEMO_THUNK(?MEMO_NAMESPACE ":" ??NAME, fun(A, B, C, D, E, F, G) -> BODY end, [__A, __B, __C, __D, __E, __F, __G])).
 
 -endif.

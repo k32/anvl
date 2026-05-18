@@ -117,7 +117,7 @@ translate_compile_opts(Rebar3Conf) ->
   proplists:get_value(erl_opts, Rebar3Conf, []).
 
 translate_app_paths(Rebar3Conf) ->
-  proplists:get_value(project_app_dirs, Rebar3Conf, ["apps/*", "lib/*", "."]).
+  proplists:get_value(project_app_dirs, Rebar3Conf, ["apps/${app}", "lib/${app}", "."]).
 
 translate_src_dirs(Rebar3Conf) ->
   CompOptions = proplists:get_value(erlc_compiler, Rebar3Conf, []),
@@ -165,15 +165,17 @@ translate_hex_deps(Rebar3Conf) ->
 
 translate_git_deps(Rebar3Conf) ->
   lists:foldl(
-    fun({_Proj, {git, Repo, {Kind, Ref}}}, Acc) when Kind =:= ref;
-                                                     Kind =:= branch;
-                                                     Kind =:= tag ->
-            Item = #{ repo => Repo
+    fun({Proj, {git, Repo, {Kind, Ref}}}, Acc) when Kind =:= ref;
+                                                    Kind =:= branch;
+                                                    Kind =:= tag ->
+            Item = #{ id => Proj
+                    , repo => Repo
                     , ref => {Kind, Ref}
                     },
             [Item | Acc];
-       ({_Proj, {git, Repo, Ref}}, Acc) when is_list(Ref) ->
-            Item = #{ repo => Repo
+       ({Proj, {git, Repo, Ref}}, Acc) when is_list(Ref) ->
+            Item = #{ id => Proj
+                    , repo => Repo
                     , ref => Ref
                     },
             [Item | Acc];

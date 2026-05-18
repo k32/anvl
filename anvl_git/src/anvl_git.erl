@@ -33,6 +33,8 @@ A builtin plugin for cloning Git repositories.
 -include_lib("typerefl/include/types.hrl").
 -include_lib("anvl_core/include/anvl.hrl").
 
+-type id() :: atom().
+
 -type repo() :: string().
 
 -type ref() :: {branch, string()}
@@ -43,13 +45,13 @@ A builtin plugin for cloning Git repositories.
 -type provides() :: undefined
                   | [{anvl_locate:kind(), anvl_locate:dependency()}].
 
--reflect_type([repo/0, ref/0, provides/0]).
+-reflect_type([id/0, repo/0, ref/0, provides/0]).
 
 -doc """
 Condition: repository @var{Repo} is cloned to directory @var{Dir},
 and commit @var{Hash} is checked out.
 """.
--spec sources_prepared(Repo :: string(), Dir :: file:filename(), Hash :: string()) ->
+-spec sources_prepared(repo(), Dir :: file:filename(), Hash :: string()) ->
         anvl_condition:t().
 ?MEMO(sources_prepared, Repo, Dir, Hash,
       begin
@@ -68,7 +70,7 @@ and commit @var{Hash} is checked out.
             ?LOG_NOTICE("Cloning ~s (~p)", [Repo, Hash]),
             maybe_sync_mirror(Repo, Hash),
             ok = filelib:ensure_dir(Dir),
-            anvl_lib:exec("git", ["clone", "--local", Mirror, Dir]),
+            anvl_lib:exec("git", ["clone", "--quiet", "--local", Mirror, Dir]),
             git_checkout(Dir, Hash),
             true
         end
@@ -192,32 +194,31 @@ project_model() ->
   #{deps =>
       #{git =>
           {[map],
-           #{ key_elements => [[repo]]
+           #{ key_elements => [[id]]
             , oneliner => "Git dependencies"
             },
-           #{ repo =>
+           #{ id =>
+                {[value],
+                 #{ oneliner => "Globally unique identifier of the dependency"
+                  , doc => """
+                           This value is used to uniquely identify git repositories,
+                           as well as a hint for dependency resolution.
+                           """
+                  , type => id()
+                  }}
+            , repo =>
                 {[value],
                  #{ oneliner => "URL of the Git repo"
                   , type => repo()
                   }}
-            %% , uid =>
-            %%     {[value],
-            %%      #{ oneliner => "Unique identifier of the dependency"
-            %%       , doc => """
-            %%                Normally, this field is not needed.
-            %%                It can be used to when multiple dependencies use the same Git repository.
-            %%                """
-            %%       , type => term()
-            %%       , default => undefined
-            %%       }}
             , provides =>
                 {[value],
                  #{ oneliner => "List of dependencies provided by the repository"
                   , doc => """
-                           This field can be used to resolve dependency conditionally.
-                           If it is set to @code{undefined},
-                           then ANVL will always check out the repository during dependency resolution,
-                           since it doesn't have information what resources it provides.
+                           This field can be used when @code{id} of the dependency doesn't match with dependency it provides
+                           or when the repository provides more than one dependency.
+
+                           By default ANVL assumes that git repository provides dependency equal to the @code{id} of any kind.
                            """
                   , type => provides()
                   , default => undefined
@@ -235,35 +236,39 @@ project_model() ->
                   }}
             }}}}.
 
-locate_in_project(Project, Kind, Dependency) ->
-  GitDeps = anvl_project:list_conf(Project, [deps, git, {}]),
+-spec locate_in_project(anvl_project:t(), anvl_locate:kind(), anvl_locate:dependency()) ->
+        {boolean(), [file:filename()]}.
+locate_in_project(Declarer, Kind, Dependency) ->
+  GitDeps = anvl_project:list_conf(Declarer, [deps, git, {}]),
   lists:foldl(
-    fun([deps, git, {Repo} = K], {ChangedAcc, PathAcc}) ->
-        Provides = anvl_project:conf(Project, [deps, git, K, provides]),
+    fun(Key, {ChangedAcc, PathAcc}) ->
+        Id = anvl_project:conf(Declarer, Key ++ [id]),
+        Provides = anvl_project:conf(Declarer, Key ++ [provides]),
         IsCandidate = case Provides of
-                        undefined -> true;
-                        _ -> lists:member({Kind, Dependency}, Provides)
+                        undefined -> Dependency =:= Id;
+                        _         -> lists:member({Kind, Dependency}, Provides)
                       end,
         case IsCandidate of
           false ->
             {ChangedAcc, PathAcc};
           true ->
-            Ref = anvl_project:conf(Project, [deps, git, K, ref]),
-            Prio = anvl_project:conf(Project, [deps, git, K, priority]),
-            Changed = precondition(dependency_resolved(Project, Kind, Dependency, Repo, Ref)),
-            Dir = dir(Kind, Dependency),
+            Repo = anvl_project:conf(Declarer, Key ++ [repo]),
+            Ref = anvl_project:conf(Declarer, Key ++ [ref]),
+            Prio = anvl_project:conf(Declarer, Key ++ [priority]),
+            Dir = dir(Kind, Id),
+            Changed = precondition(locked_and_cloned(Declarer, Kind, Id, Repo, Ref, Dir)),
             { ChangedAcc orelse Changed
-            , [{Project, Prio, Dir} | PathAcc]
+            , [{Declarer, Prio, Dir} | PathAcc]
             }
         end
     end,
     {false, []},
     GitDeps).
 
-?MEMO(dependency_resolved, Project, Consumer, Id, Repo, Ref,
+-spec locked_and_cloned(anvl_project:t(), anvl_locate:kind(), id(), repo(), ref(), file:filename()) -> anvl_condition:t().
+?MEMO(locked_and_cloned, Declarer, Kind, Id, Repo, Ref, Dir,
       begin
-        {Changed, Hash} = locked(Project, Consumer, Id, Repo, Ref),
-        Dir = dir(Consumer, Id),
+        {Changed, Hash} = locked(Declarer, Kind, Id, Repo, Ref),
         Changed or
           precondition(sources_prepared(Repo, Dir, Hash))
       end).
@@ -272,13 +277,14 @@ locate_in_project(Project, Kind, Dependency) ->
 %% Lock management
 %%--------------------------------------------------------------------------
 
-locked(Project, Kind, Id, Repo, Ref) ->
+-spec locked(anvl_project:t(), anvl_locate:kind(), id(), repo(), ref()) -> {boolean(), binary()}.
+locked(Declarer, Kind, Id, Repo, Ref) ->
   anvl_locate:resolve_lock(
     ?MODULE,
     fun() ->
         find_commit(Repo, Ref)
     end,
-    Project,
+    Declarer,
     Kind,
     Id).
 
@@ -296,10 +302,11 @@ mirror_needs_sync(Mirror, Hash) ->
   case filelib:is_dir(Mirror) of
     true ->
       case anvl_lib:exec_("git",
-                          ["cat-file", "-e", <<Hash/binary, "^{commit}">>],
+                          ["cat-file", "-e", <<Hash/binary>>],
                           [{cd, Mirror}]) of
         0 -> false;
-        1 -> true
+        1 -> true;
+        Code -> error({Mirror, Hash, Code})
       end;
     false ->
       true
@@ -316,7 +323,7 @@ mirror_needs_sync(Mirror, Hash) ->
                     git_fetch(Mirror);
                   false ->
                     ok = filelib:ensure_dir(Mirror),
-                    anvl_lib:exec("git", ["clone", "--mirror", Repo, Mirror])
+                    anvl_lib:exec("git", ["clone", "--quiet", "--mirror", Repo, Mirror])
                 end
             end),
           true
@@ -364,11 +371,11 @@ Mirror directory: ~p"
 %% Checkout given commit hash in the
 git_checkout(Dir, Hash) ->
   anvl_lib:exec("git",
-                [<<"checkout">>, iolist_to_binary([Hash, <<"^{commit}">>])],
+                ["checkout", "--quiet", iolist_to_binary([Hash, <<"^{commit}">>])],
                 [{cd, Dir}]).
 
 git_fetch(Dir) ->
-  anvl_lib:exec("git", ["fetch", "--all"], [{cd, Dir}]).
+  anvl_lib:exec("git", ["fetch", "--all", "--quiet"], [{cd, Dir}]).
 
 is_git_repo(Dir) ->
   maybe
@@ -407,5 +414,10 @@ mirror_dir(Repo) ->
     anvl_plugin:conf([git, local_mirror_dir]),
     anvl_lib:hash(Repo)).
 
-dir(Consumer, Id) ->
-  anvl_fn:workdir([<<"deps">>, Consumer, Id]).
+dir(Kind, Id) ->
+  anvl_fn:workdir(
+    [ deps
+    , git
+    , Kind
+    , Id
+    ]).

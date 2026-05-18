@@ -72,6 +72,7 @@ This step is delegated to other plugins.
 %% API:
 -export([ located/3
         , resolve_lock/5
+        , get_lock/3
         , location/2
         , add_hook/2
         , add_hook/1
@@ -123,6 +124,13 @@ A function that tries to locate a dependency in a local directory.
 
 -record(path, {prio, kind, path}).
 -define(path_tab, anvl_locate_path).
+
+-record(locate_dep_lock,
+        { plugin :: anvl_plugin:t()
+        , kind   :: kind()
+        , id     :: dependency()
+        , uid
+        }).
 
 %%================================================================================
 %% API functions
@@ -176,7 +184,8 @@ add_path(Kind, Prio0, Owner, Path) ->
            Owner -> Prio0;
            _     -> Prio0 - 100
          end,
-  ets:insert(?path_tab, {#path{kind = Kind, prio = -Prio, path = Path}, Owner}),
+  New = ets:insert_new(?path_tab, {#path{kind = Kind, prio = -Prio, path = Path}, Owner}),
+  New andalso ?LOG_INFO("Adding ~s to ~p path", [Path, Kind]),
   ok.
 
 -doc """
@@ -199,8 +208,13 @@ it must implement the following callback:
     Hash :: binary().
 resolve_lock(Plugin, Resolve, Project, Kind, Package) ->
   Root = anvl_project:root(),
+  ResultKey = #locate_dep_lock{ plugin = Plugin
+                              , kind = Kind
+                              , id = Package
+                              },
   case read_lock(Plugin, Root, Kind, Package) of
     {ok, Hash} ->
+      anvl_condition:set_result(ResultKey, Hash),
       {false, Hash};
     undefined ->
       case Project =/= Root andalso read_lock(Plugin, Project, Kind, Package) of
@@ -209,9 +223,21 @@ resolve_lock(Plugin, Resolve, Project, Kind, Package) ->
         _ ->
           Hash = Resolve()
       end,
-      write_lock(Plugin, Root, Kind, Package, Hash),
+      write_lock(Plugin, Kind, Package, Hash),
+      anvl_condition:set_result(ResultKey, Hash),
       {true, Hash}
   end.
+
+-doc """
+Get cached value of lock for a dependency.
+""".
+-spec get_lock(anvl_plugin:t(), kind(), _Package) -> binary().
+get_lock(Plugin, Kind, Package) ->
+  anvl_condition:get_result(
+    #locate_dep_lock{ plugin = Plugin
+                    , kind = Kind
+                    , id = Package
+                    }).
 
 -doc """
 Get local search path for the given dependency type or @code{'_'} (wildcard).
@@ -314,9 +340,9 @@ try_expand_path(Kind, Dependency) ->
         end,
   anvl_hook:traverse(Fun, false, ?hookpoint).
 
-write_lock(Plugin, Project, Kind, Id, Hash) ->
+write_lock(Plugin, Kind, Id, Hash) ->
   ?LOG_NOTICE("Locking ~p:~p:~p to ~s", [Plugin, Kind, Id, Hash]),
-  LockFile = lock_file(Plugin, Project, Kind, Id),
+  LockFile = lock_file(Plugin, anvl_project:root(), Kind, Id),
   ok = filelib:ensure_dir(LockFile),
   ok = file:write_file(LockFile, Hash).
 

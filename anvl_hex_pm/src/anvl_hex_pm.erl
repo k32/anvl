@@ -25,7 +25,7 @@ A builtin plugin for fetching packages from hex.pm.
 -behavior(anvl_plugin).
 
 %% API:
--export([sources_prepared/3, checksum/2]).
+-export([lock/2, unpacked/4]).
 
 %% behavior callbacks:
 -export([model/0, project_model/0, init/0, init_for_project/1]).
@@ -44,38 +44,46 @@ A builtin plugin for fetching packages from hex.pm.
 -reflect_type([package/0, version/0, provides/0]).
 
 -doc """
-Condition: package @var{Package} with hash @var{Hash} is unpacked to directory @var{Dir}.
+Query @url{hex.pm} for a lock matching a version (range) of a package.
 """.
--spec sources_prepared(package(), file:filename(), Hash :: string()) ->
-        anvl_condition:t().
-?MEMO(sources_prepared, Package, Dir, Hash,
-      begin
-        ?UNSAT("TODO", [])
-      end).
-
--doc """
-Query @url{hex.pm} for a checksum of a specific version of a package.
-""".
--spec checksum(package(), version()) -> binary().
-checksum(Package, Version) ->
-  Ctx = #{package => Package, vsn => Version},
-  URL = template("https://hex.pm/api/packages/${package}/releases/${vsn}", Ctx, list),
+-spec lock(package(), version()) -> binary().
+lock(Package, Version) ->
   maybe
-    {ok, Reply} ?= httpc:request(
-                     get,
-                     {URL, headers()},
-                     [],
-                     http_opts()),
+    {ok, ConcreteVersion} ?= resolve_version(Package, Version),
+    Ctx = #{package => Package, vsn => ConcreteVersion},
+    URL = template("https://hex.pm/api/packages/${package}/releases/${vsn}", Ctx, list),
+    {ok, Reply} ?= anvl_resource:with(
+                     ?MODULE,
+                     fun() ->
+                         httpc:request(
+                           get,
+                           {URL, headers()},
+                           [],
+                           http_opts())
+                     end),
     {Status, _Headers, Body} ?= Reply,
     {_, 200, _} ?= Status,
     #{<<"checksum">> := Hash} ?= json:decode(Body),
-    Hash
+    <<Hash/binary, "-", (list_to_binary(ConcreteVersion))/binary>>
   else
     Other ->
       Msg = "Failed to resolve checksum of ~p with version ~p",
       ?LOG_DEBUG(Msg ++ ": ~p", [Package, Version, Other]),
-      ?UNSAT(Msg ++ ": ~P", [Package, Version, Other, 4])
+      ?UNSAT(Msg ++ ": ~P", [Package, Version, Other, 10])
   end.
+
+-doc """
+Condition: tarball is downloaded and unpacked to the local project directory.
+""".
+-spec unpacked(anvl_project:t(), anvl_locate:kind(), package(), version()) -> anvl_condition:t().
+?MEMO(unpacked, Project, Kind, Package, Version,
+      begin
+        Changed1 = precondition(locked(Project, Kind, Package, Version)),
+        Checksum = get_lock(Kind, Package),
+        Changed1 or
+          precondition(cached(Package, Checksum)) or
+          unpack(Kind, Package, Checksum)
+      end).
 
 %%--------------------------------------------------------------------------
 %% anvl callbacks
@@ -83,9 +91,10 @@ checksum(Package, Version) ->
 
 -doc false.
 init() ->
+  application:ensure_all_started(ssl),
   inets:start(),
   inets:start(httpc, [{profile, anvl}]),
-  ok = anvl_resource:declare(?MODULE, 5).
+  ok = anvl_resource:declare(?MODULE, 1).
 
 -doc false.
 -spec init_for_project(anvl_project:t()) -> ok.
@@ -95,7 +104,7 @@ init_for_project(Project) ->
       fun(Kind, Dependency) ->
           case Kind of
             otp_application ->
-              ?LOG_INFO("Locating ~p:~p", [Kind, Dependency]),
+              ?LOG_INFO("Locating hex package ~p:~p", [Kind, Dependency]),
               locate_in_project(Project, Kind, Dependency);
             _ ->
               {false, []}
@@ -120,7 +129,7 @@ model() ->
            {[value, cli_param, os_env, anvl_resource],
             #{ oneliner => "Maximum number of parallel requests towards hex"
              , type => non_neg_integer()
-             , default => 5
+             , default => 3
              , cli_operand => "j-hex"
              , anvl_resource => ?MODULE
              }}
@@ -176,20 +185,21 @@ project_model() ->
 locate_in_project(Project, Kind, Dependency) ->
   HexDeps = anvl_project:list_conf(Project, [deps, hex_pm, {}]),
   lists:foldl(
-    fun([deps, hex_pm, {Package} = K], {ChangedAcc, PathAcc}) ->
-        Provides = anvl_project:conf(Project, [deps, hex_pm, K, provides]),
+    fun(Key, {ChangedAcc, PathAcc}) ->
+        Package = anvl_project:conf(Project, Key ++ [id]),
+        Provides = anvl_project:conf(Project, Key ++ [provides]),
         IsCandidate = case Provides of
-                        undefined -> true;
-                        _ -> lists:member(Dependency, Provides)
+                        undefined -> Dependency =:= Package;
+                        _         -> lists:member(Dependency, Provides)
                       end,
         case IsCandidate of
           false ->
             {ChangedAcc, PathAcc};
           true ->
-            Version = anvl_project:conf(Project, [deps, hex_pm, K, version]),
-            Prio = anvl_project:conf(Project, [deps, hex_pm, K, priority]),
+            Version = anvl_project:conf(Project, Key ++ [version]),
+            Prio = anvl_project:conf(Project, Key ++ [priority]),
             Changed = precondition(unpacked(Project, Kind, Package, Version)),
-            Dir = dir(Kind, Dependency),
+            Dir = local_dir(Kind, Dependency),
             { ChangedAcc orelse Changed
             , [{Project, Prio, Dir} | PathAcc]
             }
@@ -202,61 +212,84 @@ locate_in_project(Project, Kind, Dependency) ->
 %% Workdir management
 %%--------------------------------------------------------------------------
 
-dir(Consumer, Hash) ->
-  anvl_fn:workdir([<<"deps">>, Consumer, Hash]).
+unpack(Kind, Package, Checksum) ->
+  Cached = cached_filename(Package, Checksum),
+  Dir = local_dir(Kind, Package),
+  Marker = filename:join(Dir, ".anvl_done"),
+  newer(Cached, Marker) andalso
+    begin
+      _ = file:del_dir_r(Dir),
+      ?LOG_DEBUG("Unpacking ~p to ~p", [Cached, Dir]),
+      ok = erl_tar:extract(Cached, [{cwd, Dir}, {files, ["contents.tar.gz"]}]),
+      Contents = filename:join(Dir, "contents.tar.gz"),
+      ok = erl_tar:extract(Contents, [{cwd, Dir}, compressed]),
+      file:delete(Contents),
+      ok = file:write_file(Marker, []),
+      true
+    end.
+
+local_dir(Kind, Package) ->
+  Lock = get_lock(Kind, Package),
+  anvl_fn:workdir([deps, hex_pm, Package, Lock], list).
 
 %%--------------------------------------------------------------------------
 %% Cache management
 %%--------------------------------------------------------------------------
 
-%% Condition: tarball is downloaded and unpacked to a local directory
-?MEMO(unpacked, Project, Consumer, Package, Version,
+?MEMO(locked, Project, Kind, Package, Version,
       begin
-        {Changed1, Checksum} = locked(Project, Consumer, Package, Version),
-        Changed2 = precondition(cached(Package, Version, Checksum)),
-        Changed1 orelse Changed2
+        %% TODO: this may race and fail if multiple projects declare
+        %% conflicting dependencies.
+        {Changed, _Hash} =
+          anvl_locate:resolve_lock(
+            ?MODULE,
+            fun() ->
+                lock(Package, Version)
+            end,
+            Project,
+            Kind,
+            Package),
+        Changed
       end).
-
-locked(Project, Kind, Package, Version) ->
-  anvl_locate:resolve_lock(
-    ?MODULE,
-    fun() ->
-        checksum(Package, Version)
-    end,
-    Project,
-    Kind,
-    Package).
 
 %% Condition: tarball of a certain version is downloaded to the cache.
-?MEMO(cached, Package, Version, Checksum,
-      case filelib:is_file(cached_filename(Package, Version)) of
-        true ->
-          false;
-        false ->
-          fetch(Package, Version, Checksum),
-          true
+?MEMO(cached, Package, Lock,
+      begin
+        case filelib:is_file(cached_filename(Package, Lock)) of
+          true ->
+            false;
+          false ->
+            fetch(Package, Lock),
+            true
+        end
       end).
 
-fetch(Package, Version, Checksum) ->
+fetch(Package, Lock) ->
+  [Checksum, Version] = binary:split(Lock, <<"-">>),
   TmpFile = filename:join(
               [ anvl_plugin:conf([hex_pm, local_mirror_dir])
               , "quarantine"
               , Package
               , anvl_lib:ensure_string(Version)
               ]),
-  CacheFile = cached_filename(Package, Version),
+  CacheFile = cached_filename(Package, Lock),
   ok = filelib:ensure_dir(TmpFile),
   Ctx = #{ cdn => anvl_plugin:conf([hex_pm, cdn])
          , package => Package
          , vsn => Version
          },
-  URL = template("${cdn}/tarballs/${package}-${vsn}.tar", Ctx, string),
+  URL = template("${cdn}/tarballs/${package}-${vsn}.tar", Ctx, list),
+  ?LOG_NOTICE("Fetching package ~p:~p~n   Expected checksum: ~s", [Package, Version, Checksum]),
   maybe
-    {ok, saved_to_file} ?= httpc:request(
-                             get,
-                             {URL, headers()},
-                             [],
-                             [{stream, TmpFile} | http_opts()]),
+    {ok, saved_to_file} ?= anvl_resource:with(
+                             ?MODULE,
+                             fun() ->
+                                 httpc:request(
+                                   get,
+                                   {URL, headers()},
+                                   [],
+                                   [{stream, TmpFile} | http_opts()])
+                             end),
     ok ?= compare_checksum(TmpFile, Checksum),
     ok ?= filelib:ensure_dir(CacheFile),
     file:rename(TmpFile, CacheFile)
@@ -269,30 +302,105 @@ fetch(Package, Version, Checksum) ->
 compare_checksum(Filename, Expected) ->
   %% TODO: hash it in chunks.
   {ok, Bin} = file:read_file(Filename),
-  case crypto:hash(sha256, Bin) of
-    Expected ->
+  FileHash = crypto:hash(sha256, Bin),
+  case FileHash =:= binary:decode_hex(Expected) of
+    true ->
       ok;
-    Other ->
+    false ->
       {checksum_mismatch, #{ expected => Expected
-                           , downloaded => Other
+                           , downloaded => binary:encode_hex(FileHash)
                            }}
   end.
 
-cached_filename(Package, Version) ->
+cached_filename(Package, Lock) ->
   filename:join(
     [ anvl_plugin:conf([hex_pm, local_mirror_dir])
     , "cache"
     , Package
-    , anvl_lib:ensure_string(Version)
+    , binary_to_list(Lock) ++ ".tar"
     ]).
+
+get_lock(Kind, Package) ->
+  anvl_locate:get_lock(?MODULE, Kind, Package).
+
+%%--------------------------------------------------------------------------
+%% Version resolution
+%%--------------------------------------------------------------------------
+
+resolve_version(Package, latest) ->
+  maybe
+    {ok, Versions} ?= list_versions(Package),
+    [{_, Vsn} | _] ?= Versions,
+    {ok, Vsn}
+  else
+    []  -> {error, no_versions_found};
+    Err -> Err
+  end;
+resolve_version(Package, Version) when is_list(Version) ->
+  case string:trim(Version) of
+    "~>" ++ VRange ->
+      maybe
+        [_ | _] ?= VRange,
+        {ok, Versions} ?= list_versions(Package),
+        version_range(string:trim(VRange), Versions)
+      else
+        [] -> {error, invalid_version_range};
+        Other -> Other
+      end;
+    Vsn ->
+      {ok, Vsn}
+  end.
+
+list_versions(Package) ->
+  maybe
+    URL = template("https://hex.pm/api/packages/${package}", #{package => Package}, list),
+    {ok, Reply} ?= anvl_resource:with(
+                     ?MODULE,
+                     fun() ->
+                         httpc:request(
+                           get,
+                           {URL, headers()},
+                           [],
+                           http_opts())
+                     end),
+    {Status, _Headers, Body} ?= Reply,
+    {_, 200, _} ?= Status,
+    #{<<"releases">> := Releases} ?= json:decode(Body),
+    L = lists:map(
+          fun(#{<<"version">> := Vsn}) ->
+              binary_to_list(Vsn)
+          end,
+          Releases),
+    {ok, L}
+  else
+    Other ->
+      Msg = "Failed to get versions of ~p",
+      ?LOG_DEBUG(Msg ++ ": ~p", [Package, Other]),
+      ?UNSAT(Msg ++ ": ~P", [Package, Other, 10])
+  end.
+version_range(VRange, Versions) ->
+  case lists:search(
+         fun(Vsn) -> match_vrange(VRange, Vsn) end,
+         Versions) of
+    {value, Vsn} ->
+      {ok, Vsn};
+    undefined ->
+      {error, no_matching_version}
+  end.
+
+match_vrange([], [])             -> true;
+match_vrange([], [$. | _])       -> true;
+match_vrange([], [$- | _])       -> true;
+match_vrange([A | L1], [A | L2]) -> match_vrange(L1, L2);
+match_vrange(_, _)               -> false.
 
 %%--------------------------------------------------------------------------
 %% Misc.
 %%--------------------------------------------------------------------------
 
 headers() ->
-  [ {<<"User-Agent">>, <<"anvl">>}
-  , {<<"Accept">>, <<"application/json">>}
+  [ {"User-Agent", "anvl"}
+  , {"Accept", "application/json"}
   ].
 
 http_opts() ->

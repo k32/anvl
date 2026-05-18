@@ -244,8 +244,12 @@ has_result(Key) ->
 
 -spec set_result(_Key, Value) -> Value.
 set_result(Key, Value) ->
-  true = ets:insert_new(?results, {Key, Value}),
-  Value.
+  case ets:insert_new(?results, {Key, Value}) of
+    true ->
+      Value;
+    false ->
+      unsat({duplicate_result, Key, Value})
+  end.
 
 -spec percent_complete() -> number().
 percent_complete() ->
@@ -255,7 +259,6 @@ percent_complete() ->
      true ->
       100
   end.
-
 
 -doc """
 Pretty-print the condition.
