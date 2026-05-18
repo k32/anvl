@@ -28,7 +28,7 @@ the Erlang compiler.
 
 %% API:
 -export([add_pre_compile_hook/2, add_app_spec_hook/2, pcfg/2, pcfg/3]).
--export([app_info/2, escript/2, app_compiled/2, module/2]).
+-export([app_info/2, app_compiled/2, module/2]).
 -export([app_file/1, beam_file/2]).
 -export([app_closure/2, app_path/2]).
 
@@ -199,14 +199,6 @@ Condition: OTP application has been compiled with the given profile.
 -spec module(profile(), module()) -> anvl_condition:t().
 module(Profile, Module) ->
   anvl_condition:speculative({erlang_module_compiled, Profile, Module}).
-
--doc "Condition: escript has been built.".
--spec escript(anvl_project:t(), string()) -> anvl_condition:t().
-?MEMO(escript, Project, EscriptName,
-      begin
-        precondition(anvl_project:loaded(Project)),
-        do_escript(Project, EscriptName)
-      end).
 
 -doc """
 Return various information about a compiled OTP application
@@ -417,7 +409,7 @@ init_for_project(Project) ->
 -doc false.
 conditions(ProjectRoot) ->
   get_compile_apps(ProjectRoot) ++
-    get_escripts(ProjectRoot) ++
+    anvl_erlc_escript:conditions(ProjectRoot) ++
     anvl_erlc_xref:conditions() ++
     anvl_erlc_dialyzer:conditions().
 
@@ -484,55 +476,6 @@ separate_first_files(#{first_files := FF}, Sources) ->
         lists:member(filename:basename(Src), FF)
     end,
     Sources).
-
-do_escript(ProjectRoot, EscriptName) ->
-  Cfg = fun(Key) ->
-            anvl_project:conf(ProjectRoot, [erlang, escript, {EscriptName}] ++ Key)
-        end,
-  Profile = Cfg([profile]),
-  FilePatterns = Cfg([files]),
-  Apps = Cfg([apps]),
-  Filename = anvl_fn:workdir([Profile, EscriptName]),
-  %% Satisfy dependencies:
-  ChangedP = precondition([app_compiled(Profile, App) || App <- Apps]),
-  %% Compose the list of files:
-  AppFiles = lists:flatmap(
-               fun(App) ->
-                   #{ebin_dir := EbinDir} = app_info(Profile, App),
-                   [{ filename:join(EbinDir, RelPath)
-                    , filename:join(App, RelPath)
-                    } || Pattern <- FilePatterns,
-                         RelPath <- filelib:wildcard(Pattern, EbinDir)]
-               end,
-               Apps),
-  Files = AppFiles,
-  {Sources, _} = lists:unzip(Files),
-  %% Create the escript:
-  ChangedP or
-    newer(Sources, Filename) andalso
-    begin
-      ?LOG_NOTICE("Creating ~s", [Filename]),
-      ok = filelib:ensure_dir(Filename),
-      Bins = lists:map(fun({SrcFile, ArchiveFile}) ->
-                           case file:read_file(SrcFile) of
-                             {ok, Bin}  ->
-                               {anvl_lib:ensure_string(ArchiveFile), Bin};
-                             Error ->
-                               ?UNSAT("Cannot read file ~s (-> ~s) required by escript ~p (~p)",
-                                      [SrcFile, ArchiveFile, EscriptName, Error])
-                           end
-                       end,
-                       Files),
-      Sections = [ shebang
-                 , {emu_args, Cfg([emu_args])}
-                 , {archive, Bins, Cfg([archive_options])}
-                 ],
-      case escript:create(Filename, Sections) of
-        ok           -> anvl_lib:exec("chmod", ["+x", Filename]);
-        {error, Err} -> ?UNSAT("Failed to create escript ~s~nError: ~p", [EscriptName, Err])
-      end,
-      true
-    end.
 
 ?MEMO(beam, Src, CRef,
       begin
@@ -643,13 +586,6 @@ Precondition: module defined in the same application is compiled and loaded.
 %%================================================================================
 %% Internal functions
 %%================================================================================
-
-get_escripts(Project) ->
-  [begin
-      Escripts = anvl_plugin:conf(Key ++ [names]),
-      [escript(Project, I) || I <- Escripts]
-   end
-   || Key <- anvl_plugin:list_conf([anvl_erlc, escript, {}])].
 
 get_compile_apps(_Project) ->
   [begin

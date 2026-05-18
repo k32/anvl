@@ -162,7 +162,7 @@ install(Prefix, Template, Src, Mode) ->
     end.
 
 escript() ->
-  anvl_erlc:escript(anvl_project:root(), anvl).
+  anvl_erlc_escript:created(anvl_project:root(), anvl).
 
 static_checks() ->
   anvl_erlc_xref:passed(default).
