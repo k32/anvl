@@ -86,6 +86,7 @@ translate_conf(Rebar3Conf) ->
        #{ app_paths => translate_app_paths(Rebar3Conf)
         , compile_options => translate_compile_opts(Rebar3Conf)
         , sources => translate_src_dirs(Rebar3Conf)
+        , first_files => translate_first_files(Rebar3Conf)
         }
    }.
 
@@ -144,6 +145,10 @@ translate_src_dirs(Rebar3Conf) ->
         filename:join(["${src_root}", Dir, "*.erl"])
     end,
     SrcDirs ++ ExtraSrcDirs).
+
+translate_first_files(Rebar3Conf) ->
+  FirstFiles = proplists:get_value(erl_first_files, Rebar3Conf, []),
+  [filename:basename(I) || I <- FirstFiles].
 
 translate_hex_deps(Rebar3Conf) ->
   lists:foldl(

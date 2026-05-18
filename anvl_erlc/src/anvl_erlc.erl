@@ -70,6 +70,7 @@ that is available at its build time.
          , build_root := file:filename_all()
          , build_dir := file:filename_all()
          , compile_options := list()
+         , first_files := [string()]
          , sources := [anvl_lib:filename_pattern()]
            %% List of directories where hrl files are located:
          , includes := [file:filename_all()]
@@ -284,22 +285,43 @@ project_model() ->
   BaseModel =
     #{ includes =>
          {[value],
-          #{ type => list(anvl_lib:filename_pattern())
+          #{ oneliner => "List of include directories"
+           , type => list(anvl_lib:filename_pattern())
            , default => ["${src_root}/include", "${src_root}/src"]
            }}
      , bdeps =>
          {[value],
-          #{ type => list(application())
+          #{ onliner => "List of applications that are build-time dependencies"
+           , doc => """
+                    These applications will be built and loaded as regular dependencies,
+                    but they won't be included as the dependencies in the app file.
+                    """
+           , type => list(application())
            , default => []
            }}
      , sources =>
          {[value],
-          #{ type => list(anvl_lib:filename_pattern())
+          #{ oneliner => "List of wildcard pattern matching Erlang sources"
+           , type => list(anvl_lib:filename_pattern())
            , default => ["${src_root}/src/*.erl", "${src_root}/src/*/*.erl"]
+           }}
+     , first_files =>
+         {[value],
+          #{ oneliner => "List of source files that should be built first"
+           , doc => """
+                    The list consists of basenames.
+                    Specify @file{"foo.erl"} instead of @file{"src/foo.erl"}.
+                    """
+           , type => list(string())
+           , default => []
            }}
      , compile_options =>
          {[value],
-          #{ type => list()
+          #{ oneliner => "Options passed to Erlang compiler"
+           , doc => """
+                    See @url{https://www.erlang.org/doc/apps/compiler/compile.html#file/2, OTP documentation}
+                    """
+           , type => list()
            , default => [debug_info]
            }}
      , static_checks =>
@@ -424,6 +446,7 @@ do_compile_app(Profile, App) ->
           , build_root => BuildRoot
           , build_dir => BuildDir
           , src_root => SrcRoot
+          , first_files => pcfg(Project, Profile, [first_files])
           , sources => SrcPatterns
           , project_root => Project
           },
@@ -435,6 +458,7 @@ do_compile_app(Profile, App) ->
   persistent_term:put(CRef, Context),
   %% 2. Get list of source files:
   Sources = list_app_sources(Context),
+  {FirstSources, OtherSources} = separate_first_files(Context, Sources),
   ok = filelib:ensure_path(filename:join(BuildDir, "ebin")),
   ok = filelib:ensure_path(filename:join(BuildDir, "include")),
   ok = filelib:ensure_path(filename:join(BuildDir, "anvl_deps")),
@@ -446,10 +470,20 @@ do_compile_app(Profile, App) ->
   %% Build BEAM files:
   CompHook or
     manage_priv(Context) or
-    precondition([beam(Src, CRef) || Src <- Sources]) or
+    precondition([beam(Src, CRef) || Src <- FirstSources], 1) or
+    precondition([beam(Src, CRef) || Src <- OtherSources]) or
     clean_orphans(Sources, Context) or
     copy_includes(Context) or
     render_app_spec(AppSrcProperties, Sources, Context).
+
+separate_first_files(#{first_files := []}, Sources) ->
+  {[], Sources};
+separate_first_files(#{first_files := FF}, Sources) ->
+  lists:partition(
+    fun(Src) ->
+        lists:member(filename:basename(Src), FF)
+    end,
+    Sources).
 
 do_escript(ProjectRoot, EscriptName) ->
   Cfg = fun(Key) ->
