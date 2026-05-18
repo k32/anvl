@@ -279,9 +279,8 @@ start_link_plugin(Plugin) ->
 %% Spawn a process for each plugin, helpful if they need to create
 %% some resource tied to the lifetime of a process, e.g. an ets table.
 -doc false.
+-spec plugin_entrypoint(anvl_plugin:t()) -> no_return().
 plugin_entrypoint(Plugin) ->
   Plugin:init(),
   proc_lib:init_ack(ok),
-  receive
-  after infinity -> ok
-  end.
+  anvl_lib:linger().

@@ -76,7 +76,7 @@ exit_result(ExitCode) ->
       halt(ExitCode);
     true ->
       shell:start_interactive(),
-      receive after infinity -> ok end
+      anvl_lib:linger()
   end.
 
 %%================================================================================

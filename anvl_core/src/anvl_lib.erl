@@ -27,6 +27,7 @@ A collection of functions useful for implementing conditions.
 -export([newer/2, newer/3, max_mtime/1, hash/1]).
 -export([exec/2, exec/3, exec_/2, exec_/3]).
 -export([ensure_string/1]).
+-export([linger/0]).
 
 -export_type([template_vars/0]).
 
@@ -255,6 +256,22 @@ ensure_string(Bin) when is_binary(Bin) ->
   binary_to_list(Bin);
 ensure_string(L) when is_list(L) ->
   L.
+
+-doc """
+Put a process into infinite sleep,
+from which it will exit only when an 'EXIT' message is sent to it.
+""".
+-spec linger() -> no_return().
+linger() ->
+  receive
+    {'EXIT', _, Reason} ->
+      exit(Reason);
+    _ ->
+      ok
+  after 0 ->
+      ok
+  end,
+  erlang:hibernate(?MODULE, linger, []).
 
 %%================================================================================
 %% Internal functions
