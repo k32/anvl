@@ -161,7 +161,12 @@ set_logger_conf() ->
                               , "\n"
                               ]
                 }},
-  logger:update_handler_config(default, formatter, Formatter).
+  logger:update_handler_config(default, formatter, Formatter),
+  %% Filters = [ {noprogress, {fun logger_filters:progress/2, stop}}
+  %%           ],
+  %% logger:update_handler_config(default, filters, Filters),
+  %% logger:update_handler_config(default, filter_default, log),
+  ok.
 
 %%================================================================================
 %% Configuration handling

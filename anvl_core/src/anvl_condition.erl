@@ -494,7 +494,8 @@ wait_unfinished_jobs() ->
         _ ->
           NConditions = length(Conditions),
           ?LOG_NOTICE("Waiting for ~p unfinished jobs...", [NConditions]),
-          wait_unfinished_jobs([{I, monitor(process, I)} || I <- Conditions], NConditions),
+          [exit(I, ?aborted) || I <- Conditions],
+          wait_unfinished_jobs(#{monitor(process, I) => I || I <- Conditions}, NConditions),
           wait_unfinished_jobs()
       end
   end.
@@ -511,15 +512,18 @@ running_conditions() ->
     end,
     processes()).
 
-wait_unfinished_jobs([], _) ->
+wait_unfinished_jobs(_, 0) ->
   ok;
-wait_unfinished_jobs([{Pid, MRef} | Rest], N) ->
-  exit(Pid, ?aborted),
-  ?LOG_INFO("~p...", [N]),
+wait_unfinished_jobs(Map, N0) ->
+  ?LOG_INFO("~p...", [N0]),
   %% io:format("Waiting for ~p~n", [erlang:process_info(Pid, [current_stacktrace])]),
   receive
     {'DOWN', MRef, _, _, _} ->
-      wait_unfinished_jobs(Rest, N - 1)
+      N = case maps:is_key(MRef, Map) of
+            true  -> N0 - 1;
+            false -> N0
+          end,
+      wait_unfinished_jobs(Map, N)
   end.
 
 resolve_speculative(Result) ->
