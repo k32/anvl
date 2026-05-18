@@ -160,7 +160,7 @@ Return value is a tuple with the following elements:
 -spec app_closure(profile(), [application()]) -> {[application()], [application()]}.
 app_closure(Profile, Apps) ->
   _ = precondition([app_compiled(Profile, App) || App <- Apps]),
-  do_app_closure(Profile, Apps, ordsets:new(), ordsets:new()).
+  do_app_closure(Profile, Apps, ordsets:new(), [erts]).
 
 -doc """
 Helper function that gets project configuration from Erlang subtree.

@@ -60,7 +60,7 @@ Parameters for this condition are set in the project configuration.
                Serv,
                [filename:join(anvl_erlc:app_path(Profile, I), "ebin") || I <- Closure -- Apps]),
         try
-          OptsForAdd = [{warnings, false}, {verbose, false}, {builtins, true}],
+          OptsForAdd = [{warnings, false}, {verbose, false}],
           [begin
              Dir = anvl_erlc:app_path(Profile, App),
              case xref:add_application(Serv, Dir, [{name, App} | OptsForAdd]) of
