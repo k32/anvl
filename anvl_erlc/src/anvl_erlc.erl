@@ -409,19 +409,19 @@ do_compile_app(Profile, App) ->
   ok = filelib:ensure_path(filename:join(BuildDir, "ebin")),
   ok = filelib:ensure_path(filename:join(BuildDir, "include")),
   ok = filelib:ensure_path(filename:join(BuildDir, "anvl_deps")),
-  CompHook = anvl_hook:foreach(#erlc_pre_compile_hook{project = Project}, Context),
+  Ch0 = anvl_hook:foreach(#erlc_pre_compile_hook{project = Project}, Context),
   %% TODO: this is a hack, should be done by dependency manager:
   EbinDir = filename:join(BuildDir, "ebin"),
   true = code:add_patha(EbinDir),
   ?LOG_INFO("Added ~p to the erlang load path (~s)", [App, code:lib_dir(App)]),
   %% Build BEAM files:
-  CompHook or
-    manage_priv(Context) or
-    precondition([beam(Src, CRef) || Src <- FirstSources], 1) or
-    precondition([beam(Src, CRef) || Src <- OtherSources]) or
-    clean_orphans(Sources, Context) or
-    copy_includes(Context) or
-    render_app_spec(AppSrcProperties, Sources, Context).
+  Ch1 = manage_priv(Context),
+  Ch2 = precondition([beam(Src, CRef) || Src <- FirstSources], 1),
+  Ch3 = precondition([beam(Src, CRef) || Src <- OtherSources]),
+  Ch4 = clean_orphans(Sources, Context),
+  Ch5 = copy_includes(Context),
+  Ch6 = render_app_spec(AppSrcProperties, Sources, Context),
+  Ch0 orelse Ch1 orelse Ch2 orelse Ch3 orelse Ch4 orelse Ch5 orelse Ch6.
 
 separate_first_files(#{first_files := []}, Sources) ->
   {[], Sources};
