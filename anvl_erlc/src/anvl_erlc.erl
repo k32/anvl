@@ -187,52 +187,11 @@ Condition: OTP application has been compiled with the given profile.
 """.
 -spec app_compiled(Profile :: profile(), Application :: application()) -> anvl_condition:t().
 ?MEMO(app_compiled, Profile, App,
-      begin
-        ?LOG_INFO("Compiling ~p", [App]),
-        {Project, SrcRoot} = src_root(Profile, App),
-        COpts0 = pcfg(Project, Profile, [compile_options]),
-        IncludePatterns = pcfg(Project, Profile, [includes]),
-        SrcPatterns = pcfg(Project, Profile, [sources]),
-        BDeps = pcfg(Project, Profile, [bdeps]),
-        AppSrcProperties = app_src(App, SrcRoot),
-        Dependencies = non_otp_apps(BDeps ++ proplists:get_value(applications, AppSrcProperties, [])),
-        BuildRoot = anvl_fn:workdir(["erlc", anvl_lib:hash(COpts0)], list),
-        %% Satisfy the dependencies:
-        _ = precondition([app_compiled(Profile, Dep) || Dep <- Dependencies]),
-        BuildDir = build_dir(BuildRoot, App),
-        %% Create the context:
-        %% 0. Add constants:
-        Ctx0 = #{ project => Project
-                , app => App
-                , profile => Profile
-                , build_root => BuildRoot
-                , build_dir => BuildDir
-                , src_root => SrcRoot
-                , sources => SrcPatterns
-                , project_root => Project
-                },
-        %% 1. Enrich compile options with the paths to the include directories:
-        IncludeDirs = [template(I, Ctx0, list) || I <- IncludePatterns],
-        COpts = [{i, I} || I <- IncludeDirs] ++ COpts0,
-        Context = Ctx0 #{includes => IncludeDirs, compile_options => COpts},
-        CRef = ?context(Profile, App),
-        persistent_term:put(CRef, Context),
-        %% 2. Get list of source files:
-        Sources = list_app_sources(Context),
-        ok = filelib:ensure_path(filename:join(BuildDir, "ebin")),
-        ok = filelib:ensure_path(filename:join(BuildDir, "include")),
-        ok = filelib:ensure_path(filename:join(BuildDir, "anvl_deps")),
-        CompHook = anvl_hook:foreach(#erlc_pre_compile_hook{project = Project}, Context),
-        %% TODO: this is a hack, should be done by dependency manager:
-        EbinDir = filename:join(BuildDir, "ebin"),
-        true = code:add_patha(EbinDir),
-        ?LOG_INFO("Added ~p to the erlang load path (~s)", [App, code:lib_dir(App)]),
-        %% Build BEAM files:
-        CompHook or
-          precondition([beam(Src, CRef) || Src <- Sources]) or
-          clean_orphans(Sources, Context) or
-          copy_includes(Context) or
-          render_app_spec(AppSrcProperties, Sources, Context)
+      case lists:member(App, otp_apps()) of
+        false ->
+          do_compile_app(Profile, App);
+        true ->
+          false
       end).
 
 -doc "Speculative condition: a particular module has been compiled.".
@@ -433,11 +392,60 @@ init_for_project(Project) ->
 conditions(ProjectRoot) ->
   get_compile_apps(ProjectRoot) ++
     get_escripts(ProjectRoot) ++
-    anvl_erlc_xref:conditions().
+    anvl_erlc_xref:conditions() ++
+    anvl_erlc_dialyzer:conditions().
 
 %%================================================================================
 %% Condition implementations
 %%================================================================================
+
+do_compile_app(Profile, App) ->
+  ?LOG_INFO("Compiling ~p", [App]),
+  {Project, SrcRoot} = src_root(Profile, App),
+  COpts0 = pcfg(Project, Profile, [compile_options]),
+  IncludePatterns = pcfg(Project, Profile, [includes]),
+  SrcPatterns = pcfg(Project, Profile, [sources]),
+  BDeps = pcfg(Project, Profile, [bdeps]),
+  AppSrcProperties = app_src(App, SrcRoot),
+  Dependencies = non_otp_apps(BDeps ++ proplists:get_value(applications, AppSrcProperties, [])),
+  BuildRoot = anvl_fn:workdir(["erlc", anvl_lib:hash(COpts0)], list),
+  %% Satisfy the dependencies:
+  _ = precondition([app_compiled(Profile, Dep) || Dep <- Dependencies]),
+  BuildDir = build_dir(BuildRoot, App),
+  %% Create the context:
+  %% 0. Add constants:
+  Ctx0 = #{ project => Project
+          , app => App
+          , profile => Profile
+          , build_root => BuildRoot
+          , build_dir => BuildDir
+          , src_root => SrcRoot
+          , sources => SrcPatterns
+          , project_root => Project
+          },
+  %% 1. Enrich compile options with the paths to the include directories:
+  IncludeDirs = [template(I, Ctx0, list) || I <- IncludePatterns],
+  COpts = [{i, I} || I <- IncludeDirs] ++ COpts0,
+  Context = Ctx0 #{includes => IncludeDirs, compile_options => COpts},
+  CRef = ?context(Profile, App),
+  persistent_term:put(CRef, Context),
+  %% 2. Get list of source files:
+  Sources = list_app_sources(Context),
+  ok = filelib:ensure_path(filename:join(BuildDir, "ebin")),
+  ok = filelib:ensure_path(filename:join(BuildDir, "include")),
+  ok = filelib:ensure_path(filename:join(BuildDir, "anvl_deps")),
+  CompHook = anvl_hook:foreach(#erlc_pre_compile_hook{project = Project}, Context),
+  %% TODO: this is a hack, should be done by dependency manager:
+  EbinDir = filename:join(BuildDir, "ebin"),
+  true = code:add_patha(EbinDir),
+  ?LOG_INFO("Added ~p to the erlang load path (~s)", [App, code:lib_dir(App)]),
+  %% Build BEAM files:
+  CompHook or
+    precondition([beam(Src, CRef) || Src <- Sources]) or
+    clean_orphans(Sources, Context) or
+    copy_includes(Context) or
+    render_app_spec(AppSrcProperties, Sources, Context).
+
 
 do_escript(ProjectRoot, EscriptName) ->
   Cfg = fun(Key) ->

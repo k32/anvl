@@ -269,7 +269,7 @@ tab() ->
                 true ->
                   precondition(located_with_path(Kind, SubDirFun, Dependency, NewPath));
                 false ->
-                  ?UNSAT("Failed to locate dependency ~p of kind ~p~n  ~p", [Dependency, Kind, NewPath])
+                  ?UNSAT("Dependency ~p/~p not found", [Kind, Dependency])
               end
           end
       end).
