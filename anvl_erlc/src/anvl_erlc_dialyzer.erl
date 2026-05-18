@@ -50,29 +50,21 @@ Parameters for this condition are set in the project configuration.
 -spec passed(anvl_erlc:profile(), boolean()) -> anvl_condition:t().
 ?MEMO(passed, Profile, Incremental,
       begin
+        ?LOG_NOTICE("Running Dialyzer for profile ~p", [Profile]),
         Apps = anvl_erlc:pcfg(anvl_project:root(), Profile, [static_checks, apps]),
         {NonOTPApps, OTPApps} = anvl_erlc:app_closure(Profile, Apps),
         Closure = NonOTPApps ++ OTPApps,
         BasePLTApps = Closure -- Apps,
         case Incremental of
           false ->
-            _ = precondition(
-                  [ plt_built(Profile, "", Apps)
-                  , plt_built(Profile, "base", BasePLTApps)
-                  ]),
-            PLT = plt_file(Profile, "merge"),
+            _ = precondition(plt_built(Profile, "base", BasePLTApps)),
             Result = dialyzer:run(
-              [ {analysis_type, plt_build}
-              , {plts, [ plt_file(Profile, "")
-                       , plt_file(Profile, "base")
-                       ]}
-              , {output_file, PLT}
-              ]),
-            Result = dialyzer:run(
-                       [ {analysis_type, plt_check}
-                       , {init_plt, PLT}
+                       [ {analysis_type, succ_typings}
+                       , {check_plt, false}
+                       , {init_plt, plt_file(Profile, "base")}
+                       , {files, app_beams(Profile, Apps)}
                        ]),
-            ?UNSAT("TODO ~p", [Result])
+            format_warnings(Profile, Result)
         end
       end).
 
@@ -93,7 +85,7 @@ conditions() ->
 model(Profile) ->
   {[map, cli_action],
    #{ oneliner => "Run dialyzer with the given profile"
-    , key_elements => [[profile], [incremental]]
+    , key_elements => [[profile]]
     , cli_operand => "erl_dialyzer"
     },
    #{ profile =>
@@ -121,12 +113,7 @@ project_model() ->
       begin
         Changed = precondition([anvl_erlc:app_compiled(Profile, I) || I <- Apps]),
         PLTFile = plt_file(Profile, Name),
-        Beams = lists:flatmap(
-                  fun(App) ->
-                      Path = anvl_erlc:app_path(Profile, App),
-                      anvl_fn:wildcard("ebin/**.beam", Path)
-                  end,
-                  Apps),
+        Beams = app_beams(Profile, Apps),
         Changed or newer(Beams, PLTFile) andalso
           begin
             ?LOG_NOTICE(
@@ -140,6 +127,20 @@ project_model() ->
             true
           end
       end).
+
+format_warnings(_Profile, []) ->
+  false;
+format_warnings(Profile, Warnings) ->
+  IOList = [dialyzer:format_warning(I) || I <- Warnings],
+  ?UNSAT("Dialyzer warnings found (~p):~n~s", [Profile, IOList]).
+
+app_beams(Profile, Apps) ->
+  lists:flatmap(
+    fun(App) ->
+        Path = anvl_erlc:app_path(Profile, App),
+        anvl_fn:wildcard("ebin/**.beam", Path)
+    end,
+    Apps).
 
 plt_file(Profile, Name) ->
   anvl_fn:workdir(["dialyzer", Profile, Name ++ "_plt"], list).
