@@ -165,20 +165,10 @@ translate_hex_deps(Rebar3Conf) ->
 
 translate_git_deps(Rebar3Conf) ->
   lists:foldl(
-    fun({Proj, {git, Repo, {Kind, Ref}}}, Acc) when Kind =:= ref;
-                                                    Kind =:= branch;
-                                                    Kind =:= tag ->
-            Item = #{ id => Proj
-                    , repo => Repo
-                    , ref => {Kind, Ref}
-                    },
-            [Item | Acc];
-       ({Proj, {git, Repo, Ref}}, Acc) when is_list(Ref) ->
-            Item = #{ id => Proj
-                    , repo => Repo
-                    , ref => Ref
-                    },
-            [Item | Acc];
+    fun({Proj, {git, _, _} = Git}, Acc)  ->
+            [git(Proj, Git) | Acc];
+       ({Proj, _, {git, _, _} = Git}, Acc)  ->
+            [git(Proj, Git) | Acc];
        ({Proj, Git}, _Acc) when is_tuple(Git), element(1, Git) =:= Git ->
             ?UNSAT("Cannot translate git dependency without explicit ref ~p: ~p",
                   [Proj, Git]);
@@ -187,3 +177,16 @@ translate_git_deps(Rebar3Conf) ->
     end,
     [],
     proplists:get_value(deps, Rebar3Conf, [])).
+
+git(Proj, {git, Repo, Ref}) when is_list(Ref) ->
+  #{ id => Proj
+   , repo => Repo
+   , ref => Ref
+   };
+git(Proj, {git, Repo, {Kind, Ref}}) when Kind =:= ref;
+                                         Kind =:= branch;
+                                         Kind =:= tag ->
+  #{ id => Proj
+   , repo => Repo
+   , ref => {Kind, Ref}
+   }.
