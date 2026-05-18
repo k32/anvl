@@ -119,6 +119,7 @@ stop(_) ->
 %% Internal functions
 %%================================================================================
 
+-spec exec_top([anvl_condition:t()]) -> no_return().
 exec_top(Preconditions) ->
   ?LOG_DEBUG("Top level preconditions: ~p", [Preconditions]),
   T0 = os:system_time(microsecond),
@@ -154,8 +155,6 @@ format_top("reductions", Top) ->
   ?LOG_NOTICE("    Top jobs by reductions~n~s", [S]).
 
 set_logger_conf() ->
-  logger:update_handler_config(default, type, standart_io),
-  logger:update_handler_config(default, sync_mode_qlen, 0),
   Formatter = {logger_formatter,
                #{ single_line => false
                 , template => [ "[" , level, {condition, [" ", condition], []}, "] "

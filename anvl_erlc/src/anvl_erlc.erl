@@ -109,9 +109,17 @@ This type is an extention of @ref{t:anvl_erlc:context/0,context/0}.
 %% API functions
 %%================================================================================
 
--spec app_file(context()) -> file:filename().
+-spec app_file(
+        #{ app := application()
+         , build_dir := file:filename_all()
+         , _ => _
+         }
+       ) -> file:filename().
 app_file(Ctx) ->
-  template("${build_dir}/ebin/${app}.app", Ctx, path).
+  template(
+    "${build_dir}/ebin/${app}.app",
+    Ctx,
+    path).
 
 -spec beam_file(context(), module()) -> file:filename().
 beam_file(#{build_dir := BuildDir}, Module) ->
@@ -176,7 +184,7 @@ pcfg(Project, Key) ->
 Helper function that gets project configuration from Erlang subtree
 with overrides for the given profile.
 """.
--spec pcfg(anvl_project:t(), profile(), lee:key()) -> _.
+-spec pcfg(anvl_project:t(), profile(), lee:key()) -> term().
 pcfg(Project, Profile, Key) ->
   anvl_project:conf(Project, [erlang, overrides, {Profile} | Key]).
 
@@ -628,7 +636,7 @@ app_src(App, AppRoot) ->
       ?UNSAT("Malformed or missing ~p.app.src file: ~p", [App, Err])
   end.
 
--spec app_src_path(anvl_project:t(), application()) -> file:filename().
+-spec app_src_path(file:filename(), application()) -> {ok, file:filename()} | {error, no_app_file}.
 app_src_path(AppRoot, App) ->
   Candidates =
     [ template("${root}/src/${app}.app.src", #{app => App, root => AppRoot}, path)

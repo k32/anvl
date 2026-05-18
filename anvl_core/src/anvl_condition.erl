@@ -451,7 +451,7 @@ exec(#anvl_memo_thunk{descr = Descr, func = Fun, args = A}) ->
   end.
 
 -spec precondition_async1(t()) -> {done, boolean()} | {in_progress, t(), pid(), reference()}.
-precondition_async1(Condition) ->
+precondition_async1(Condition) when is_record(Condition, anvl_memo_thunk) ->
   case ets:lookup(?tab, key(Condition)) of
     [#done{changed = Changed}] ->
       {done, Changed};
@@ -610,6 +610,7 @@ do_deadlock_detection(S = #s{started = Started0, complete = Complete0}) ->
          }
   end.
 
+-spec deadlock_analysis(#s{}) -> no_return().
 deadlock_analysis(_) ->
   {Vertices, Edges} = deadlock_scan([], [], erlang:processes()),
   Dump = anvl_fn:workdir(["anvl_cyclic.graph"]),

@@ -330,7 +330,7 @@ get_lock(Kind, Package) ->
 resolve_version(Package, latest) ->
   maybe
     {ok, Versions} ?= list_versions(Package),
-    [{_, Vsn} | _] ?= Versions,
+    [Vsn | _] ?= Versions,
     {ok, Vsn}
   else
     []  -> {error, no_versions_found};
@@ -384,7 +384,7 @@ version_range(VRange, Versions) ->
          Versions) of
     {value, Vsn} ->
       {ok, Vsn};
-    undefined ->
+    false ->
       {error, no_matching_version}
   end.
 

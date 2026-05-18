@@ -40,7 +40,9 @@ A collection of functions useful for implementing conditions.
 %% Type declarations
 %%================================================================================
 
--type template_vars() :: #{atom() | binary() => binary() | string() | atom()}.
+-type template_vars() :: #{ atom() | binary() => binary() | string() | atom()
+                          , _ => _
+                          }.
 -type filename_pattern() :: string().
 
 -reflect_type([filename_pattern/0]).
@@ -194,7 +196,7 @@ Then @var{Command} will be treated as an absolute name.
 @item @var{Opts}: list of additional options passed to @code{erlang:open_port/2}
 @end itemize
 """.
--spec exec(string(), [string()], list()) -> true.
+-spec exec(string(), [string() | binary()], list()) -> true.
 exec(Cmd, Args, Opts) ->
   case exec_(Cmd, Args, Opts) of
     0 ->
@@ -224,7 +226,7 @@ If it contains a tuple @code{@{search_path, false@}} then @var{Command} is treat
 @item @var{Options}: list of options passed to @code{erlang:open_port/2}
 @end itemize
 """.
--spec exec_(string(), [string()], list()) -> integer() | {integer(), iolist()}.
+-spec exec_(string(), [string() | binary()], list()) -> integer() | {integer(), iolist()}.
 exec_(Command, Args, Options) ->
   case proplists:get_value(search_path, Options, true) of
     true ->

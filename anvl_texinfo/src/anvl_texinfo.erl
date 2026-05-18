@@ -221,7 +221,7 @@ Render documentation for an Erlang application @var{App} compiled in profile @va
 -spec erl_doc(Profile :: anvl_erlc:profile(), App :: anvl_erlc:application()) -> anvl_condition:t().
 ?MEMO(erl_doc, Profile, App,
       begin
-        OutDir = doc_dir([atom_to_list(App)]),
+        OutDir = doc_dir([App]),
         ModulesDir = filename:join(OutDir, "mod"),
         OutFile = filename:join(OutDir, "app.texi"),
         #{spec := Spec} = Ctx = anvl_erlc:app_info(Profile, App),
@@ -387,4 +387,4 @@ get_documentation(#{<<"en">> := Doc}) ->
   [Doc, <<"\n\n">>].
 
 doc_dir(Rest) ->
-  anvl_fn:workdir([anvl_plugin:conf([anvl_texinfo, doc_dir]), Rest]).
+  anvl_fn:workdir([anvl_plugin:conf([anvl_texinfo, doc_dir]) | Rest]).

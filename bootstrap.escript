@@ -21,7 +21,7 @@
 %% along with this program.  If not, see <https://www.gnu.org/licenses/>.
 %%================================================================================
 
-main(_Args) ->
+main(Args) ->
   Dir = "_anvl_build/stage1/ebin",
   %% Stage1:
   io:format("===================~n Bootstrap stage 1~n===================~n", []),
@@ -49,7 +49,13 @@ main(_Args) ->
   ok = anvl_app:bootstrap(),
   io:format("===================~n Bootstrap stage 3~n===================~n", []),
   %% Use escript produced at stage2 to recompile the code into the final binary:
-  Port = erlang:open_port({spawn_executable, "_anvl_build/stage2/stage2"}, [exit_status, nouse_stdio, {cd, "."}]),
+  Port = erlang:open_port(
+           {spawn_executable, "_anvl_build/stage2/stage2"},
+           [ exit_status
+           , nouse_stdio
+           , {cd, "."}
+           , {args, ["install" | Args]}
+           ]),
   receive
     {Port, {exit_status, E}} -> halt(E)
   end.

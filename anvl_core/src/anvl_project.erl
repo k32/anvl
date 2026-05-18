@@ -102,7 +102,7 @@ loaded(Project) when is_list(Project) ->
 -doc """
 Get a value from project configuration.
 """.
--spec conf(t(), lee:model_key()) -> _Result.
+-spec conf(t(), lee:key()) -> term().
 conf(ProjectRoot, Key) when is_binary(ProjectRoot) ->
   conf(binary_to_list(ProjectRoot), Key);
 conf(ProjectRoot, Key) when is_list(ProjectRoot) ->

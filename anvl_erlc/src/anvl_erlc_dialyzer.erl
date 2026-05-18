@@ -64,7 +64,7 @@ Parameters for this condition are set in the project configuration.
                        , {init_plt, plt_file(Profile, "base")}
                        , {files, app_beams(Profile, Apps)}
                        ]),
-            format_warnings(Profile, Result)
+            process_result(Profile, Result)
         end
       end).
 
@@ -128,9 +128,9 @@ project_model() ->
           end
       end).
 
-format_warnings(_Profile, []) ->
+process_result(_Profile, []) ->
   false;
-format_warnings(Profile, Warnings) ->
+process_result(Profile, Warnings) ->
   IOList = [dialyzer:format_warning(I) || I <- Warnings],
   ?UNSAT("Dialyzer warnings found (~p):~n~s", [Profile, IOList]).
 

@@ -70,7 +70,7 @@ Parameters for this condition are set in the project configuration.
                  ?UNSAT("Failed to add appliction ~p: ~p", [App, Err])
              end
            end || App <- Apps],
-          warnings(
+          process_results(
             Profile,
             [{I, xref:analyze(Serv, I)} || I <- Analysis])
         after
@@ -122,26 +122,24 @@ project_model() ->
 %% Internal functions
 %%================================================================================
 
-warnings(Profile, Results) ->
-  warnings(Profile, Results, []).
-
-warnings(Profile, [], Result) ->
-  case Result of
+process_results(Profile, Results) ->
+  IOList = [format_warnings(I) ||
+             I <- Results,
+             has_warnings(I)],
+  case IOList of
     [] ->
       false;
     _ ->
-      ?UNSAT("Analysis failed for profile ~p~n~s", [Profile, Result])
-  end;
-warnings(Profile, [Analysis | Rest], Result) ->
-  case Analysis of
-    {_Type, {ok, []}} ->
-      warnings(Profile, Rest, Result);
-    {Type, Error} ->
-      Msg = case Error of
-              {ok, Warnings} ->
-                io_lib:format("  ~p:~n    ~p~n", [Type, Warnings]);
-              {error, Module, Err} ->
-                io_lib:format("  ~p failed for ~p: ~p~n", [Type, Module, Err])
-            end,
-      warnings(Profile, Rest, [Msg | Result])
+      ?UNSAT("Analysis failed for profile ~p~n~s", [Profile, IOList])
   end.
+
+format_warnings({Analysis, Result}) ->
+  case Result of
+    {ok, Warnings} ->
+      io_lib:format("  ~p:~n    ~p~n", [Analysis, Warnings]);
+    {error, Module, Err} ->
+      io_lib:format("  ~p failed for ~p: ~p~n", [Analysis, Module, Err])
+  end.
+
+has_warnings({_, {ok, []}}) -> false;
+has_warnings(_)             -> true.

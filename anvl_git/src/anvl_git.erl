@@ -51,7 +51,7 @@ A builtin plugin for cloning Git repositories.
 Condition: repository @var{Repo} is cloned to directory @var{Dir},
 and commit @var{Hash} is checked out.
 """.
--spec sources_prepared(repo(), Dir :: file:filename(), Hash :: string()) ->
+-spec sources_prepared(repo(), Dir :: file:filename(), binary()) ->
         anvl_condition:t().
 ?MEMO(sources_prepared, Repo, Dir, Hash,
       begin
