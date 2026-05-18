@@ -347,7 +347,7 @@ project_model() ->
             #{ oneliner => "Application search path within the project"
              , doc => "@erlang-app-paths"
              , type => list(anvl_lib:filename_pattern())
-             , default => ["apps/${app}", "."]
+             , default => ["apps/${app}", "lib/${app}", "."]
              }}
        , escript =>
            anvl_erlc_escript:project_model()
