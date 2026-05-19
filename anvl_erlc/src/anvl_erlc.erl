@@ -707,7 +707,7 @@ process_attributes(OrigFile, EPP, Acc) ->
       process_attributes(OrigFile, EPP, [{file, File} | Acc]);
     {ok, {attribute, _, compile, {parse_transform, ParseTransform}}} ->
       process_attributes(OrigFile, EPP, [{parse_transform, ParseTransform} | Acc]);
-    {ok, {attribute, _, behavior, Behavior}} ->
+    {ok, {attribute, _, BH, Behavior}} when BH =:= behavior; BH =:= behaviour ->
       process_attributes(OrigFile, EPP, [{behavior, Behavior} | Acc]);
     {error, Err} ->
       ?UNSAT("Failed to derive dependencies~n~s:~s", [OrigFile, epp:format_error(Err)]);
