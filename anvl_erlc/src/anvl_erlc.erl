@@ -301,15 +301,35 @@ project_model() ->
            , type => list(string())
            , default => []
            }}
-     , compile_options =>
-         {[value],
-          #{ oneliner => "Options passed to Erlang compiler"
-           , doc => """
-                    See @url{https://www.erlang.org/doc/apps/compiler/compile.html#file/2, OTP documentation}
-                    """
-           , type => list()
-           , default => [debug_info]
-           }}
+     , compile =>
+         #{ options =>
+              {[value],
+               #{ oneliner => "Project-specific options passed to the Erlang compiler"
+                , doc => """
+                         See @url{https://www.erlang.org/doc/apps/compiler/compile.html#file/2, OTP documentation}
+                         """
+                , type => list()
+                , default => [debug_info]
+                }}
+          , global_a =>
+              {[value],
+               #{ oneliner => "Global compiler options prepended to the project-specific options"
+                , doc => """
+                         Root project's options that are prepended to all child project and the root project itself.
+                         """
+                , type => list()
+                , default => []
+                }}
+          , global_z =>
+              {[value],
+               #{ oneliner => "Global compiler options appended to the project-specific options"
+                , doc => """
+                         Same as @code{global_a}, but options are appended.
+                         """
+                , type => list()
+                , default => []
+                }}
+          }
      , static_checks =>
          #{ apps =>
               {[value],
@@ -375,13 +395,16 @@ conditions(ProjectRoot) ->
 do_compile_app(Profile, App) ->
   ?LOG_INFO("Compiling ~p", [App]),
   {Project, SrcRoot} = src_root(Profile, App),
-  COpts0 = pcfg(Project, Profile, [compile_options]),
+  COpts0 = pcfg(Project, Profile, [compile, options]),
+  GOptsA = pcfg(anvl_project:root(), Profile, [compile, global_a]),
+  GOptsZ = pcfg(anvl_project:root(), Profile, [compile, global_z]),
+  COpts1 = GOptsA ++ COpts0 ++ GOptsZ,
   IncludePatterns = pcfg(Project, Profile, [includes]),
   SrcPatterns = pcfg(Project, Profile, [sources]),
   BDeps = pcfg(Project, Profile, [bdeps]),
   AppSrcProperties = app_src(App, SrcRoot),
   Dependencies = non_otp_apps(BDeps ++ proplists:get_value(applications, AppSrcProperties, [])),
-  BuildRoot = anvl_fn:workdir(["erlc", anvl_lib:hash(COpts0)], list),
+  BuildRoot = anvl_fn:workdir(["erlc", anvl_lib:hash(COpts1)], list),
   %% Satisfy the dependencies:
   _ = precondition([app_compiled(Profile, Dep) || Dep <- Dependencies]),
   BuildDir = build_dir(BuildRoot, App),
@@ -399,7 +422,7 @@ do_compile_app(Profile, App) ->
           },
   %% 1. Enrich compile options with the paths to the include directories:
   IncludeDirs = [template(I, Ctx0, list) || I <- IncludePatterns],
-  COpts = [{i, I} || I <- IncludeDirs] ++ COpts0,
+  COpts = [{i, I} || I <- IncludeDirs] ++ COpts1,
   Context = Ctx0 #{includes => IncludeDirs, compile_options => COpts},
   CRef = ?context(Profile, App),
   persistent_term:put(CRef, Context),

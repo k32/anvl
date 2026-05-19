@@ -84,7 +84,7 @@ translate_conf(Rebar3Conf) ->
    , [deps, hex_pm] => translate_hex_deps(Rebar3Conf)
    , erlang =>
        #{ app_paths => translate_app_paths(Rebar3Conf)
-        , compile_options => translate_compile_opts(Rebar3Conf)
+        , compile => #{options => translate_compile_opts(Rebar3Conf)}
         , sources => translate_src_dirs(Rebar3Conf)
         , first_files => translate_first_files(Rebar3Conf)
         }
