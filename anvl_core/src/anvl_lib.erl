@@ -261,19 +261,26 @@ ensure_string(L) when is_list(L) ->
 
 -doc """
 Put a process into infinite sleep,
-from which it will exit only when an 'EXIT' message is sent to it.
+from which it wakes up only when an 'EXIT' message arrives.
+Then it returns exit reason.
+
+Common use, when no cleanup actions is needed:
+@code{
+exit(anvl_lib:linger())
+}
 """.
--spec linger() -> no_return().
+-spec linger() -> ExitReason when
+    ExitReason :: term().
 linger() ->
   receive
     {'EXIT', _, Reason} ->
-      exit(Reason);
-    _ ->
+      Reason;
+    _Msg ->
+      %% Ignore other messages:
+      linger()
+  after infinity ->
       ok
-  after 0 ->
-      ok
-  end,
-  erlang:hibernate(?MODULE, linger, []).
+  end.
 
 %%================================================================================
 %% Internal functions

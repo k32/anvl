@@ -95,7 +95,16 @@ model(Profile) ->
 
 -doc false.
 project_model() ->
-  #{
+  #{ additional_apps =>
+       {[value],
+        #{ onliner => "Additional applications added to the PLT"
+         , doc => """
+                  Add additional applications to the PLT,
+                  that are not part of the dependency closure of @ref{value/erlang/static_checks/apps} project configuration value.
+                  """
+         , type => list(anvl_erlc:application())
+         , default => []
+         }}
    }.
 
 %%================================================================================

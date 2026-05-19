@@ -22,7 +22,8 @@
 conf() ->
   #{ plugins => [anvl_git, anvl_erlc, anvl_rebar3]
    , [deps, git] =>
-       [ #{ repo => "https://github.com/saleyn/erlexec.git"
+       [ #{ id => erlexec
+          , repo => "https://github.com/saleyn/erlexec.git"
           , ref => {branch, "master"}
           }
        ]
