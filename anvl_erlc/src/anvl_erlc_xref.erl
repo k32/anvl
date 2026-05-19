@@ -128,6 +128,7 @@ process_results(Profile, Results) ->
              has_warnings(I)],
   case IOList of
     [] ->
+      ?LOG_NOTICE("No cross-reference problems found."),
       false;
     _ ->
       ?UNSAT("Analysis failed for profile ~p~n~s", [Profile, IOList])
