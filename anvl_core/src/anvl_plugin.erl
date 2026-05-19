@@ -214,10 +214,11 @@ load_project_model(Module, S = #s{project_model = PM0}) ->
       S#s{project_model = PM};
     {error, Errors} ->
       [logger:critical(E) || E <- Errors],
-      ?UNSAT("Project model is invalid! (Likely caused by a plugin)", [])
+      ?LOG_CRITICAL("Project model is invalid! (Likely caused by a plugin)", []),
+      anvl_terminator:setfail(),
+      S
   end.
 
-%% FIXME: do not crash
 load_configuration_model(S = #s{model = M, complete = Complete}) ->
   case lee_model:compile(metamodel(Complete), M) of
     {ok, Model} ->
@@ -226,10 +227,9 @@ load_configuration_model(S = #s{model = M, complete = Complete}) ->
       logger:critical("Configuration model is invalid! (Likely caused by a plugin)"),
       [logger:critical(E) || E <- Errors],
       anvl_terminator:setfail(),
-      exit(badmodel)
+      S
   end.
 
-%% FIXME: do not crash
 do_load_config(S = #s{m = Model}) ->
   case lee:init_config(Model, ?conf_storage) of
     {ok, ?conf_storage, _Warnings} ->
@@ -239,7 +239,7 @@ do_load_config(S = #s{m = Model}) ->
       [logger:critical(E) || E <- Errors],
       [logger:warning(E) || E <- Warnings],
       anvl_terminator:setfail(),
-      exit(invalid_conf)
+      {reply, invalid_config, S}
   end.
 
 -doc false.
