@@ -70,7 +70,11 @@ and commit @var{Hash} is checked out.
             ?LOG_NOTICE("Cloning ~s (~p)", [Repo, Hash]),
             maybe_sync_mirror(Repo, Hash),
             ok = filelib:ensure_dir(Dir),
-            anvl_lib:exec("git", ["clone", "--quiet", "--local", Mirror, Dir]),
+            Hardlinks = case anvl_plugin:conf([git, use_hardlinks]) of
+                          true -> [];
+                          false -> ["--no-hardlinks"]
+                        end,
+            anvl_lib:exec("git", ["clone", "--quiet", "--local"] ++ Hardlinks ++ [Mirror, Dir]),
             git_checkout(Dir, Hash),
             true
         end
@@ -186,6 +190,17 @@ model() ->
              , default => 5
              , cli_operand => "j-git"
              , anvl_resource => git
+             }}
+       , use_hardlinks =>
+           {[value, os_env],
+            #{ oneliner => "Enable hardlinks when cloning repos from local mirror to workdir"
+             , doc => """
+                      This option allows to deduplicate git objects in the working directory,
+                      leading to faster clones and space savings,
+                      but cloning will fail if ANVL cache and the working directory are located on different filesystems.
+                      """
+             , type => boolean()
+             , default => false
              }}
        }}.
 
