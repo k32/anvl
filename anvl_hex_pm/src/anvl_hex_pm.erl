@@ -159,12 +159,10 @@ project_model() ->
                   }}
             , provides =>
                 {[value],
-                 #{ oneliner => "List of applicatoin provided by the package"
+                 #{ oneliner => "List of OTP applications provided by the package"
                   , doc => """
-                           This field can be used to resolve dependency conditionally.
-                           If it is set to @code{undefined},
-                           then ANVL will always check out the repository during dependency resolution,
-                           since it doesn't have information what resources it provides.
+                           This field can be used when @ref{value/deps/hex_pm/_/id} of the dependency doesn't match with dependency it provides
+                           or when the package provides more than one dependency.
                            """
                   , type => provides()
                   , default => undefined

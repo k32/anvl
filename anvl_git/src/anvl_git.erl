@@ -230,10 +230,10 @@ project_model() ->
                 {[value],
                  #{ oneliner => "List of dependencies provided by the repository"
                   , doc => """
-                           This field can be used when @code{id} of the dependency doesn't match with dependency it provides
+                           This field can be used when @ref{value/deps/git/_/id} of the dependency doesn't match with dependency it provides
                            or when the repository provides more than one dependency.
 
-                           By default ANVL assumes that git repository provides dependency equal to the @code{id} of any kind.
+                           By default ANVL assumes that git repository provides dependency equal to the @ref{value/deps/git/_/id} of any kind.
                            """
                   , type => provides()
                   , default => undefined
