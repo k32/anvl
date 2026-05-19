@@ -56,7 +56,7 @@ Parameters for this condition are set in the project configuration.
         Closure = NonOTPApps ++ OTPApps,
         BasePLTApps = Closure -- Apps,
         _ = precondition(plt_built(Profile, "base", BasePLTApps)),
-        Result = dialyzer:run(
+        Result = dialyzer_run(
                    [ {analysis_type, succ_typings}
                    , {check_plt, false}
                    , {init_plt, plt_file(Profile, "base")}
@@ -112,16 +112,26 @@ project_model() ->
             ?LOG_NOTICE(
                "Building ~s PLT for profile ~p~nIncluded apps: ~p",
                [Name, Profile, Apps]),
-            dialyzer:run(
-              [ {analysis_type, plt_build}
-              , {files, Beams}
-              , {output_plt, PLTFile}
-              ]),
-            true
+            dialyzer_run(
+                [ {analysis_type, plt_build}
+                , {files, Beams}
+                , {output_plt, PLTFile}
+                ]),
+              true
           end
       end).
 
+dialyzer_run(Opts) ->
+  try dialyzer:run(Opts)
+  catch
+    throw:{dialyzer_error, Reason} when is_list(Reason) ->
+      ?UNSAT(Reason, []);
+    EC:Err:Stack ->
+      ?UNSAT("Dialyzer failed: ~p:~p~nStacktrace: ~p", [EC, Err, Stack])
+  end.
+
 process_result(_Profile, []) ->
+  ?LOG_NOTICE("No dialyzer problems found."),
   false;
 process_result(Profile, Warnings) ->
   IOList = [dialyzer:format_warning(I) || I <- Warnings],
