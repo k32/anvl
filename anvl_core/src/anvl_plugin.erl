@@ -147,12 +147,13 @@ start_link() ->
         }).
 
 -doc false.
-init([]) ->
+init(_) ->
   lee_storage:new(lee_persistent_term_storage, ?tool_conf_storage_token),
   maybe
     {ok, S0} ?= do_load_model(anvl_core, #s{}),
     {reply, ok, S} ?= do_load_config(S0),
     conf([help, run]) andalso anvl_app:help(),
+    conf([shell]) andalso anvl_sup:setshell(),
     set_root(),
     {ok, S}
   end.
@@ -216,6 +217,7 @@ load_project_model(Module, S = #s{project_model = PM0}) ->
       ?UNSAT("Project model is invalid! (Likely caused by a plugin)", [])
   end.
 
+%% FIXME: do not crash
 load_configuration_model(S = #s{model = M, complete = Complete}) ->
   case lee_model:compile(metamodel(Complete), M) of
     {ok, Model} ->
@@ -223,7 +225,8 @@ load_configuration_model(S = #s{model = M, complete = Complete}) ->
     {error, Errors} ->
       logger:critical("Configuration model is invalid! (Likely caused by a plugin)"),
       [logger:critical(E) || E <- Errors],
-      error(badmodel)
+      anvl_condition:setfail(),
+      exit(badmodel)
   end.
 
 %% FIXME: do not crash
@@ -235,7 +238,8 @@ do_load_config(S = #s{m = Model}) ->
       logger:critical("Invalid configuration"),
       [logger:critical(E) || E <- Errors],
       [logger:warning(E) || E <- Warnings],
-      anvl_app:exit_result(1)
+      anvl_condition:setfail(),
+      exit(invalid_conf)
   end.
 
 -doc false.
@@ -282,5 +286,5 @@ start_link_plugin(Plugin) ->
 -spec plugin_entrypoint(anvl_plugin:t()) -> no_return().
 plugin_entrypoint(Plugin) ->
   Plugin:init(),
-  proc_lib:init_ack(ok),
-  anvl_lib:linger().
+  proc_lib:init_ack({ok, self()}),
+  exit(anvl_lib:linger()).

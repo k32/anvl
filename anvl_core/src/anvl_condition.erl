@@ -39,7 +39,7 @@ build_target(Target) ->
 -behavior(gen_server).
 
 %% API:
--export([stats/0, precondition/1, precondition/2, is_changed/1, percent_complete/0]).
+-export([stats/0, precondition/1, precondition/2, is_changed/1, percent_complete/0, setfail/0, shutdown/1]).
 -export([speculative/1, satisfies/1]).
 -export([get_result/1, maybe_get_result/1, has_result/1, set_result/2, format_condition/1]).
 
@@ -47,7 +47,7 @@ build_target(Target) ->
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
 
 %% internal exports:
--export([start_link/0, condition_entrypoint/2, prep_stop/1]).
+-export([start_link/0, condition_entrypoint/2, start_link_waiter/0, waiter_entrypoint/1]).
 
 -export_type([t/0, speculative/0]).
 
@@ -88,6 +88,7 @@ build_target(Target) ->
         }).
 
 -define(SERVER, ?MODULE).
+-define(WAITER, anvl_condition_waiter).
 
 -define(tab, ?MODULE).
 -define(stats_tab, anvl_condition_stats).
@@ -109,11 +110,6 @@ build_target(Target) ->
 %%================================================================================
 %% API functions
 %%================================================================================
-
--doc false.
--spec start_link() -> {ok, pid()}.
-start_link() ->
-  gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 -doc "Get various statistics about the run.".
 -spec stats() -> map().
@@ -264,6 +260,13 @@ percent_complete() ->
   end.
 
 -doc """
+Mark run as failed and initiate ANVL shutdown procedure.
+""".
+-spec setfail() -> ok.
+setfail() ->
+  shutdown(false).
+
+-doc """
 Pretty-print the condition.
 """.
 -spec format_condition(t()) -> iolist().
@@ -277,18 +280,6 @@ format_condition(#anvl_memo_thunk{descr = Descr, func = Func, args = Args}) ->
            io_lib:format("~p", [Func])
        end,
   [FN, $(, lists:join(", ", [io_lib:format("~p", [Arg]) || Arg <- Args]), $)].
-
--doc false.
--spec prep_stop(timeout()) -> ok | {error, timeout}.
-prep_stop(Timeout) ->
-  try
-    gen_server:call(?SERVER, prep_stop, Timeout)
-  catch
-    exit:{noproc, _} ->
-      ok;
-    exit:{timeout, _} ->
-      {error, timeout}
-  end.
 
 %%================================================================================
 %% behavior callbacks
@@ -312,8 +303,6 @@ init([]) ->
   {ok, S}.
 
 -doc false.
-handle_call(prep_stop, _From, S) ->
-  {reply, ok, do_prep_stop(S)};
 handle_call(_Call, _From, S) ->
   {reply, {error, unknown_call}, S}.
 
@@ -330,12 +319,47 @@ handle_info(_Info, S) ->
   {noreply, S}.
 
 -doc false.
-terminate(_Reason, S) ->
-  do_prep_stop(S).
+terminate(_Reason, _S) ->
+  ok.
 
 %%================================================================================
 %% Internal exports
 %%================================================================================
+
+-doc false.
+-spec start_link() -> {ok, pid()}.
+start_link() ->
+  gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+
+-doc false.
+-spec start_link_waiter() -> {ok, pid()}.
+start_link_waiter() ->
+  proc_lib:start_link(?MODULE, waiter_entrypoint, [self()]).
+
+-doc false.
+-spec waiter_entrypoint(pid()) -> no_return().
+waiter_entrypoint(Parent) ->
+  process_flag(trap_exit, true),
+  ?LOG_WARNING("me_here"),
+  proc_lib:init_ack(Parent, {ok, self()}),
+  _ = anvl_lib:linger(),
+  ?LOG_WARNING("me_there"),
+  timer:sleep(5000),
+  persistent_term:put(anvl_condition_terminating, true),
+  wait_unfinished_jobs(),
+  exit(shutdown).
+
+-doc false.
+-spec shutdown(boolean()) -> ok.
+shutdown(Success) ->
+  Success orelse anvl_sup:setfail(),
+  case whereis(?WAITER) of
+    undefined ->
+      error(too_late);
+    Pid ->
+      exit(Pid, shutdown),
+      ok
+  end.
 
 %% Note: update running_conditions() if this function changes
 -doc false.
@@ -425,6 +449,7 @@ precondition2([Cond | CondL], ResultAcc, WaitingAcc, Nwaiting, Nmax) ->
       precondition2(CondL, ResultAcc, [{Task, Pid, MRef} | WaitingAcc], Nwaiting + 1, Nmax)
   end.
 
+-spec wait_result(t(), pid(), reference()) -> boolean().
 wait_result(Condition, Pid, MRef) ->
   inc_waiting(),
   put(?anvl_cond_waiting_for, {Pid, Condition}),
@@ -507,13 +532,6 @@ get_resolve_conditions() ->
     L         -> L
   end.
 
-do_prep_stop(S = #s{stopped = true}) ->
-  S;
-do_prep_stop(S) ->
-  persistent_term:put(anvl_condition_terminating, true),
-  wait_unfinished_jobs(),
-  S#s{stopped = true}.
-
 wait_unfinished_jobs() ->
   case n_started() =:= n_complete() of
     true ->
@@ -525,7 +543,7 @@ wait_unfinished_jobs() ->
           ok;
         _ ->
           NConditions = length(Conditions),
-          ?LOG_NOTICE("Waiting for ~p unfinished jobs...", [NConditions]),
+          ?LOG_NOTICE("Waiting for ~p unfinished job(s)...", [NConditions]),
           [exit(I, ?aborted) || I <- Conditions],
           wait_unfinished_jobs(#{monitor(process, I) => I || I <- Conditions}, NConditions),
           wait_unfinished_jobs()
@@ -624,34 +642,43 @@ do_deadlock_detection(S = #s{started = Started0, complete = Complete0}) ->
   Incomplete = Started - Complete,
   Waiting = n_waiting(),
   if Waiting > 0, Waiting =:= Incomplete, Started0 =:= Started, Complete0 =:= Complete ->
-      %% Counters haven't changed since the last check. It means the
-      %% system haven't made any progress since the last check:
+      %% Number of waiting conditions is equal to the number of started conditions,
+      %% and the system haven't made any progress since the last time.
+      %%
+      %% Now we can be sure that conditions are deadlocked for real,
+      %% and it's not some race condition of reading the counters while they're being updated.
       logger:critical(
         "Deadlock: no resolvable conditions left. Complete=~p, Waiting=~p, Incomplete=~p",
         [Complete, Waiting, Incomplete]),
-      try deadlock_analysis(S)
-      catch
-        EC:Err:Stack ->
-          logger:critical(#{EC => Err, stacktrace => Stack, msg => deadlock_analysis_failed}),
-          anvl_app:exit_result(1)
-      end;
+      handle_deadlock(S);
      true ->
       S#s{ complete = Complete
          , started = Started
          }
   end.
 
--spec deadlock_analysis(#s{}) -> no_return().
-deadlock_analysis(_) ->
-  {Vertices, Edges} = deadlock_scan([], [], erlang:processes()),
-  Dump = anvl_fn:workdir(["anvl_cyclic.graph"]),
-  dump_graph(Vertices, Edges, Dump),
-  unresolved_speculative(Vertices),
-  anvl_app:exit_result(1).
+-spec handle_deadlock(#s{}) -> no_return().
+handle_deadlock(_) ->
+  {Vertices, Edges} = dep_graph([], [], erlang:processes()),
+  %% Brutally kill all deadlocked conditions, so waiter can shutdown:
+  [exit(Pid, kill) || {Pid, _} <- Vertices],
+  try
+    Dump = anvl_fn:workdir(["anvl_cyclic.graph"]),
+    dump_graph(Vertices, Edges, Dump),
+    unresolved_speculative(Vertices)
+  catch
+    EC:Err:Stack ->
+      logger:critical(#{EC => Err, stacktrace => Stack, msg => deadlock_analysis_failed})
+  end,
+  setfail(),
+  exit(normal).
 
-deadlock_scan(Vertices, Edges, []) ->
+-spec dep_graph(Vertices, Edges, [pid()]) -> {Vertices, Edges} when
+    Vertices :: [{pid(), t()}],
+    Edges :: [{pid(), pid()}].
+dep_graph(Vertices, Edges, []) ->
   {Vertices, Edges};
-deadlock_scan(V0, E0, [Pid | Rest]) ->
+dep_graph(V0, E0, [Pid | Rest]) ->
   case waiting_for(Pid) of
     {depends, Cond, WaitingPid, _WaitingCond} ->
       V = [{Pid, Cond} | V0],
@@ -663,7 +690,7 @@ deadlock_scan(V0, E0, [Pid | Rest]) ->
       V = V0,
       E = E0
   end,
-  deadlock_scan(V, E, Rest).
+  dep_graph(V, E, Rest).
 
 dump_graph(Vertices, Edges, File) ->
   logger:critical("Condition graph dump: ~p", [File]),
@@ -696,6 +723,9 @@ unresolved_speculative(Vertices) ->
     end,
     Vertices).
 
+-spec waiting_for(pid()) -> {depends, t(), pid(), t()}
+                          | {speculative, t()}
+                          | undefined.
 waiting_for(Pid) ->
   case erlang:process_info(Pid, [current_function]) of
     [{current_function, {?MODULE, wait_result, 3}}] ->

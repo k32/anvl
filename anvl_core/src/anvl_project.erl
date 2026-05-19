@@ -287,7 +287,7 @@ custom_conditions(AdHoc) ->
                  ok;
                Missing ->
                  ?LOG_CRITICAL("Condition(s) ~p are not declared in anvl.erl", [Missing]),
-                 anvl_app:exit_result(1)
+                 anvl_condition:setfail()
              end,
              Invoked
          end,
@@ -296,7 +296,7 @@ custom_conditions(AdHoc) ->
       [Mod:Fun() || Fun <- Funs];
     Undefined ->
       ?LOG_CRITICAL("Condition(s) are declared, but undefined: ~p", [Undefined]),
-      anvl_app:exit_result(1)
+      anvl_condition:setfail()
   end.
 
 load_project_conf(IsNew, ProjectDir, Module, Storage) ->

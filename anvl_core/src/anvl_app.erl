@@ -29,11 +29,13 @@
 -export([start/2, stop/1]).
 
 %% internal exports:
--export([bootstrap/0, prefix/0, help/0, exit_result/1]).
+-export([ bootstrap/0
+        , prefix/0
+        , help/0
+        ]).
 
 -include_lib("kernel/include/logger.hrl").
 -include("anvl.hrl").
--compile({no_auto_import, [halt/1]}).
 
 %%================================================================================
 %% API
@@ -49,11 +51,12 @@ main(CLIArgs) ->
   case anvl_project:conditions() of
     [] ->
       ?LOG_CRITICAL("No default condition is specified in anvl.erl. Nothing to do"),
-      exit_result(1);
+      anvl_condition:setfail();
     Toplevel ->
       anvl_plugin:set_complete(),
       exec_top(Toplevel)
-  end.
+  end,
+  anvl_sup:wait().
 
 -spec help() -> no_return().
 help() ->
@@ -63,20 +66,6 @@ help() ->
   receive
     {_Drv, {editor_data, _}} ->
       halt(1)
-  end.
-
--doc """
-Exit the application with the given exit code,
-unless @option{--shell} option is supplied.
-""".
--spec exit_result(byte()) -> no_return().
-exit_result(ExitCode) ->
-  case anvl_plugin:conf([shell]) of
-    false ->
-      halt(ExitCode);
-    true ->
-      shell:start_interactive(),
-      anvl_lib:linger()
   end.
 
 %%================================================================================
@@ -123,13 +112,13 @@ stop(_) ->
 exec_top(Preconditions) ->
   ?LOG_DEBUG("Top level preconditions: ~p", [Preconditions]),
   T0 = os:system_time(microsecond),
-  ExitCode =
+  Success =
     try
       precondition(Preconditions),
-      0
+      true
     catch
       _:_ ->
-        1
+        false
     after
         [?LOG_DEBUG("Condition state: ~p", [S]) || S <- ets:tab2list(anvl_condition)]
     end,
@@ -141,7 +130,7 @@ exec_top(Preconditions) ->
               [Complete, Failed, Changed, Dt]),
   format_top("time", TopTime),
   format_top("reductions", TopReds),
-  exit_result(ExitCode).
+  anvl_condition:shutdown(Success).
 
 format_top(_, []) ->
   ok;
@@ -177,16 +166,9 @@ load_root_project_conf() ->
   try precondition(anvl_project:loaded(anvl_project:root()))
   catch
     exit:{unsat, _} ->
-      exit_result(1)
+      anvl_condition:setfail()
   end.
 
 %%================================================================================
 %% Misc.
 %%================================================================================
-
-%% @doc Stop the `escript'
--spec halt(char()) -> no_return().
-halt(ExitCode) ->
-  anvl_condition:prep_stop(60_000),
-  logger_std_h:filesync(default),
-  erlang:halt(ExitCode).
