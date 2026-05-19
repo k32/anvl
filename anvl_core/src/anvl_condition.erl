@@ -47,7 +47,7 @@ build_target(Target) ->
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
 
 %% internal exports:
--export([start_link/0, condition_entrypoint/2]).
+-export([start_link/0, condition_entrypoint/2, prep_stop/1]).
 
 -export_type([t/0, speculative/0]).
 
@@ -278,6 +278,18 @@ format_condition(#anvl_memo_thunk{descr = Descr, func = Func, args = Args}) ->
        end,
   [FN, $(, lists:join(", ", [io_lib:format("~p", [Arg]) || Arg <- Args]), $)].
 
+-doc false.
+-spec prep_stop(timeout()) -> ok | {error, timeout}.
+prep_stop(Timeout) ->
+  try
+    gen_server:call(?SERVER, prep_stop, Timeout)
+  catch
+    exit:{noproc, _} ->
+      ok;
+    exit:{timeout, _} ->
+      {error, timeout}
+  end.
+
 %%================================================================================
 %% behavior callbacks
 %%================================================================================
@@ -285,6 +297,7 @@ format_condition(#anvl_memo_thunk{descr = Descr, func = Func, args = Args}) ->
 -record(s,
         { started :: pos_integer() | undefined
         , complete :: pos_integer() | undefined
+        , stopped = false :: boolean()
         }).
 
 -doc false.
@@ -299,6 +312,8 @@ init([]) ->
   {ok, S}.
 
 -doc false.
+handle_call(prep_stop, _From, S) ->
+  {reply, ok, do_prep_stop(S)};
 handle_call(_Call, _From, S) ->
   {reply, {error, unknown_call}, S}.
 
@@ -315,10 +330,8 @@ handle_info(_Info, S) ->
   {noreply, S}.
 
 -doc false.
-terminate(_Reason, _S) ->
-  persistent_term:put(anvl_condition_terminating, true),
-  wait_unfinished_jobs(),
-  ok.
+terminate(_Reason, S) ->
+  do_prep_stop(S).
 
 %%================================================================================
 %% Internal exports
@@ -412,7 +425,6 @@ precondition2([Cond | CondL], ResultAcc, WaitingAcc, Nwaiting, Nmax) ->
       precondition2(CondL, ResultAcc, [{Task, Pid, MRef} | WaitingAcc], Nwaiting + 1, Nmax)
   end.
 
-
 wait_result(Condition, Pid, MRef) ->
   inc_waiting(),
   put(?anvl_cond_waiting_for, {Pid, Condition}),
@@ -424,7 +436,7 @@ wait_result(Condition, Pid, MRef) ->
         Changed when is_boolean(Changed) ->
           Changed;
         noproc ->
-          is_changed(Condition);
+          wait_result_of_terminated(Condition, 1);
         failed ->
           unsat(Condition);
         ?aborted ->
@@ -432,6 +444,18 @@ wait_result(Condition, Pid, MRef) ->
       end;
     {'EXIT', _From, ?aborted} ->
       exit(?aborted)
+  end.
+
+wait_result_of_terminated(Condition, Retries) ->
+  case is_changed(Condition) of
+    undefined when Retries > 0 ->
+      %% Stale ETS read?
+      timer:sleep(10),
+      wait_result_of_terminated(Condition, Retries - 1);
+    undefined ->
+      error({condition_without_result, Condition});
+    Changed when is_boolean(Changed) ->
+      Changed
   end.
 
 exec(#anvl_memo_thunk{descr = Descr, func = Fun, args = A}) ->
@@ -482,6 +506,13 @@ get_resolve_conditions() ->
     undefined -> [];
     L         -> L
   end.
+
+do_prep_stop(S = #s{stopped = true}) ->
+  S;
+do_prep_stop(S) ->
+  persistent_term:put(anvl_condition_terminating, true),
+  wait_unfinished_jobs(),
+  S#s{stopped = true}.
 
 wait_unfinished_jobs() ->
   case n_started() =:= n_complete() of
