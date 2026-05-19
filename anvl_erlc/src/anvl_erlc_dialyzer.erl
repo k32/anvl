@@ -52,7 +52,8 @@ Parameters for this condition are set in the project configuration.
       begin
         ?LOG_NOTICE("Running Dialyzer for profile ~p", [Profile]),
         Apps = anvl_erlc:pcfg(anvl_project:root(), Profile, [static_checks, apps]),
-        {NonOTPApps, OTPApps} = anvl_erlc:app_closure(Profile, Apps),
+        NRDeps = anvl_erlc:pcfg(anvl_project:root(), Profile, [static_checks, non_runtime_deps]),
+        {NonOTPApps, OTPApps} = anvl_erlc:app_closure(Profile, NRDeps ++ Apps),
         Closure = NonOTPApps ++ OTPApps,
         BasePLTApps = Closure -- Apps,
         _ = precondition(plt_built(Profile, "base", BasePLTApps)),
@@ -95,16 +96,7 @@ model(Profile) ->
 
 -doc false.
 project_model() ->
-  #{ additional_apps =>
-       {[value],
-        #{ onliner => "Additional applications added to the PLT"
-         , doc => """
-                  Add additional applications to the PLT,
-                  that are not part of the dependency closure of @ref{value/erlang/static_checks/apps} project configuration value.
-                  """
-         , type => list(anvl_erlc:application())
-         , default => []
-         }}
+  #{
    }.
 
 %%================================================================================

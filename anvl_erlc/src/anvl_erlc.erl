@@ -337,6 +337,20 @@ project_model() ->
                 , type => list(application())
                 , default => []
                 }}
+          , non_runtime_deps =>
+              {[value],
+               #{ onliner => "Non-runtime dependencies added to the scope"
+                , doc => """
+                         By default,
+                         runtime dependency closure of applications from the
+                         @ref{value/erlang/static_checks/apps} list is added to the static analysis scope.
+
+                         This parameter allows to extend the closure with additional apps.
+                         No warnings are emitted for these apps.
+                         """
+                , type => list(anvl_erlc:application())
+                , default => []
+                }}
           , xref =>
               anvl_erlc_xref:project_model()
           , dialyzer =>

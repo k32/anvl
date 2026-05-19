@@ -51,8 +51,9 @@ Parameters for this condition are set in the project configuration.
 ?MEMO(passed, Profile,
       begin
         Apps = anvl_erlc:pcfg(anvl_project:root(), Profile, [static_checks, apps]),
+        NRDeps = anvl_erlc:pcfg(anvl_project:root(), Profile, [static_checks, non_runtime_deps]),
         Analysis = anvl_erlc:pcfg(anvl_project:root(), Profile, [static_checks, xref, analysis]),
-        {NonOTPApps, OTPApps} = anvl_erlc:app_closure(Profile, Apps),
+        {NonOTPApps, OTPApps} = anvl_erlc:app_closure(Profile, NRDeps ++ Apps),
         Closure = NonOTPApps ++ OTPApps,
         %% Run analysis:
         {ok, Serv} = xref:start([]),
