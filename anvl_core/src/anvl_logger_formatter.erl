@@ -72,10 +72,11 @@ format(#{level := Level, msg := Msg, meta := Meta} = Event, Config) ->
       {report, _} ->
         logger_formatter:format(Event, fallback_config());
       {string, Str} ->
-        [Str, $\n];
+        Str;
       {Format, Args} ->
-        [io_lib:format(Format, Args), $\n]
+       io_lib:format(Format, Args)
     end
+  , $\n
   ].
 
 %%================================================================================
@@ -117,6 +118,8 @@ level(notice   , _   ) -> <<" notice">>;
 level(info     , _   ) -> <<" info">>;
 level(debug    , _   ) -> <<" debug">>.
 
+meta(#{condition := A}, Color) when is_atom(A) ->
+  meta(#{condition => atom_to_binary(A)}, Color);
 meta(#{condition := Cond}, true) ->
   [<<" \e[36m">>, Cond, <<"\e[0m">>];
 meta(#{condition := Cond}, false) ->
@@ -132,7 +135,7 @@ is_level_bad(Level) ->
 
 fallback_config() ->
   #{ single_line => false
-   , template => ["\n", msg , "\n"]
+   , template => [msg]
    }.
 
 get_color_conf() ->
