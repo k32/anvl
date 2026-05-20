@@ -66,6 +66,18 @@ model() ->
               , default_ref    => [log, global_level]
               , logger_handler => default
               }}
+        , color =>
+            %% NOTE: logger reads os env directly, so it should be
+            %% updated manually:
+            {[value, os_env],
+             #{ oneliner => "Colorize the logs"
+              , doc      => """
+                            If set to @code{auto},
+                            ANVL will try to detect appropriate settings automatically.
+                            """
+              , type     => anvl_logger_formatter:use_color()
+              , default  => auto
+              }}
         }
    , custom_conditions =>
        {[value, cli_positional],

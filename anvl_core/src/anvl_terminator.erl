@@ -22,7 +22,7 @@
 -behavior(gen_server).
 
 %% API:
--export([start_link/0, setfail/0, setshell/0]).
+-export([start_link/0, setfail/0, setshell/0, isfail/0]).
 
 %% behavior callbacks:
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
@@ -52,6 +52,10 @@ start_link() ->
 setfail() ->
   gen_server:call(?SERVER, setfail).
 
+-spec isfail() -> boolean().
+isfail() ->
+  persistent_term:get(anvl_terminator_fail, false).
+
 -spec setshell() -> ok.
 setshell() ->
   gen_server:call(?SERVER, setshell).
@@ -72,6 +76,7 @@ init(_) ->
 
 handle_call(setfail, _From, S) ->
   ?LOG_DEBUG("Terminator: fail flag set", []),
+  persistent_term:put(anvl_terminator_fail, true),
   anvl_condition:shutdown(),
   {reply, ok, S#s{fail = true}};
 handle_call(setshell, _From, S) ->

@@ -118,16 +118,26 @@ apps() ->
 ?MEMO(deadlock_test,
       begin
         precondition(install()),
-        {1, Output} = anvl_lib:exec_("anvl", ["-d", "test/deadlock", "--log-level", "critical"], [collect_output]),
-        [<<"[critical] Deadlock: no resolvable conditions left.", _/binary>> | _] = Output,
+        {1, Output} = anvl_lib:exec_(
+                        "anvl",
+                        ["-d", "test/deadlock", "--log-level", "critical"],
+                        [ collect_output
+                        , {env, [{"ANVL_LOG__COLOR", "false"}]}
+                        ]),
+        [<<_:5/binary, "! critical] Deadlock: no resolvable conditions left.", _/binary>> | _] = Output,
         true
       end).
 
 ?MEMO(unresolved_speculative_test,
       begin
         precondition(install()),
-        {1, Output} = anvl_lib:exec_("anvl", ["-d", "test/unresolved_speculative", "--log-level", "critical"], [collect_output]),
-        [<<"[critical] Deadlock: no resolvable conditions left.", _/binary>> | _] = Output,
+        {1, Output} = anvl_lib:exec_(
+                        "anvl",
+                        ["-d", "test/unresolved_speculative", "--log-level", "critical"],
+                        [ collect_output
+                        , {env, [{"ANVL_LOG__COLOR", "false"}]}
+                        ]),
+        [<<_:5/binary, "! critical] Deadlock: no resolvable conditions left.", _/binary>> | _] = Output,
         true
       end).
 

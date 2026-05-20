@@ -255,13 +255,18 @@ set_result(Key, Value) ->
       unsat({duplicate_result, Key, Value})
   end.
 
--spec percent_complete() -> number().
+-spec percent_complete() -> number() | undefined.
 percent_complete() ->
-  Started = n_started(),
-  if Started > 0 ->
-      (100 * n_complete()) div Started;
-     true ->
-      100
+  try
+    Started = n_started(),
+    Complete = n_complete(),
+    if Started > 0 ->
+        (100 * Complete) div Started;
+       true ->
+        100
+    end
+  catch
+    _:_ -> undefined
   end.
 
 -doc """

@@ -106,18 +106,7 @@ stop(_) ->
 %%================================================================================
 
 set_logger_conf() ->
-  Formatter = {logger_formatter,
-               #{ single_line => false
-                , template => [ "[" , level, {condition, [" ", condition], []}, "] "
-                              , msg
-                              , "\n"
-                              ]
-                }},
-  logger:update_handler_config(default, formatter, Formatter),
-  %% Filters = [ {noprogress, {fun logger_filters:progress/2, stop}}
-  %%           ],
-  %% logger:update_handler_config(default, filters, Filters),
-  %% logger:update_handler_config(default, filter_default, log),
+  logger:update_handler_config(default, formatter, anvl_logger_formatter:make()),
   ok.
 
 %%================================================================================
