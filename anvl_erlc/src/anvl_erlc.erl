@@ -238,9 +238,13 @@ model() ->
        , jobs =>
            {[value, cli_param, os_env, anvl_resource],
             #{ oneliner => "Maximum number of parallel compiler jobs"
+             , doc => """
+                      By default this value is set to the number of online schedulers.
+                      """
              , type => pos_integer()
              , cli_operand => "j-erlc"
-             , default => 16
+             , default => erlang:system_info(schedulers_online)
+             , default_str => ""
              , anvl_resource => erlc
              }}
        , compile =>

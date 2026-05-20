@@ -352,7 +352,7 @@ waiter_entrypoint(Parent) ->
   Dt = (os:system_time(microsecond) - T0) / 1000,
   #{ complete := Complete, changed := Changed, failed := Failed
    , top_time := TopTime, top_reds := TopReds
-   } = anvl_condition:stats(),
+   } = stats(),
   ?LOG_NOTICE("~p satisfied ~p failed ~p changed. Net time: ~pms~n",
               [Complete, Failed, Changed, Dt]),
   format_top("time", TopTime),
