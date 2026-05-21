@@ -153,7 +153,6 @@ init(_) ->
     {ok, S0} ?= do_load_model(anvl_core, #s{}),
     {reply, ok, S} ?= do_load_config(S0),
     conf([help, run]) andalso anvl_app:help(),
-    conf([shell]) andalso anvl_terminator:setshell(),
     set_root(),
     {ok, S}
   end.

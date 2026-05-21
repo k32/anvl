@@ -64,6 +64,7 @@ top(Conditions) ->
           , start       => {?MODULE, start_link_toplevel, [Conditions]}
           , significant => true
           , restart     => temporary
+          , shutdown    => infinity
           },
   case supervisor:start_child(?SUP, Spec) of
     {ok, _} -> ok;
@@ -88,7 +89,8 @@ toplevel_entrypoint(Parent, Conditions) ->
       catch
         _:_ -> ok
       end
-  end.
+  end,
+  maybe_shell().
 
 -spec wait() -> term().
 wait() ->
@@ -208,3 +210,13 @@ worker(Module, Shutdown) ->
    , restart  => permanent
    , type     => worker
    }.
+
+maybe_shell() ->
+  case anvl_plugin:conf([shell]) of
+    true ->
+      process_flag(trap_exit, true),
+      _ = shell:start_interactive(),
+      receive after infinity -> ok end;
+    false ->
+      ok
+  end.

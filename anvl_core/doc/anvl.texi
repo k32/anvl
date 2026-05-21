@@ -3,6 +3,11 @@
 @setfilename anvl.info
 @settitle ANVΛ
 
+@dircategory Software development
+@direntry
+* ANVL: (anvl).     A general-purpose task execution tool.
+@end direntry
+
 @macro lee{DIR, PREFIX}
   @node Invokation \PREFIX\
   @section Invokation

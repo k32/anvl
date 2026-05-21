@@ -22,7 +22,7 @@
 -behavior(gen_server).
 
 %% API:
--export([start_link/0, setfail/0, setshell/0, isfail/0]).
+-export([start_link/0, setfail/0, isfail/0]).
 
 %% behavior callbacks:
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
@@ -56,17 +56,12 @@ setfail() ->
 isfail() ->
   persistent_term:get(anvl_terminator_fail, false).
 
--spec setshell() -> ok.
-setshell() ->
-  gen_server:call(?SERVER, setshell).
-
 %%================================================================================
 %% behavior callbacks
 %%================================================================================
 
 -record(s,
         { fail = false :: boolean()
-        , shell = false :: boolean()
         }).
 
 init(_) ->
@@ -79,9 +74,6 @@ handle_call(setfail, _From, S) ->
   persistent_term:put(anvl_terminator_fail, true),
   anvl_condition:shutdown(),
   {reply, ok, S#s{fail = true}};
-handle_call(setshell, _From, S) ->
-  ?LOG_DEBUG("Terminator: shell flag set", []),
-  {reply, ok, S#s{shell = true}};
 handle_call(_Call, _From, S) ->
   {reply, {error, unknown_call}, S}.
 
@@ -92,10 +84,6 @@ handle_info(_Info, S) ->
   {noreply, S}.
 
 -spec terminate(_, #s{}) -> no_return().
-terminate(_Reason, #s{shell = true}) ->
-  %% Keep supervisor and shell running:
-  _ = shell:start_interactive(),
-  receive after infinity -> ok end;
 terminate(_Reason, #s{fail = Fail}) ->
   ExitCode = case Fail of
                true  -> 1;
