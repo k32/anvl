@@ -245,17 +245,10 @@ obtain_project_conf_module(Dir) ->
   case filelib:is_regular(ConfFile) of
     true ->
       Module = anvl_config_module(Dir),
-      Options = [ {d, 'PROJECT', Module}
-                , {d, 'PROJECT_STRING', atom_to_list(Module)}
-                , {i, anvl_includes_dir()}
-                , {parse_transform, ?MODULE}
-                , report, no_error_module_mismatch
-                , nowarn_export_all, export_all, binary
-                ],
-      case compile:file(ConfFile, Options) of
-        {ok, Module, Binary} ->
+      case obtain_project_conf_bytecode(ConfFile, Module) of
+        {ok, Changed, Binary} ->
           {module, Module} = code:load_binary(Module, ConfFile, Binary),
-          {true, Module};
+          {Changed, Module};
         error ->
           ?UNSAT("Failed to compile anvl config file for ~s.", [Dir])
       end;
@@ -272,6 +265,30 @@ obtain_project_conf_module(Dir) ->
 
 anvl_config_module(Dir) when is_list(Dir) ->
   list_to_atom("anvl_config##" ++ Dir).
+
+obtain_project_conf_bytecode(ConfFile, Module) ->
+  ProjCache = anvl_fn:workdir([anvl_project, anvl_lib:hash(Module)]),
+  case anvl_lib:newer(ConfFile, ProjCache) of
+    true ->
+      Options = [ {d, 'PROJECT', Module}
+                , {d, 'PROJECT_STRING', atom_to_list(Module)}
+                , {i, anvl_includes_dir()}
+                , {parse_transform, ?MODULE}
+                , report, no_error_module_mismatch
+                , nowarn_export_all, export_all, binary
+                ],
+      maybe
+        {ok, Module, Binary} ?= compile:file(ConfFile, Options),
+        ok ?= file:write_file(ProjCache, Binary),
+        {ok, true, Binary}
+      end;
+    false ->
+      maybe
+        {ok, Binary} ?= file:read_file(ProjCache),
+        {ok, false, Binary}
+      end
+  end.
+
 
 custom_conditions(AdHoc) ->
   Invoked = anvl_plugin:conf([custom_conditions]),
