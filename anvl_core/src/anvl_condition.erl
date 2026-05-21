@@ -39,7 +39,7 @@ build_target(Target) ->
 -behavior(gen_server).
 
 %% API:
--export([stats/0, precondition/1, precondition/2, is_changed/1, percent_complete/0]).
+-export([stats/0, precondition/1, precondition/2, is_changed/1, n_running/0, n_complete/0, n_waiting/0]).
 -export([speculative/1, satisfies/1]).
 -export([get_result/1, maybe_get_result/1, has_result/1, set_result/2, format_condition/1]).
 
@@ -255,16 +255,36 @@ set_result(Key, Value) ->
       unsat({duplicate_result, Key, Value})
   end.
 
--spec percent_complete() -> number() | undefined.
-percent_complete() ->
+-doc """
+Get the number of conditions that are currently running.
+""".
+-spec n_running() -> non_neg_integer().
+n_running() ->
   try
-    Started = n_started(),
-    Complete = n_complete(),
-    if Started > 0 ->
-        (100 * Complete) div Started;
-       true ->
-        100
-    end
+    n_started() - n_complete_()
+  catch
+    _:_ -> 0
+  end.
+
+-doc """
+Get the number of conditions waiting for preconditions.
+""".
+-spec n_waiting() -> non_neg_integer().
+n_waiting() ->
+  try
+    n_waiting_()
+  catch
+    _:_ ->
+      0
+  end.
+
+-doc """
+Get the number of conditions that completed with any result.
+""".
+-spec n_complete() -> non_neg_integer() | undefined.
+n_complete() ->
+  try
+    n_complete_()
   catch
     _:_ -> undefined
   end.
@@ -537,7 +557,7 @@ get_resolve_conditions() ->
   end.
 
 wait_unfinished_jobs() ->
-  case n_started() =:= n_complete() of
+  case n_started() =:= n_complete_() of
     true ->
       ok;
     false ->
@@ -641,9 +661,9 @@ time_waited() ->
 
 do_deadlock_detection(S = #s{started = Started0, complete = Complete0}) ->
   Started = n_started(),
-  Complete = n_complete(),
+  Complete = n_complete_(),
   Incomplete = Started - Complete,
-  Waiting = n_waiting(),
+  Waiting = n_waiting_(),
   if Waiting > 0, Waiting =:= Incomplete, Started0 =:= Started, Complete0 =:= Complete ->
       %% Number of waiting conditions is equal to the number of started conditions,
       %% and the system haven't made any progress since the last time.
@@ -755,10 +775,10 @@ waiting_for(Pid) ->
 n_started() ->
   get_counter(?cnt_started).
 
-n_complete() ->
+n_complete_() ->
   get_counter(?cnt_complete) + get_counter(?cnt_failed).
 
-n_waiting() ->
+n_waiting_() ->
   get_counter(?cnt_waiting) + get_counter(?cnt_waiting_speculative).
 
 inc_waiting() ->

@@ -124,7 +124,7 @@ apps() ->
                         [ collect_output
                         , {env, [{"ANVL_LOG__COLOR", "false"}]}
                         ]),
-        [<<_:5/binary, "! critical] Deadlock: no resolvable conditions left.", _/binary>> | _] = Output,
+        [<<_:9/binary, "! critical] Deadlock: no resolvable conditions left.", _/binary>> | _] = Output,
         true
       end).
 
@@ -137,7 +137,7 @@ apps() ->
                         [ collect_output
                         , {env, [{"ANVL_LOG__COLOR", "false"}]}
                         ]),
-        [<<_:5/binary, "! critical] Deadlock: no resolvable conditions left.", _/binary>> | _] = Output,
+        [<<_:9/binary, "! critical] Deadlock: no resolvable conditions left.", _/binary>> | _] = Output,
         true
       end).
 

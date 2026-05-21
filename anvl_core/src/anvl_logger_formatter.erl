@@ -21,8 +21,6 @@
 -moduledoc false.
 -behaviour(logger_formatter).
 
--compile(export_all).
-
 %% API:
 -export([make/0]).
 
@@ -84,24 +82,38 @@ format(#{level := Level, msg := Msg, meta := Meta} = Event, Config) ->
 %%================================================================================
 
 prefix(Level, Meta, #{color := Color}) ->
-  PercentBin = case anvl_condition:percent_complete() of
-                 undefined ->
-                   <<"?? ">>;
-                 Percent ->
-                   <<(integer_to_binary(Percent))/binary, "%">>
-                 end,
   Fail = is_level_bad(Level) orelse anvl_terminator:isfail(),
+  #{
+   } = anvl_condition:stats(),
   [ $[
-  , percent(Fail, PercentBin, Color)
+  , format_stats(Fail, Color)
   , level(Level, Color)
   , meta(Meta, Color)
   , <<"] ">>
   ].
 
-percent(true,  Percent, true)  -> <<"\e[31m", Percent/binary, "\e[0m">>;
-percent(false, Percent, true)  -> <<"\e[32m", Percent/binary, "\e[0m">>;
-percent(true,  Percent, false) -> <<Percent/binary, " !">>;
-percent(false, Percent, false) -> Percent.
+format_stats(Fail, Color) ->
+  NR = anvl_condition:n_running(),
+  NW = anvl_condition:n_waiting(),
+  Stats = <<(format_stat(NR))/binary, " ", (format_stat(NW))/binary>>,
+  stats(Fail, Stats, Color).
+
+format_stat(Stat) ->
+  Bin = integer_to_binary(Stat),
+  if Stat < 10 ->
+      <<"  ", Bin/binary>>;
+     Stat < 100 ->
+      <<" ", Bin/binary>>;
+     %% Stat < 1000 ->
+     %%  <<" ", Bin/binary>>;
+     true ->
+      Bin
+  end.
+
+stats(true,  Percent, true)  -> <<"\e[31m", Percent/binary, "\e[0m">>;
+stats(false, Percent, true)  -> <<"\e[32m", Percent/binary, "\e[0m">>;
+stats(true,  Percent, false) -> <<Percent/binary, " !">>;
+stats(false, Percent, false) -> Percent.
 
 level(emergency, true) -> <<" \e[1;31m", "emergency", "\e[0m">>;
 level(alert    , true) -> <<" \e[1;31m", "alert",     "\e[0m">>;
