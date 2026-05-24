@@ -39,7 +39,7 @@ model() ->
        {[value, cli_param],
         #{ oneliner    => "Root project directory"
          , type        => string()
-         , default     => "."
+         , default     => ""
          , cli_operand => "root-dir"
          , cli_short   => $d
          }}

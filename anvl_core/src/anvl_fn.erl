@@ -30,6 +30,8 @@ This module contains functions for composing and manipulating directory and file
 
 -export_type([type/0, component/0]).
 
+-include("anvl.hrl").
+
 %%================================================================================
 %% Type declarations
 %%================================================================================
@@ -56,7 +58,7 @@ workdir(Components) ->
   Base = filename:absname(anvl_plugin:conf([workdir])),
   case Components of
     [] -> Base;
-    _  -> filename:join([Base | stringify_atoms(Components)])
+    _  -> join_sanitized(Base, Components)
   end.
 
 -doc """
@@ -73,10 +75,11 @@ Return a filename relative to the project root.
 proj_dir(Project, Components) ->
   Base = anvl_project:dir(Project),
   case Components of
-    [] -> Base;
-    _  -> filename:join([Base | stringify_atoms(Components)])
+    [] ->
+      Base;
+    _  ->
+      join_sanitized(Base, Components)
   end.
-
 
 -doc """
 Same as @code{workdir/1}, but only returns values of the specified type.
@@ -122,10 +125,27 @@ which is added to every found path.
 wildcard([C | _] = Pattern, Dir) when is_integer(C) ->
   wildcard([Pattern], Dir);
 wildcard(Patterns, Dir) ->
-  [filename:join(Dir, I) ||
+  [begin
+     Result = filelib:safe_relative_path(I, Dir),
+     case Result of
+       unsafe ->
+         ?UNSAT("~s is an unsafe in ~s", [I, Dir]);
+       _ ->
+         filename:join(Dir, Result)
+     end
+   end ||
     Pattern <- Patterns,
     I <- filelib:wildcard(Pattern, Dir)].
 
 %%================================================================================
 %% Internal functions
 %%================================================================================
+
+join_sanitized(Base, Components) ->
+  SubDir = filename:join(stringify_atoms(Components)),
+  case filelib:safe_relative_path(SubDir, Base) of
+    unsafe ->
+      ?UNSAT("~s is unsafe in ~s", [SubDir, Base]);
+    Result ->
+      filename:join(Base, Result)
+  end.
