@@ -356,9 +356,4 @@ read_lock(Plugin, Project, Kind, Package) ->
 
 -spec lock_file(module(), anvl_project:t(), kind(), dependency()) -> file:filename().
 lock_file(Plugin, Project, Kind, Id) ->
-  Ctx = #{ proj => anvl_project:dir(Project)
-         , plugin => Plugin
-         , kind => Kind
-         , id => Id
-         },
-  template("${proj}/anvl_lock/${plugin}/${kind}/${id}", Ctx, path).
+  anvl_fn:proj_dir(Project, [anvl_lock, Plugin, Kind, Id]).
