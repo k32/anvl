@@ -106,6 +106,7 @@ stop(_) ->
 %%================================================================================
 
 set_logger_conf() ->
+  anvl_logger_formatter:init(),
   logger:update_handler_config(default, formatter, anvl_logger_formatter:make()),
   ok.
 

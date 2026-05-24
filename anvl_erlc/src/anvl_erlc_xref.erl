@@ -129,7 +129,11 @@ process_results(Profile, Results) ->
              has_warnings(I)],
   case IOList of
     [] ->
-      ?LOG_NOTICE("No cross-reference problems found."),
+      Msg = anvl_logger_formatter:format(
+              success,
+              "No cross-reference problems found (profile=~p)",
+              [Profile]),
+      ?LOG_NOTICE(Msg),
       false;
     _ ->
       ?UNSAT("Analysis failed for profile ~p~n~s", [Profile, IOList])

@@ -22,7 +22,7 @@
 -behaviour(logger_formatter).
 
 %% API:
--export([make/0]).
+-export([init/0, fancy/0, make/0, format/3]).
 
 %% behavior callbacks:
 -export([check_config/1, format/2]).
@@ -43,16 +43,50 @@
 %% API functions
 %%================================================================================
 
-make() ->
-  %% Note: we don't have config yet
-  case get_color_conf() of
+-doc false.
+init() ->
+  %% Note: we don't have config management yet:
+  Config = case os:getenv("ANVL_LOG__COLOR") of
+             "true"  -> true;
+             "false" -> false;
+             _       -> auto
+           end,
+  case Config of
     Color when is_boolean(Color) ->
-      ok;
+      Color;
     auto ->
-      %% Hack: using undocumented function.
+      %% Hack: using undocumented function
       Color = prim_tty:isatty(stdout)
   end,
-  {?MODULE, #{color => Color}}.
+  persistent_term:put(anvl_logger_formatter_fancy, Color).
+
+-doc """
+Return true if fancy terminal output is allowed.
+""".
+-spec fancy() -> boolean().
+fancy() ->
+  persistent_term:get(anvl_logger_formatter_fancy, false).
+
+-spec format(success | warning | error, string(), list()) -> iolist().
+format(Kind, FmtString, Args) ->
+  case fancy() of
+    false ->
+      io_lib:format(FmtString, Args);
+    true ->
+      Prefix = case Kind of
+                 error ->
+                   "\e[31m";
+                 warning ->
+                   "\e[33m";
+                 success ->
+                   "\e[32m"
+               end,
+      io_lib:format(Prefix ++ FmtString ++ "\e[0m", Args)
+  end.
+
+-doc false.
+make() ->
+  {?MODULE, #{color => fancy()}}.
 
 %%================================================================================
 %% behavior callbacks
@@ -149,10 +183,3 @@ fallback_config() ->
   #{ single_line => false
    , template => [msg]
    }.
-
-get_color_conf() ->
-  case os:getenv("ANVL_LOG__COLOR") of
-    "true"  -> true;
-    "false" -> false;
-    _       -> auto
-  end.

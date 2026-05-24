@@ -131,8 +131,12 @@ dialyzer_run(Opts) ->
       ?UNSAT("Dialyzer failed: ~p:~p~nStacktrace: ~p", [EC, Err, Stack])
   end.
 
-process_result(_Profile, []) ->
-  ?LOG_NOTICE("No dialyzer problems found."),
+process_result(Profile, []) ->
+  Msg = anvl_logger_formatter:format(
+          success,
+          "No dialyzer problems found (profile=~p)",
+          [Profile]),
+  ?LOG_NOTICE(Msg),
   false;
 process_result(Profile, Warnings) ->
   IOList = [dialyzer:format_warning(I) || I <- Warnings],

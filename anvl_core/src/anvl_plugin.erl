@@ -196,7 +196,6 @@ load_model(Plugins) ->
       erlang:raise(EC, Err, Stack)
   end.
 
-%% FIXME: do not crash
 do_load_model(Module, S0 = #s{model = M0}) ->
   T0 = erlang:system_time(microsecond),
   S1 = load_project_model(Module, S0),
