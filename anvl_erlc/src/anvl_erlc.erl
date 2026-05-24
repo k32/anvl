@@ -397,7 +397,7 @@ init() ->
 
 -doc false.
 init_for_project(Project) ->
-  anvl_locate:add_path(otp_application, 0, Project, Project).
+  anvl_locate:add_path(otp_application, 0, Project, anvl_project:dir(Project)).
 
 -doc false.
 conditions(ProjectRoot) ->
@@ -410,6 +410,7 @@ conditions(ProjectRoot) ->
 %% Condition implementations
 %%================================================================================
 
+-spec do_compile_app(profile(), application()) -> boolean().
 do_compile_app(Profile, App) ->
   ?LOG_INFO("Compiling ~p", [App]),
   {Project, SrcRoot} = src_root(Profile, App),
@@ -462,6 +463,10 @@ do_compile_app(Profile, App) ->
   Ch4 = clean_orphans(Sources, Context),
   Ch5 = copy_includes(Context),
   Ch6 = render_app_spec(AppSrcProperties, Sources, Context),
+  ?LOG_NOTICE(anvl_logger_formatter:format(
+                success,
+                "Compiled ~p (profile=~p)",
+                [App, Profile])),
   Ch0 orelse Ch1 orelse Ch2 orelse Ch3 orelse Ch4 orelse Ch5 orelse Ch6.
 
 separate_first_files(#{first_files := []}, Sources) ->
@@ -742,20 +747,21 @@ non_otp_apps(Apps) ->
 %% Locating application sources
 %%--------------------------------------------------------------------------------
 
--spec src_root(profile(), application()) -> {file:filename(), file:filename()}.
+-spec src_root(profile(), application()) -> {anvl_project:t(), file:filename()}.
 src_root(_Profile, App) ->
   _ = precondition(anvl_locate:located(otp_application, fun locate_in_project/3, App)),
   #{project := Proj, dir := Dir} = anvl_locate:location(otp_application, App),
   {Proj, Dir}.
 
-locate_in_project(otp_application, App, Project) ->
-  precondition(anvl_project:loaded(Project)),
+locate_in_project(otp_application, App, ProjectDir) ->
+  precondition(anvl_project:loaded(ProjectDir)),
+  Project = anvl_project:config_module(ProjectDir),
   AppPathTemplates = pcfg(Project, [app_paths]),
   (fun Go([]) ->
          false;
        Go([Template|Rest]) ->
          SubDir = template(Template, #{app => App}, path),
-         AppRoot = filename:join(Project, SubDir),
+         AppRoot = anvl_fn:proj_dir(Project, [SubDir]),
          case app_src_path(AppRoot, App) of
            {ok, _}    -> {value, SubDir};
            {error, _} -> Go(Rest)

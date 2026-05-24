@@ -74,7 +74,7 @@ help() ->
 bootstrap() ->
   {ok, _} = ?MODULE:start(normal, []),
   application:set_env(anvl_core, include_dir, "anvl_core/include"),
-  anvl_sup:start_link(),
+  load_root_project_conf(),
   _ = precondition(anvl_erlc_escript:created(anvl_project:root(), stage2)),
   ok.
 
@@ -92,6 +92,7 @@ prefix() ->
 
 %% @hidden
 start(_StartType, _StartArgs) ->
+  anvl_project:tab(),
   anvl_locate:tab(),
   anvl_resource:tab(),
   anvl_hook:init(),
@@ -115,7 +116,7 @@ set_logger_conf() ->
 %%================================================================================
 
 load_root_project_conf() ->
-  try precondition(anvl_project:loaded(anvl_project:root()))
+  try precondition(anvl_project:loaded(anvl_project:root_dir()))
   catch
     exit:{unsat, _} ->
       anvl_terminator:setfail()

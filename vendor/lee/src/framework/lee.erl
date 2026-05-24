@@ -366,5 +366,5 @@ meta_validate_node(MT, Model, Key, MNode = #mnode{metaparams = MP}) ->
 get_model(Data) ->
     case lee_storage:get(?bakedin_model_key, Data) of
         {ok, Model} -> Model;
-        undefined   -> error("Data has not been initilized properly")
+        undefined   -> error({"Data has not been initilized properly", Data})
     end.

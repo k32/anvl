@@ -23,7 +23,7 @@ This module contains functions for composing and manipulating directory and file
 """.
 
 %% API:
--export([ workdir/1, workdir/2, rootdir/1
+-export([ workdir/1, workdir/2, proj_dir/2, rootdir/1
         , ensure_type/2, stringify_atoms/1
         , wildcard/2
         ]).
@@ -60,15 +60,23 @@ workdir(Components) ->
   end.
 
 -doc """
-Return a filename relative to the root project.
+Return a filename relative to the root project directory.
 """.
 -spec rootdir([component()]) -> file:filename().
 rootdir(Components) ->
-  Base = anvl_project:root(),
+  proj_dir(anvl_project:root(), Components).
+
+-doc """
+Return a filename relative to the project root.
+""".
+-spec proj_dir(anvl_project:t(), [component()]) -> file:filename().
+proj_dir(Project, Components) ->
+  Base = anvl_project:dir(Project),
   case Components of
     [] -> Base;
     _  -> filename:join([Base | stringify_atoms(Components)])
   end.
+
 
 -doc """
 Same as @code{workdir/1}, but only returns values of the specified type.
@@ -100,7 +108,9 @@ stringify_atoms(L) ->
   [if is_atom(I) ->
        atom_to_binary(I);
       is_list(I); is_binary(I) ->
-       I
+       I;
+      true ->
+       error({badelem, I})
    end
    || I <- L].
 

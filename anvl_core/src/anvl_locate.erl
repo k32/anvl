@@ -262,7 +262,7 @@ init_for_project(Project) ->
   [begin
      [deps, local, {Kind, Pattern} = Id] = K,
      Prio = anvl_project:conf(Project, [deps, local, Id, priority]),
-     SubDirs = anvl_fn:wildcard(Pattern, Project),
+     SubDirs = anvl_fn:wildcard(Pattern, anvl_project:dir(Project)),
      [add_path(Kind, Prio, Project, I) ||
        I <- SubDirs,
        filelib:is_dir(I)]
@@ -303,7 +303,7 @@ tab() ->
 -spec set_location(kind(), dependency(), anvl_project:t(), file:filename(), file:filename()) -> ok.
 set_location(Kind, Dependency, Owner, PathEntry, Dir) ->
   Project = case anvl_project:is_project(PathEntry) of
-              true  -> PathEntry;
+              true  -> anvl_project:config_module(PathEntry);
               false -> Owner
             end,
   Loc = #{ project => Project
@@ -315,7 +315,7 @@ set_location(Kind, Dependency, Owner, PathEntry, Dir) ->
   anvl_condition:set_result(#?result_key{kind = Kind, dep = Dependency}, Loc).
 
 -spec search_path(kind(), dependency(), subdirectory_fun(), [file:filename()]) ->
-        {value, file:filename(), file:filename(), file:filename()} | false.
+        {value, anvl_project:t(), file:filename(), file:filename()} | false.
 search_path(_Kind, _Id, _SubDirFun, []) ->
   false;
 search_path(Kind, Id, SubDirFun, [{Owner, PathEntry} | Path]) ->
@@ -354,6 +354,11 @@ read_lock(Plugin, Project, Kind, Package) ->
       undefined
   end.
 
+-spec lock_file(module(), anvl_project:t(), kind(), dependency()) -> file:filename().
 lock_file(Plugin, Project, Kind, Id) ->
-  Ctx = #{proj => Project, plugin => Plugin, kind => Kind, id => Id},
+  Ctx = #{ proj => anvl_project:dir(Project)
+         , plugin => Plugin
+         , kind => Kind
+         , id => Id
+         },
   template("${proj}/anvl_lock/${plugin}/${kind}/${id}", Ctx, path).

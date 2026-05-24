@@ -176,12 +176,13 @@ are compiled to all formats requested by the project.
 -spec compiled(anvl_project:t()) -> anvl_condition:t().
 ?MEMO(compiled, Project,
       begin
+        Dir = anvl_project:dir(Project),
         Formats = anvl_project:conf(Project, [texinfo, formats]),
         Sources = anvl_project:conf(Project, [texinfo, sources]),
         precondition([compiled(Project, Src, Format) ||
                        Format <- Formats,
                        Pattern <- Sources,
-                       Src <- anvl_fn:wildcard(Pattern, Project)
+                       Src <- anvl_fn:wildcard(Pattern, Dir)
                      ])
       end).
 
@@ -212,7 +213,7 @@ is compiled to format @var{Format}.
                                  , "-o", Output
                                  , DocSrc
                                  ],
-            anvl_lib:exec("texi2any", Args, [{cd, Project}])
+            anvl_lib:exec("texi2any", Args, [{cd, anvl_project:dir(Project)}])
           end
       end).
 

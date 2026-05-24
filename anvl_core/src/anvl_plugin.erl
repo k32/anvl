@@ -59,7 +59,7 @@ An ANVL API for managing plugins.
 
 -callback project_model() -> lee:lee_module().
 
--callback conditions(file:filename_all()) -> [[anvl_condition:t()]].
+-callback conditions(anvl_project:t()) -> [[anvl_condition:t()]].
 
 -callback init() -> ok.
 

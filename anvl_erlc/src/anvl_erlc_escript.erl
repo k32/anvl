@@ -47,7 +47,6 @@ See @url{https://www.erlang.org/doc/apps/stdlib/escript.html}.
 -spec created(anvl_project:t(), name()) -> anvl_condition:t().
 ?MEMO(created, Project, EscriptName,
       begin
-        precondition(anvl_project:loaded(Project)),
         do_escript(Project, EscriptName)
       end).
 
@@ -121,9 +120,9 @@ project_model() ->
 %%================================================================================
 
 -spec do_escript(anvl_project:t(), name()) -> boolean().
-do_escript(ProjectRoot, EscriptName) ->
+do_escript(Project, EscriptName) ->
   Cfg = fun(Key) ->
-            anvl_project:conf(ProjectRoot, [erlang, escript, {EscriptName}] ++ Key)
+            anvl_project:conf(Project, [erlang, escript, {EscriptName}] ++ Key)
         end,
   Profile = Cfg([profile]),
   FilePatterns = Cfg([files]),

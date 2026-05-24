@@ -142,7 +142,7 @@ apps() ->
       end).
 
 install_includes(Prefix) ->
-  {ok, Files} = anvl_git:ls_files(anvl_project:root(), []),
+  {ok, Files} = anvl_git:ls_files(anvl_fn:rootdir([]), []),
   lists:foldl(
     fun(Src, Acc) ->
         case filename:extension(Src) of
@@ -165,7 +165,10 @@ install(Prefix, Template, Src, Mode) ->
   Dest = patsubst(Template, Src, #{prefix => Prefix}),
   newer(Src, Dest) andalso
     begin
-      logger:notice("Installing ~s to ~s", [Src, Dest]),
+      logger:notice(anvl_logger_formatter:format(
+                      success,
+                      "Installing ~s to ~s",
+                      [Src, Dest])),
       {ok, _} = file:copy(Src, Dest),
       ok = file:change_mode(Dest, Mode),
       true
