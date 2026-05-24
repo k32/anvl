@@ -179,7 +179,9 @@ but it don't know which one.
 We call this situation @strong{speculative} precondition.
 
 This function is a built-in condition that serves as a placeholder in such situations.
-Needless to say, this functionality is an unsound hack meant as a last-resort measure.
+While ANVL can detect unresolved speculative preconditions,
+it's better to make all dependencies explicit.
+Therefore, this functionality should be used as the last resort.
 
 @var{Cond} token that represents the result.
 """.
@@ -211,13 +213,18 @@ satisfies(Cond) ->
 -doc """
 ANVL condition's return value is a boolean that specifies presense of side-effects.
 If it needs to return any other data,
-@code{get_result/1} and @code{set_result/2} functions can be used.
+@code{get_result/1} and @code{(@ref{anvl_condition:set_result/2, set_result/2})} functions can be used.
 These functions, essentially, allow to set and access global variables.
 
-This function MUST ONLY be called by the plugin that SETS the result.
-Plugins must wrap return values in a proper API function complete with return type.
+Note on the code style:
+this function must be called @emph{only} by the same plugin that @emph{sets} the result.
+Plugins must wrap @code{get_result} function in a proper API complete with return type.
 Raw global variables should be never exposed to the outside,
-because it would lead to unmaintainable code.
+because it leads to unmaintainable code.
+
+@xref{anvl_condition:maybe_get_result/1}
+
+@xref{anvl_condition:has_result/1}.
 """.
 -spec get_result(_Key) -> _Value.
 get_result(Key) ->
@@ -228,6 +235,9 @@ get_result(Key) ->
       error({no_result, Key})
   end.
 
+-doc """
+Non-throwing version of @ref{anvl_condition:get_result/1}.
+""".
 -spec maybe_get_result(_Key) -> {value, _Value} | false.
 maybe_get_result(Key) ->
   case ets:lookup(?results, Key) of
@@ -290,7 +300,7 @@ n_complete() ->
   end.
 
 -doc """
-Pretty-print the condition.
+Pretty-print a condition.
 """.
 -spec format_condition(t()) -> iolist().
 format_condition(C = #anvl_memo_thunk{args = [Target]}) when ?is_speculative(C) ->

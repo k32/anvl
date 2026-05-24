@@ -19,6 +19,7 @@
 
 -module(anvl_texinfo).
 -moduledoc """
+@cindex TexInfo, API
 A plugin for creating and compiling @url{https://www.gnu.org/software/texinfo/, GNU TexInfo} files.
 """.
 

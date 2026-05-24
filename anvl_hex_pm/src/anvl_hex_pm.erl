@@ -19,7 +19,8 @@
 
 -module(anvl_hex_pm).
 -moduledoc """
-A builtin plugin for fetching packages from hex.pm.
+@cindex hex.pm, API
+A client for @url{hex.pm}.
 """.
 
 -behavior(anvl_plugin).
@@ -38,15 +39,23 @@ A builtin plugin for fetching packages from hex.pm.
 -type version() :: string()
                  | latest.
 
+-doc """
+Hex lock is a binary consisting of hex-encoded SHA256 hash of the tarball,
+followed by dash and SemVer version.
+
+For example: @code{e87a9dd6e7fe9c5804887850d4cdbcd83db4da7a27f928174f11e4e06fb7902e-2.10.0}
+""".
+-type lock() :: binary().
+
 -type provides() :: undefined
                   | [anvl_erlc:application()].
 
--reflect_type([package/0, version/0, provides/0]).
+-reflect_type([package/0, version/0, lock/0, provides/0]).
 
 -doc """
 Query @url{hex.pm} for a lock matching a version (range) of a package.
 """.
--spec lock(package(), version()) -> binary().
+-spec lock(package(), version()) -> lock().
 lock(Package, Version) ->
   maybe
     {ok, ConcreteVersion} ?= resolve_version(Package, Version),
@@ -73,7 +82,7 @@ lock(Package, Version) ->
   end.
 
 -doc """
-Condition: tarball is downloaded and unpacked to the local project directory.
+Condition: tarball locked, downloaded and unpacked to a local project directory.
 """.
 -spec unpacked(anvl_project:t(), anvl_locate:kind(), package(), version()) -> anvl_condition:t().
 ?MEMO(unpacked, Project, Kind, Package, Version,
