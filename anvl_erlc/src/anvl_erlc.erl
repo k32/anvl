@@ -463,10 +463,7 @@ do_compile_app(Profile, App) ->
   Ch4 = clean_orphans(Sources, Context),
   Ch5 = copy_includes(Context),
   Ch6 = render_app_spec(AppSrcProperties, Sources, Context),
-  ?LOG_NOTICE(anvl_logger_formatter:format(
-                success,
-                "Compiled ~p (profile=~p)",
-                [App, Profile])),
+  ?LOG_NOTICE("Compiled ~p (profile=~p)", [App, Profile]),
   Ch0 orelse Ch1 orelse Ch2 orelse Ch3 orelse Ch4 orelse Ch5 orelse Ch6.
 
 separate_first_files(#{first_files := []}, Sources) ->
