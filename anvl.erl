@@ -21,9 +21,9 @@
 
 conf() ->
   EmuArgs = "-dist_listen false -escript main anvl_app",
-  Escript = #{apps => [anvl_core, anvl_erlc, anvl_git, anvl_texinfo, anvl_hex_pm, anvl_rebar3, lee, typerefl]},
+  Escript = #{apps => [anvl_core, anvl_erlc, anvl_git, anvl_texinfo, anvl_hex_pm, anvl_rebar3, anvl_otp_install, lee, typerefl]},
   #{ plugins => [anvl_erlc, anvl_texinfo, anvl_git]
-   , conditions => [install, static_checks, escript, docs, test, git_tests, deadlock_test]
+   , conditions => [install, static_checks, escript, docs, test, git_tests, deadlock_test, otp_install_test]
    , erlang =>
        #{ app_paths =>
             ["${app}", "."]
@@ -58,7 +58,7 @@ conf() ->
    }.
 
 apps() ->
-  [anvl_core, anvl_erlc, anvl_git, anvl_texinfo, anvl_hex_pm, anvl_rebar3].
+  [anvl_core, anvl_erlc, anvl_git, anvl_texinfo, anvl_hex_pm, anvl_rebar3, anvl_otp_install].
 
 ?MEMO(install,
       begin
@@ -139,6 +139,13 @@ apps() ->
                         ]),
         [<<_:9/binary, "! critical] Deadlock: no resolvable conditions left.", _/binary>> | _] = Output,
         true
+      end).
+
+?MEMO(otp_install_test,
+      begin
+        anvl_lib:exec(
+          "anvl",
+          ["-d", "test/otp_install"])
       end).
 
 install_includes(Prefix) ->

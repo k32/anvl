@@ -1,0 +1,6 @@
+@node OTP Install Builtin ANVL Plugin
+@chapter OTP Install, Builtin ANVL Plugin
+
+This plugin installs Erlang/OTP versions from sources.
+
+@lee{anvl_otp_install,ANVL OTP Install}

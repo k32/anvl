@@ -84,7 +84,8 @@ Condition: @var{Plugin} has been loaded.
                        Plugin =:= anvl_git;
                        Plugin =:= anvl_texinfo;
                        Plugin =:= anvl_hex_pm;
-                       Plugin =:= anvl_rebar3 ->
+                       Plugin =:= anvl_rebar3;
+                       Plugin =:= anvl_otp_install ->
                         %% Don't recompile builtin plugins:
                         false;
                        true ->

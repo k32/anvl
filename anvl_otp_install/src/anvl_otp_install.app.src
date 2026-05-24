@@ -1,0 +1,6 @@
+%% -*- mode:erlang -*-
+{application, anvl_otp_install,
+ [ {description, "An ANVL plugin that installs Erlang/OTP from git"}
+ , {vsn, "0.0.1"}
+ , {applications, [kernel, stdlib, typerefl, anvl_core]}
+ ]}.
