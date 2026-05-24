@@ -25,7 +25,11 @@ A plugin that adds basic compatibility with rebar3 projects.
 -behavior(anvl_plugin).
 
 %% API:
--export([maybe_generate_anvl_conf/1, translate_conf/1, generate_anvl_conf/2]).
+-export([ maybe_generate_anvl_conf/1
+        , translate_conf/1
+        , generate_anvl_conf/2
+        , exec_hooks/2
+        ]).
 
 %% behavior callbacks:
 -export([init/0, init_for_project/1, model/0, project_model/0]).
@@ -61,6 +65,7 @@ generate_anvl_conf(Rebar3Conf, AnvlConf) ->
   {ok, OldConf} = file:consult(Rebar3Conf),
   Conf = translate_conf(OldConf),
   {ok, FD} = file:open(AnvlConf, [write]),
+  PreCompile = translate_hooks(pre_hooks, compile, OldConf),
   try
     io:format(
       FD,
@@ -71,8 +76,13 @@ generate_anvl_conf(Rebar3Conf, AnvlConf) ->
 conf() ->
   ~p.
 
+init() ->
+  anvl_erlc:add_pre_compile_hook(
+    ?PROJECT,
+    anvl_rebar3:exec_hooks(?PROJECT, ~p)).
+
 """,
-     [?MODULE, Conf])
+     [?MODULE, Conf, PreCompile])
   after
     file:close(FD)
   end.
@@ -89,6 +99,37 @@ translate_conf(Rebar3Conf) ->
         , first_files => translate_first_files(Rebar3Conf)
         }
    }.
+
+-doc """
+Execute pre-compile hooks for a project.
+""".
+-spec exec_hooks(anvl_project:t(), [{string(), string()}]) ->
+        fun((anvl_erlc:context()) -> boolean()).
+exec_hooks(_, []) ->
+  fun(_Ctx) -> false end;
+exec_hooks(Project, Hooks) ->
+  fun(_Ctx) ->
+    Env = [ {"REBAR_ROOT_DIR", anvl_project:dir(Project)}
+          , {"REBAR_BUILD_DIR", anvl_fn:workdir([])}
+          ],
+    lists:foldl(
+      fun({ArchRegex, Script}, Acc) ->
+          case is_arch(ArchRegex) of
+            true ->
+              anvl_lib:exec(
+                "sh",
+                ["-c", Script],
+                [ {cd, anvl_project:dir(Project)}
+                , {env, Env}
+                ]),
+              true;
+            false ->
+              Acc
+          end
+      end,
+      false,
+      Hooks)
+  end.
 
 %%================================================================================
 %% behavior callbacks
@@ -195,3 +236,46 @@ git(Proj, {git, Repo, {Kind, Ref}}) when Kind =:= ref;
    , repo => Repo
    , ref => {Kind, Ref}
    }.
+
+translate_hooks(Rebar3ConfKey, HookFilter, Conf) ->
+  Hooks = proplists:get_value(Rebar3ConfKey, Conf, []),
+  lists:filtermap(
+    fun({HookPoint, Script}) when HookPoint =:= HookFilter ->
+        {true, {"", Script}};
+       ({ArchRegex, HookPoint, Script}) when HookPoint =:= HookFilter ->
+        {true, {ArchRegex, Script}};
+       (_) ->
+        false
+    end,
+    Hooks).
+
+%% Attribution: rebar3
+is_arch(ArchRegex) ->
+  case re:run(get_arch(), ArchRegex, [{capture, none}, unicode]) of
+    match ->
+      true;
+    nomatch ->
+      false
+  end.
+
+%% Attribution: rebar3
+-spec get_arch() -> string().
+get_arch() ->
+  Words = wordsize(),
+  otp_release() ++ "-"
+    ++ erlang:system_info(system_architecture) ++ "-" ++ Words.
+
+%% Attribution: rebar3
+-spec wordsize() -> string().
+wordsize() ->
+    try erlang:system_info({wordsize, external}) of
+        Val ->
+            integer_to_list(8 * Val)
+    catch
+        error:badarg ->
+            integer_to_list(8 * erlang:system_info(wordsize))
+    end.
+
+%% Not quite what rebar3 does
+otp_release() ->
+  erlang:system_info(otp_release).

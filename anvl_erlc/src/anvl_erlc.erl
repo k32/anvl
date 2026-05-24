@@ -35,7 +35,7 @@ the Erlang compiler.
 %% behavior callbacks:
 -export([model/0, project_model/0, init/0, init_for_project/1, conditions/1]).
 
--export_type([app_info/0]).
+-export_type([context/0, app_info/0]).
 
 -include_lib("typerefl/include/types.hrl").
 -include_lib("kernel/include/logger.hrl").

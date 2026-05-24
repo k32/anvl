@@ -116,7 +116,10 @@ set_logger_conf() ->
 %%================================================================================
 
 load_root_project_conf() ->
-  try precondition(anvl_project:loaded(anvl_project:root_dir()))
+  PreloadPlugins = anvl_plugin:conf([preload_plugins]),
+  try
+    precondition([anvl_plugin:loaded(I) || I <- PreloadPlugins]),
+    precondition(anvl_project:loaded(anvl_project:root_dir()))
   catch
     exit:{unsat, _} ->
       anvl_terminator:setfail()
