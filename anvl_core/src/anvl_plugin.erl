@@ -40,6 +40,7 @@ An ANVL API for managing plugins.
         , set_complete/0
         , init_for_project/2
         , plugin_entrypoint/1
+        , exit_to_shell/0
         ]).
 
 -reflect_type([t/0]).
@@ -178,11 +179,15 @@ handle_call({load_model, Plugins}, _From, S0) ->
       {reply, Err, S0}
   end;
 handle_call(set_complete, _From, S = #s{raw = Raw}) ->
-  {ok, _, Model, ProjectModel} = do_recompile_models(Raw, true),
-  do_load_config(S#s{ complete = true
-                    , model = Model
-                    , project_model = ProjectModel
-                    });
+  case do_recompile_models(Raw, true) of
+    {ok, _, Model, ProjectModel} ->
+      do_load_config(S#s{ complete = true
+                        , model = Model
+                        , project_model = ProjectModel
+                        });
+    Err ->
+      {reply, Err, S}
+  end;
 handle_call(get_project_model, _From, S) ->
   {reply, S#s.project_model, S};
 handle_call(_Call, _From, S) ->
@@ -270,6 +275,15 @@ plugin_entrypoint(Plugin) ->
   Plugin:init(),
   proc_lib:init_ack({ok, self()}),
   exit(anvl_lib:linger()).
+
+-doc false.
+-spec exit_to_shell() -> boolean().
+exit_to_shell() ->
+  try
+    conf([shell])
+  catch
+    _:_ -> false
+  end.
 
 -spec expand_model([t()], #s{}) -> {ok, #s{}} | {error, _}.
 expand_model(Plugins, #s{raw = Raw0, complete = Complete} = S) ->

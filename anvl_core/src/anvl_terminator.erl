@@ -72,7 +72,8 @@ init(_) ->
 handle_call(setfail, _From, S) ->
   ?LOG_DEBUG("Terminator: fail flag set", []),
   persistent_term:put(anvl_terminator_fail, true),
-  anvl_condition:shutdown(),
+  anvl_plugin:exit_to_shell() orelse
+    anvl_condition:shutdown(),
   {reply, ok, S#s{fail = true}};
 handle_call(_Call, _From, S) ->
   {reply, {error, unknown_call}, S}.

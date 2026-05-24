@@ -212,7 +212,7 @@ worker(Module, Shutdown) ->
    }.
 
 maybe_shell() ->
-  case anvl_plugin:conf([shell]) of
+  case anvl_plugin:exit_to_shell() of
     true ->
       process_flag(trap_exit, true),
       _ = shell:start_interactive(),

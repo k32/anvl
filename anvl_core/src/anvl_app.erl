@@ -48,9 +48,17 @@ main(CLIArgs) ->
   application:set_env(anvl, cli_args, CLIArgs),
   {ok, _} = application:ensure_all_started(anvl_core),
   %% TODO: move it from here to plugin.
-  load_root_project_conf(),
-  anvl_plugin:set_complete(),
-  ok = anvl_sup:top(anvl_project:conditions()),
+  maybe
+    ok ?= load_root_project_conf(),
+    ok ?= anvl_plugin:set_complete(),
+    ok ?= anvl_sup:top(anvl_project:conditions())
+  else
+    Err ->
+      ?LOG_DEBUG("Failed to load root project: ~p", [Err]),
+      anvl_terminator:setfail(),
+      %% Start top anyway, as shell may be required:
+      anvl_sup:top([])
+  end,
   anvl_sup:wait(),
   ?LOG_WARNING("Why are we here?"),
   timer:sleep(1000).
@@ -74,7 +82,7 @@ help() ->
 bootstrap() ->
   {ok, _} = ?MODULE:start(normal, []),
   application:set_env(anvl_core, include_dir, "anvl_core/include"),
-  load_root_project_conf(),
+  ok = load_root_project_conf(),
   _ = precondition(anvl_erlc_escript:created(anvl_project:root(), stage2)),
   ok.
 
@@ -119,10 +127,12 @@ load_root_project_conf() ->
   PreloadPlugins = anvl_plugin:conf([preload_plugins]),
   try
     precondition([anvl_plugin:loaded(I) || I <- PreloadPlugins]),
-    precondition(anvl_project:loaded(anvl_project:root_dir()))
+    precondition(anvl_project:loaded(anvl_project:root_dir())),
+    ok
   catch
-    exit:{unsat, _} ->
-      anvl_terminator:setfail()
+    exit:{unsat, Err} ->
+      anvl_terminator:setfail(),
+      {error, Err}
   end.
 
 %%================================================================================
