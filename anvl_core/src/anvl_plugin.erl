@@ -155,6 +155,9 @@ init(_) ->
     conf([help, run]) andalso anvl_app:help(),
     set_root(),
     {ok, S}
+  else
+    {reply, Reason, _} ->
+      {stop, Reason}
   end.
 
 -doc false.

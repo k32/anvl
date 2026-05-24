@@ -117,8 +117,6 @@ format(#{level := Level, msg := Msg, meta := Meta} = Event, Config) ->
 
 prefix(Level, Meta, #{color := Color}) ->
   Fail = is_level_bad(Level) orelse anvl_terminator:isfail(),
-  #{
-   } = anvl_condition:stats(),
   [ $[
   , format_stats(Fail, Color)
   , level(Level, Color)
