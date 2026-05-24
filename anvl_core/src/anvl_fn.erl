@@ -118,9 +118,13 @@ stringify_atoms(L) ->
 Run @code{filelib:wildcard/2} in a specified directory,
 which is added to every found path.
 """.
--spec wildcard(string(), file:filename()) -> [file:filename()].
-wildcard(Pattern, Dir) ->
-  [filename:join(Dir, I) || I <- filelib:wildcard(Pattern, Dir)].
+-spec wildcard(string() | [string()], file:filename()) -> [file:filename()].
+wildcard([C | _] = Pattern, Dir) when is_integer(C) ->
+  wildcard([Pattern], Dir);
+wildcard(Patterns, Dir) ->
+  [filename:join(Dir, I) ||
+    Pattern <- Patterns,
+    I <- filelib:wildcard(Pattern, Dir)].
 
 %%================================================================================
 %% Internal functions

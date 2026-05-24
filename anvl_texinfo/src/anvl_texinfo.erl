@@ -181,8 +181,7 @@ are compiled to all formats requested by the project.
         Sources = anvl_project:conf(Project, [texinfo, sources]),
         precondition([compiled(Project, Src, Format) ||
                        Format <- Formats,
-                       Pattern <- Sources,
-                       Src <- anvl_fn:wildcard(Pattern, Dir)
+                       Src <- anvl_fn:wildcard(Sources, Dir)
                      ])
       end).
 
