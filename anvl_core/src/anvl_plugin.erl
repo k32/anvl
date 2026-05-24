@@ -44,6 +44,7 @@ An ANVL API for managing plugins.
 
 -reflect_type([t/0]).
 
+-include_lib("kernel/include/logger.hrl").
 -include_lib("lee/include/lee.hrl").
 -include_lib("typerefl/include/types.hrl").
 -include("anvl_internals.hrl").
@@ -112,7 +113,7 @@ list_conf(Key) ->
   lee:list(?conf_storage, Key).
 
 -doc false.
--spec get_project_model() -> [lee:lee_module()].
+-spec get_project_model() -> lee:cooked_module().
 get_project_model() ->
   gen_server:call(?MODULE, get_project_model).
 
@@ -140,18 +141,23 @@ start_link() ->
   gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 -record(s,
-        { model = []
+        { raw = #{} :: #{t() => {lee:lee_module(), lee:lee_module()}}
+        , model :: lee:cooked_module()
+        , project_model :: lee:cooked_module()
         , complete = false :: boolean()
-        , project_model = []
-        , m
         , conf
         }).
 
 -doc false.
 init(_) ->
-  lee_storage:new(lee_persistent_term_storage, ?tool_conf_storage_token),
+  Storage = lee_storage:new(lee_persistent_term_storage, ?tool_conf_storage_token),
   maybe
-    {ok, S0} ?= do_load_model(anvl_core, #s{}),
+    {ok, Raw, Model, ProjectModel} = do_expand_model([anvl_core], #{}, false),
+    S0 = #s{ raw = Raw
+           , model = Model
+           , project_model = ProjectModel
+           , conf = Storage
+           },
     {reply, ok, S} ?= do_load_config(S0),
     conf([help, run]) andalso anvl_app:help(),
     set_root(),
@@ -164,19 +170,18 @@ init(_) ->
 -doc false.
 handle_call(load_config, _From, S) ->
   do_load_config(S);
-handle_call({load_model, Plugin}, _From, S0) ->
-  try do_load_model(Plugin, S0) of
+handle_call({load_model, Plugins}, _From, S0) ->
+  case expand_model(Plugins, S0) of
     {ok, S} ->
-      {reply, ok, S}
-  catch
-    EC:Err:Stack ->
-      {reply, {EC, Err, Stack}, S0}
+      {reply, ok, S};
+    Err ->
+      {reply, Err, S0}
   end;
 handle_call(set_complete, _From, S0) ->
   S = load_configuration_model(S0#s{complete = true}),
   do_load_config(S);
 handle_call(get_project_model, _From, S) ->
-  {reply, S#s.project_model, S};
+  {reply, S#s.cooked_project_model, S};
 handle_call(_Call, _From, S) ->
   {reply, {error, unknown_call}, S}.
 
@@ -192,47 +197,18 @@ terminate(_Reason, _S) ->
 %% Internal functions
 %%================================================================================
 
+load_model(Plugin) when is_atom(Plugin) ->
+  load_model([Plugin]);
 load_model(Plugins) ->
   case gen_server:call(?MODULE, {load_model, Plugins}) of
     ok ->
       ok;
-    {EC, Err, Stack} ->
-      erlang:raise(EC, Err, Stack)
-  end.
-
-do_load_model(Module, S0 = #s{model = M0}) ->
-  T0 = erlang:system_time(microsecond),
-  S1 = load_project_model(Module, S0),
-  S2 = S1#s{model = [Module:model() | M0]},
-  S = load_configuration_model(S2),
-  T1 = erlang:system_time(microsecond),
-  ?LOG_DEBUG("Loading model for ~p took ~p ms", [Module, (T1 - T0)/1000]),
-  {ok, S}.
-
-load_project_model(Module, S = #s{project_model = PM0}) ->
-  PM = [Module:project_model() | PM0],
-  case lee_model:compile(project_metamodel(), PM) of
-    {ok, _} ->
-      S#s{project_model = PM};
-    {error, Errors} ->
-      [logger:critical(E) || E <- Errors],
-      ?LOG_CRITICAL("Project model is invalid! (Likely caused by a plugin)", []),
+    {error, _} = Err ->
       anvl_terminator:setfail(),
-      S
+      Err
   end.
 
-load_configuration_model(S = #s{model = M, complete = Complete}) ->
-  case lee_model:compile(metamodel(Complete), M) of
-    {ok, Model} ->
-      S#s{m = Model};
-    {error, Errors} ->
-      logger:critical("Configuration model is invalid! (Likely caused by a plugin)"),
-      [logger:critical(E) || E <- Errors],
-      anvl_terminator:setfail(),
-      S
-  end.
-
-do_load_config(S = #s{m = Model}) ->
+do_load_config(S = #s{model = Model}) ->
   case lee:init_config(Model, ?conf_storage) of
     {ok, ?conf_storage, _Warnings} ->
       {reply, ok, S};
@@ -267,6 +243,7 @@ project_metamodel() ->
   , lee_metatype:create(lee_value)
   , lee_metatype:create(lee_pointer)
   , lee_metatype:create(lee_map)
+  , lee_metatype:create(anvl_project)
   ].
 
 cli_args_getter() ->
@@ -290,3 +267,63 @@ plugin_entrypoint(Plugin) ->
   Plugin:init(),
   proc_lib:init_ack({ok, self()}),
   exit(anvl_lib:linger()).
+
+-spec expand_model([t()], #s{}) -> {ok, #s{}} | {error, _}.
+expand_model(Plugins, #s{raw = Raw0, complete = Complete} = S) ->
+   case do_expand_model(Plugins, Raw0, Complete) of
+     {ok, Raw, Model, ProjectModel} ->
+       {ok, S#s{raw = Raw, model = Model, project_model = ProjectModel}};
+     no_change ->
+       {ok, S};
+     Err ->
+       Err
+   end.
+
+do_expand_model(Plugins, Raw0, Complete) ->
+  maybe
+    {ok, Raw} ?= load_models(Plugins, Raw0, false),
+    {ok, CookedModel} ?= compile_model(Raw, Complete),
+    {ok, CookedProjectModel} ?= compile_project_model(Raw),
+    {ok, Raw, CookedModel, CookedProjectModel}
+  end.
+
+load_models([], _, false) ->
+  no_change;
+load_models([], Raw, true) ->
+  {ok, Raw};
+load_models([Plugin | Rest], Raw, Changed) ->
+  case Raw of
+    #{Plugin := _} ->
+      load_models(Rest, Raw, Changed);
+    #{} ->
+      maybe
+        {ok, Model} ?= anvl_lib:safe_call(Plugin, model, []),
+        {ok, ProjectModel} ?= anvl_lib:safe_call(Plugin, project_model, []),
+        load_models(
+          Rest,
+          Raw#{Plugin => {Model, ProjectModel}},
+          true)
+      end
+  end.
+
+compile_model(Raw, Complete) ->
+  Modules = [I || _ := {I, _} <- Raw],
+  case lee_model:compile(metamodel(Complete), Modules) of
+    {ok, _} = Ok ->
+      Ok;
+    {error, Errors} = Err ->
+      logger:critical("Tool model is invalid! (Likely caused by a plugin)"),
+      [logger:critical(E) || E <- Errors],
+      Err
+  end.
+
+compile_project_model(Raw) ->
+  Modules = [I || _ := {_, I} <- Raw],
+  case lee_model:compile(project_metamodel(), Modules) of
+    {ok, _} = Ok ->
+      Ok;
+    {error, Errors} = Err ->
+      [logger:critical(E) || E <- Errors],
+      ?LOG_CRITICAL("Project model is invalid! (Likely caused by a plugin)", []),
+      Err
+  end.

@@ -27,6 +27,7 @@ A collection of functions useful for implementing conditions.
 -export([newer/2, newer/3, max_mtime/1, hash/1]).
 -export([exec/2, exec/3, exec_/2, exec_/3]).
 -export([ensure_string/1]).
+-export([safe_call/3]).
 -export([linger/0]).
 
 -export_type([template_vars/0]).
@@ -258,6 +259,14 @@ ensure_string(Bin) when is_binary(Bin) ->
   binary_to_list(Bin);
 ensure_string(L) when is_list(L) ->
   L.
+
+-spec safe_call(module(), atom(), list()) -> {ok, _} | {error, {atom(), term(), list()}}.
+safe_call(M, F, A) ->
+  try {ok, apply(M, F, A)}
+  catch
+    EC:Err:Stack ->
+      {error, {EC, Err, Stack}}
+  end.
 
 -doc """
 Put a process into infinite sleep,

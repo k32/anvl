@@ -22,6 +22,8 @@
 Handler of ANVL project configurations.
 """.
 
+-behavior(lee_metatype).
+
 -export([ root/0
         , root_dir/0
         , config_module/1
@@ -203,15 +205,13 @@ names(_) ->
   [pcfg].
 
 -doc false.
-create(#{conf := ConfTree, overrides := Overrides}) ->
-  [ {?mt_conf_tree_key, ConfTree}
-  , {?mt_conf_overrides, Overrides}
-  ].
+create(_) ->
+  [].
 
 -doc false.
 read_patch(pcfg, Model) ->
-  {ok, ConfTree} = lee_model:get_meta(?mt_conf_tree_key, Model),
-  {ok, Overrides} = lee_model:get_meta(?mt_conf_overrides, Model),
+  {ok, ConfTree} = get(?mt_conf_tree_key),
+  {ok, Overrides} = get(?mt_conf_overrides),
   Keys = lee_model:get_metatype_index(value, Model),
   maybe
     {ok, Patch} ?= lee_lib:tree_to_patch(Model, ConfTree, Keys),
@@ -269,7 +269,8 @@ parse_transform(Forms, Opts) ->
         ets:insert(?proj_tab, #project{ project = Project
                                       , dir = Dir
                                       }),
-        load_project_conf(IsNew, Dir, Project, Conf),
+        {T, _} = timer:tc(fun() -> load_project_conf(IsNew, Dir, Project, Conf) end),
+        ?LOG_WARNING("L ~s ~p", [Dir, T / 1000]),
         false
       end).
 
@@ -390,24 +391,22 @@ read_override(ProjectDir) ->
   end.
 
 read_project_conf(ProjectDir, ConfTree, Overrides, Data0) ->
-  MetaModel = [ lee_metatype:create(?MODULE, #{conf => ConfTree, overrides => Overrides})
-              | anvl_plugin:project_metamodel()
-              ],
-  MM = anvl_plugin:get_project_model(),
-  case lee_model:compile(MetaModel, MM) of
-    {ok, Model} ->
-      case lee:init_config(Model, Data0) of
-        {ok, Data, Warnings} ->
-          [logger:warning(I) || I <- Warnings],
-          Data;
-        {error, Errors, Warnings} ->
-          [logger:critical(E) || E <- Errors],
-          [logger:warning(W) || W <- Warnings],
-          ?UNSAT("Invalid project configuration ~p", [ProjectDir])
-      end;
-    {error, Errors} ->
-      [logger:critical(E) || E <- Errors],
-      ?UNSAT("Project model is invalid! (Likely caused by a plugin)", [])
+  try
+    ProjModel = anvl_plugin:get_project_model(),
+    put(?mt_conf_tree_key, ConfTree),
+    put(?mt_conf_overrides, Overrides),
+    case lee:init_config(Model, Data0) of
+      {ok, Data, Warnings} ->
+        [logger:warning(I) || I <- Warnings],
+        Data;
+      {error, Errors, Warnings} ->
+        [logger:critical(E) || E <- Errors],
+        [logger:warning(W) || W <- Warnings],
+        ?UNSAT("Invalid project configuration ~p", [ProjectDir])
+    end
+  after
+    erase(?mt_conf_tree_key),
+    erase(?mt_conf_overrides)
   end.
 
 project_config_file(Dir) ->
