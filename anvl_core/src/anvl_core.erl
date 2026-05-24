@@ -53,7 +53,11 @@ model() ->
          }}
     , preload_plugins =>
        {[value, cli_param],
-        #{ onliner     => "Pre-load specified plugins for all projects"
+        #{ onliner     => "Enable specified plugins for all projects"
+         , doc         => """
+                          This option is specified as an erlang list, for example:
+                          @code{--preload-plugins [anvl_rebar3]}
+                          """
          , type        => list(anvl_plugin:t())
          , default     => []
          , cli_operand => "preload-plugins"
