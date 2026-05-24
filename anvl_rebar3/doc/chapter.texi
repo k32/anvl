@@ -1,10 +1,18 @@
 @node Rebar3 Builtin ANVL Plugin
 @chapter Rebar3 Converter, Builtin ANVL Plugin
+@cindex rebar3
 
 A highly experimental and incomplete compatibility layer that translates @file{rebar.config} files into @file{anvl.erl} project files.
 
 Currently it doesn't have any configurable options.
 When added to the plugin list, it injects a @code{pre_project_load} hook that tries to translate rebar3 configuration to anvl format,
 if latter does not already exist.
+
+To automatically convert a rebar3 project to ANVL,
+the following command can be ran in the project directory:
+
+@code{
+anvl --preload-plugins [anvl_rebar3]
+}
 
 @lee{anvl_rebar3,ANVL Rebar3}
