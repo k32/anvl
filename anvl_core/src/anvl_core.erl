@@ -51,6 +51,13 @@ model() ->
          , cli_operand => "workdir"
          , cli_short   => $W
          }}
+    , preload_plugins =>
+       {[value, cli_param],
+        #{ onliner     => "Pre-load specified plugins for all projects"
+         , type        => list(anvl_plugin:t())
+         , default     => []
+         , cli_operand => "preload-plugins"
+         }}
    , log =>
        #{ global_level =>
             {[value, os_env, cli_param, logger_level],

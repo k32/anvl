@@ -359,7 +359,8 @@ load_project_conf(IsNew, ProjectDir, Module, Storage) ->
   Overrides = read_override(ProjectDir),
   %% 1. Load basic config to get the list of plugins:
   _ = read_project_conf(ProjectDir, ConfTree, Overrides, Storage),
-  Plugins = [anvl_core | lee:get(Storage, [plugins])],
+  PreloadPlugins = anvl_plugin:conf([preload_plugins]),
+  Plugins = [anvl_core, anvl_erlc | PreloadPlugins ++ lee:get(Storage, [plugins])],
   %% 2. Load plugins:
   [load_plugin(Module, ConfTree, Overrides, Storage, I) || I <- Plugins],
   %% 3. Optionally, run init function.
