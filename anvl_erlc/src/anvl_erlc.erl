@@ -37,6 +37,7 @@ the Erlang compiler.
 
 -export_type([context/0, app_info/0]).
 
+-include_lib("kernel/include/file.hrl").
 -include_lib("typerefl/include/types.hrl").
 -include_lib("kernel/include/logger.hrl").
 -include_lib("anvl_core/include/anvl.hrl").
@@ -606,6 +607,8 @@ manage_priv(#{src_root := SrcRoot, build_dir := BuildDir}) ->
           true ->
             ?LOG_DEBUG("Copying priv file: ~s -> ~s", [Src, Target]),
             {ok, _} = file:copy(Src, Target),
+            {ok, SrcInfo} = file:read_file_info(Src, [raw]),
+            ok = file:change_mode(Target, SrcInfo#file_info.mode),
             true
         end
     end,
