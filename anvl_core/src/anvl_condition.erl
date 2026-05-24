@@ -812,11 +812,11 @@ dec_waiting() ->
 format_top(_, []) ->
   ok;
 format_top("time", Top) ->
-  S = [io_lib:format("~10.3. fs  ~s ~p~n", [V / 1_000_000, D, A])
+  S = [io_lib:format("~10.3. fs  ~s ~P~n", [V / 1_000_000, D, A, 5])
        || {#anvl_memo_thunk{descr = D, args = A}, V} <- Top],
   ?LOG_NOTICE("    Top longest running jobs~n~s", [S]);
 format_top("reductions", Top) ->
-  S = [io_lib:format("~s ~p -> ~p~n", [D, A, V])
+  S = [io_lib:format("~s ~p -> ~P~n", [D, A, V, 5])
        || {#anvl_memo_thunk{descr = D, args = A}, V} <- Top],
   ?LOG_NOTICE("    Top jobs by reductions~n~s", [S]).
 
