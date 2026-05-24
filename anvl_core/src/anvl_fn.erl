@@ -125,15 +125,7 @@ which is added to every found path.
 wildcard([C | _] = Pattern, Dir) when is_integer(C) ->
   wildcard([Pattern], Dir);
 wildcard(Patterns, Dir) ->
-  [begin
-     Result = filelib:safe_relative_path(I, Dir),
-     case Result of
-       unsafe ->
-         ?UNSAT("~s is an unsafe in ~s", [I, Dir]);
-       _ ->
-         filename:join(Dir, Result)
-     end
-   end ||
+  [filename:join(Dir, I) ||
     Pattern <- Patterns,
     I <- filelib:wildcard(Pattern, Dir)].
 
