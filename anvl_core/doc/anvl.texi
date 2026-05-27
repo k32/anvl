@@ -205,27 +205,33 @@ for building and statically checking Erlang applications.
 for cloning git repositories.
 @item @ref{TexInfo Builtin ANVL Plugin,TexInfo},
 for building documentation in TexInfo format.
-@item @ref{hex.pm Builtin ANVL Plugin, Hex.pm}
+@item @ref{hex.pm Builtin ANVL Plugin, Hex.pm},
 a lightweight client for @url{hex.pm} package repository.
-@item @ref{Rebar3 Builtin ANVL Plugin, rebar3}
+@item @ref{Rebar3 Builtin ANVL Plugin, rebar3},
 a @url{https://www.rebar3.org/, rebar3} compatibility layer.
 @end itemize
 
-ANVL core application provides functionality that allows projects to load the plugins on demand,
+@ref{API Reference ANVL, anvl_core} application provides functionality that allows projects to load the plugins on demand,
 deals with configuration, CLI interface, documentation, etc.
 It also contains a number of utility functions to aid plugin development.
 
-ANVL configuration is split into two parts:
+Plugin configuration is split into two parts:
 
-@cindex Tool Configuration
-@emph{Tool} configuration that is controlled by the user running @command{anvl} command,
-and can be changed using CLI arguments and environment variables.
+@enumerate
+@item
+@cindex tool configuration
+@emph{Tool configuration},
+that is controlled by the user running @command{anvl} command,
+and can be set via CLI arguments and environment variables.
+Tool configuration is site-specific and global.
 
-Tool configuration is global.
-
-@cindex Project Configuration
-@emph{Project} configuration that is controlled by ANVL projects.
+@item
+@cindex project configuration
+@emph{Project Configuration},
+that is set by ANVL projects via @ref{c:anvl_project:conf/0, anvl_project:conf/0} callback.
 ANVL keeps such configurations separate for each project.
+The root project can override configuration of its dependencies.
+@end enumerate
 
 @subsection Conditions and preconditions
 
