@@ -27,6 +27,7 @@ the Erlang compiler.
 -behavior(anvl_plugin).
 
 %% API:
+-export([umbrella/2]).
 -export([add_pre_compile_hook/2, add_app_spec_hook/2, pcfg/2, pcfg/3]).
 -export([app_info/2, app_compiled/2, module/2]).
 -export([app_file/1, beam_file/2]).
@@ -45,6 +46,11 @@ the Erlang compiler.
 %%================================================================================
 %% Type declarations
 %%================================================================================
+
+-define(app_src_paths,
+        [ "src/${app}.app.src"
+        , "ebin/${app}.app"       % Used by cowboy and friends
+        ]).
 
 -type profile() :: atom().
 
@@ -109,6 +115,22 @@ This type is an extention of @ref{t:anvl_erlc:context/0,context/0}.
 %%================================================================================
 %% API functions
 %%================================================================================
+
+-doc """
+Return list of Erlang/OTP applications defined in a project.
+""".
+-spec umbrella(profile(), anvl_project:t()) -> [application()].
+umbrella(Profile, Project) ->
+  Templates = [template(
+                  anvl_fn:proj_dir(Project, [SubDir, AppSrcPath]),
+                  #{app => "*"},
+                  list) ||
+                SubDir <- pcfg(Project, Profile, [app_paths]),
+                AppSrcPath <- ?app_src_paths],
+  [app_src_to_application(FN) ||
+    Templ <- Templates,
+    FN <- filelib:wildcard(Templ),
+    filelib:is_regular(FN)].
 
 -spec app_file(
         #{ app := application()
@@ -274,7 +296,14 @@ model() ->
 -doc false.
 project_model() ->
   BaseModel =
-    #{ includes =>
+    #{ app_paths =>
+         {[value],
+          #{ oneliner => "Application search path within the project"
+           , doc => "@erlang-app-paths"
+           , type => list(anvl_lib:filename_pattern())
+           , default => ["apps/${app}", "lib/${app}", "."]
+           }}
+     , includes =>
          {[value],
           #{ oneliner => "List of include directories"
            , type => list(anvl_lib:filename_pattern())
@@ -380,13 +409,6 @@ project_model() ->
                  {[value],
                   #{ type => atom()
                    }}
-             }}
-       , app_paths =>
-           {[value],
-            #{ oneliner => "Application search path within the project"
-             , doc => "@erlang-app-paths"
-             , type => list(anvl_lib:filename_pattern())
-             , default => ["apps/${app}", "lib/${app}", "."]
              }}
        , escript =>
            anvl_erlc_escript:project_model()
@@ -691,11 +713,12 @@ app_src(App, AppRoot) ->
 -spec app_src_path(file:filename(), application()) -> {ok, file:filename()} | {error, no_app_file}.
 app_src_path(AppRoot, App) ->
   Candidates =
-    [ template("${root}/src/${app}.app.src", #{app => App, root => AppRoot}, path)
-      %% Used by cowboy and friends:
-    , template("${root}/ebin/${app}.app", #{app => App, root => AppRoot}, path)
-    ],
-  case lists:search(fun filelib:is_file/1, Candidates) of
+    [template(
+       filename:join(AppRoot, Template),
+       #{app => App},
+       path) ||
+      Template <- ?app_src_paths],
+  case lists:search(fun filelib:is_regular/1, Candidates) of
     {value, File} ->
       {ok, File};
     false ->
@@ -812,3 +835,10 @@ do_app_closure(Profile, [App | Rest], AccNonOTP0, AccOTP0) ->
             AccOTP)
       end
   end.
+
+app_src_to_application(Filename) ->
+  {match, [X]} = re:run(
+                   Filename,
+                   "(?<name>[^/]+)\\.app(\\.src)?",
+                   [{capture, all_names, binary}]),
+  binary_to_atom(X).
