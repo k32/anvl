@@ -88,7 +88,7 @@ Foundation Web site at @url{https://www.gnu.org/licenses/fdl.html}.
 ANVL is a general-purpose task planning and execution tool,
 that aims to be conceptually simple, universal and flexible.
 
-ANVL solves the problem of transitioning the system into the desired state step-by-step,
+ANVL solves the problem of transitioning a system into a desired state step-by-step,
 using parallelism when possible.
 It's meant as an alternative to build tools like @command{make},
 as well as system administration tools like @command{ansible},
@@ -113,11 +113,14 @@ Press @key{?} to get tips about navigating this website.
 also known as the project configuration file.
 
 @file{anvl.erl} is a regular Erlang module, with one notable exception:
-it must NOT contain @code{-module} attribute (and if such exists, it is ignored).
-That is because ANVL derives module name for the project configuration file automatically.
+it must not contain @code{-module} attribute (and if such exists, it is ignored).
+That is because ANVL can work with multiple projects simultaneously,
+and to achieve that,
+it names project configuration modules automatically.
 Because of that, it's not allowed to use @code{anvl:Fun(...)} or @code{fun anvl:Fun/N} syntax to refer to local functions.
-If needed, @code{fun ?MODULE:Fun/N} syntax can be used instead.
-Other than that, @file{anvl.erl} is compiled and loaded as a normal Erlang module.
+If needed, @code{fun ?PROJECT:Fun/N} syntax can be used instead.
+Other than that,
+@file{anvl.erl} is compiled and loaded as a normal Erlang module.
 
 Project configuration modules implement @ref{api/anvl_core/anvl_project,@code{anvl_project}} behavior.
 
@@ -127,7 +130,7 @@ It can refer to other projects, known as @emph{child} projects.
 @anchor{Project Configuration}
 @subsection Project Configuration
 
-@code{conf/0} callback of the project module returns project configuration tree.
+@code{conf/0} callback of the project module returns project configuration as a tree.
 
 For example:
 @example erlang
@@ -149,22 +152,17 @@ Note: notation @code{#@{[foo, bar, ...] => quux@}} is a shortcut for
 @code{@verb{|#{foo => #{bar => #{... => quux ...}}}|}}.
 
 Groups of values can be repeated in the configuration.
-In this case each configuration subtree appears as an element of a list:
+In this case each configuration sub-tree appears as an element of a list:
 
 @example erlang
 @verbatim
-#{erlang =>
-    #{ deps =>
-         %% `erlang.deps` is a map. Children:
-         [ #{ app => typerefl
-            , at => "vendor/typerefl"
-            }
-         , #{ app => lee
-            , at => "vendor/lee"
-            }
-         , ...
-         ]
-     }}
+  #{ [deps, git] =>
+       [ #{ id => my_awesome_dependency
+          , repo => "https://git.savannah.gnu.org/git/my_awesome_dependency.git"
+          , ref => {branch, "master"}
+          }
+       ]
+  }
 @end verbatim
 @end example
 
@@ -196,32 +194,37 @@ config_override(ChildProject) ->
 
 @subsection Plugin
 
-A @emph{plugin} is an Erlang application containing a module that implements @ref{api/anvl_core/anvl_plugin,@code{anvl_plugin}} behavior.
+A @emph{plugin} is an Erlang/OTP application containing a module that implements @ref{api/anvl_core/anvl_plugin,@code{anvl_plugin}} behavior.
 
 ANVL comes with a number of built-in plugins, sufficient for bootstrapping other plugins:
 
 @itemize
 @item @ref{Erlc Builtin ANVL Plugin,Erlc},
-for building Erlang applications.
+for building and statically checking Erlang applications.
 @item @ref{Git Builtin ANVL Plugin,Git},
 for cloning git repositories.
 @item @ref{TexInfo Builtin ANVL Plugin,TexInfo},
-for building documentation.
+for building documentation in TexInfo format.
+@item @ref{hex.pm Builtin ANVL Plugin, Hex.pm}
+a lightweight client for @url{hex.pm} package repository.
+@item @ref{Rebar3 Builtin ANVL Plugin, rebar3}
+a @url{https://www.rebar3.org/, rebar3} compatibility layer.
 @end itemize
 
-ANVL core application provides the functionality that allows projects to load the plugins on demand,
+ANVL core application provides functionality that allows projects to load the plugins on demand,
 deals with configuration, CLI interface, documentation, etc.
 It also contains a number of utility functions to aid plugin development.
 
-Plugin configuration is split into two parts:
+ANVL configuration is split into two parts:
 
 @cindex Tool Configuration
 @emph{Tool} configuration that is controlled by the user running @command{anvl} command,
 and can be changed using CLI arguments and environment variables.
+
 Tool configuration is global.
 
 @cindex Project Configuration
-@emph{Project} configuration that is statically set by the project.
+@emph{Project} configuration that is controlled by ANVL projects.
 ANVL keeps such configurations separate for each project.
 
 @subsection Conditions and preconditions

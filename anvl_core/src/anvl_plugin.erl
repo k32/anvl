@@ -112,14 +112,14 @@ includes_dir() ->
   end.
 
 -doc """
-Get global configuration for a key.
+Get tool configuration with the specified key.
 """.
 -spec conf(lee:key()) -> term().
 conf(Key) ->
   lee:get(?conf_storage, Key).
 
 -doc """
-List global configuration for a key.
+List tool configuration with the specified key.
 """.
 -spec list_conf(lee:model_key()) -> term().
 list_conf(Key) ->

@@ -19,7 +19,7 @@
 
 -module(anvl_project).
 -moduledoc """
-Handler of ANVL project configurations.
+This module contains routines for managing ANVL projects.
 """.
 
 -behavior(lee_metatype).
@@ -59,14 +59,12 @@ Handler of ANVL project configurations.
 -define(mt_conf_overrides, [?MODULE, overrides]).
 
 -doc """
-Projects are identified by the directory name containing @file{anvl.erl}.
+An opaque type uniquely identifying an ANVL project.
+
+API consumers can compare values of @code{t()} for (in)equality,
+but should not assume anything else about this type.
 """.
 -opaque t() :: module().
-
--doc """
-Filter for selecting projects.
-""".
--type filter() :: root.
 
 -type conf_tree() :: #{atom() | [atom()] => conf_tree() | [conf_tree()] | term()}.
 
@@ -98,7 +96,6 @@ Project can use it, for example, to install hooks.
 
 -optional_callbacks([conf/0, conf_override/1, init/0]).
 
--reflect_type([filter/0]).
 -export_type([t/0, conf_tree/0]).
 
 %%================================================================================
@@ -113,21 +110,24 @@ loaded(ProjectDir) when is_list(ProjectDir); is_binary(ProjectDir) ->
   config_loaded(anvl_lib:ensure_string(ProjectDir)).
 
 -doc """
-Get project directory.
+Return directory containing a project.
 """.
 -spec dir(t()) -> file:filename().
 dir(Project) ->
   try ets:lookup_element(?proj_tab, Project, 3)
   catch
     _:_ ->
-    error({fff, Project, ets:tab2list(?proj_tab)})
+      error({project_not_loaded, Project})
   end.
 
 -doc """
-Get project configuration module for a given directory.
+Load a project located in the specified directory,
+and return compiled module.
 """.
 -spec config_module(file:filename()) -> t().
 config_module(ProjectDir0) when is_list(ProjectDir0); is_binary(ProjectDir0) ->
+  %% TODO: this signature breaks opacity of t. Introduce shim
+  %% functions to id-convert t() from/to module()?
   ProjectDir = anvl_lib:ensure_string(ProjectDir0),
   anvl_condition:precondition(loaded(ProjectDir)),
   anvl_condition:get_result(#conf_module_of_dir{directory = ProjectDir}).
