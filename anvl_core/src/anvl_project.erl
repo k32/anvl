@@ -26,6 +26,7 @@ This module contains routines for managing ANVL projects.
 
 -export([ root/0
         , root_dir/0
+        , project_of_dir/1
         , config_module/1
         , dir/1
         , conf/2
@@ -52,11 +53,18 @@ This module contains routines for managing ANVL projects.
 %% Type declarations
 %%================================================================================
 
+-define(root_config_module, 'anvl_config##').
+
 -define(proj_tab, anvl_project_tab).
 -define(proj_id, id).
 
 -define(mt_conf_tree_key, [?MODULE, conf_tree]).
 -define(mt_conf_overrides, [?MODULE, overrides]).
+
+-record(proj,
+        { mod :: module()
+        , id :: integer()
+        }).
 
 -doc """
 An opaque type uniquely identifying an ANVL project.
@@ -64,7 +72,7 @@ An opaque type uniquely identifying an ANVL project.
 API consumers can compare values of @code{t()} for (in)equality,
 but should not assume anything else about this type.
 """.
--opaque t() :: module().
+-opaque t() :: #proj{}.
 
 -type conf_tree() :: #{atom() | [atom()] => conf_tree() | [conf_tree()] | term()}.
 
@@ -92,7 +100,7 @@ Project can use it, for example, to install hooks.
         }).
 
 %% Result key:
--record(conf_module_of_dir, {directory}).
+-record(project_of_dir, {directory}).
 
 -optional_callbacks([conf/0, conf_override/1, init/0]).
 
@@ -122,21 +130,23 @@ dir(Project) ->
 
 -doc """
 Load a project located in the specified directory,
-and return compiled module.
+and return project ID.
 """.
--spec config_module(file:filename()) -> t().
-config_module(ProjectDir0) when is_list(ProjectDir0); is_binary(ProjectDir0) ->
-  %% TODO: this signature breaks opacity of t. Introduce shim
-  %% functions to id-convert t() from/to module()?
+-spec project_of_dir(file:filename()) -> t().
+project_of_dir(ProjectDir0) when is_list(ProjectDir0); is_binary(ProjectDir0) ->
   ProjectDir = anvl_lib:ensure_string(ProjectDir0),
   anvl_condition:precondition(loaded(ProjectDir)),
-  anvl_condition:get_result(#conf_module_of_dir{directory = ProjectDir}).
+  anvl_condition:get_result(#project_of_dir{directory = ProjectDir}).
+
+-spec config_module(t()) -> module().
+config_module(#proj{mod = Mod}) ->
+  Mod.
 
 -doc """
 Get a value from project configuration.
 """.
 -spec conf(t(), lee:key()) -> term().
-conf(Project, Key) when is_atom(Project) ->
+conf(Project, Key) when is_record(Project, proj) ->
   lee:get(?proj_conf_storage(Project), Key).
 
 -doc """
@@ -157,12 +167,12 @@ maybe_conf(ProjectRoot, Key) ->
 List project configuration.
 """.
 -spec list_conf(t(), lee:model_key()) -> list().
-list_conf(Project, Key) when is_atom(Project) ->
+list_conf(Project, Key) when is_record(Project, proj) ->
   lee:list(?proj_conf_storage(Project), Key).
 
 -spec root() -> t().
 root() ->
-  'anvl_config##'.
+  #proj{id = 1, mod = ?root_config_module}.
 
 -doc """
 Return directory of the root project.
@@ -249,22 +259,25 @@ parse_transform(Forms, Opts) ->
 
 ?MEMO(config_loaded, Dir,
       begin
+        ProjId = new_project_id(),
         anvl_hook:foreach(pre_project_load_hook, Dir),
-        {IsNew, Project} = obtain_project_conf_module(Dir),
-        anvl_condition:set_result(#conf_module_of_dir{directory = Dir}, Project),
+        {IsNew, ProjectMod} = obtain_project_conf_module(Dir, ProjId),
+        Project = #proj{id = ProjId, mod = ProjectMod},
+        anvl_condition:set_result(#project_of_dir{directory = Dir}, Project),
         Conf = lee_storage:new(lee_persistent_term_storage, ?proj_conf_storage_token(Project)),
-        ets:insert(?proj_tab, #project{ project = Project
-                                      , dir = Dir
-                                      }),
+        true = ets:insert_new(?proj_tab, #project{ project = Project
+                                                 , dir = Dir
+                                                 }),
         load_project_conf(IsNew, Dir, Project, Conf),
         false
       end).
 
-obtain_project_conf_module(Dir) when is_list(Dir) ->
+-spec obtain_project_conf_module(file:filename(), integer()) -> {boolean(), module()}.
+obtain_project_conf_module(Dir, ProjId) when is_list(Dir) ->
   ConfFile = project_config_file(Dir),
   case filelib:is_regular(ConfFile) of
     true ->
-      Module = anvl_config_module(Dir),
+      Module = anvl_config_module(Dir, ProjId),
       case obtain_project_conf_bytecode(ConfFile, Module) of
         {ok, Changed, Binary} ->
           {module, Module} = code:load_binary(Module, ConfFile, Binary),
@@ -279,23 +292,18 @@ obtain_project_conf_module(Dir) when is_list(Dir) ->
         false ->
           ?LOG_WARNING("Directory ~s doesn't contain 'anvl.erl' file. "
                        "Falling back to top level project's config.", [Dir]),
-          {false, root()}
+          {false, ?root_config_module}
       end
   end.
 
-anvl_config_module(Dir) when is_list(Dir) ->
+anvl_config_module(Dir, ProjId) when is_list(Dir) ->
   case Dir =:= root_dir() of
     true ->
-      root();
+      ?root_config_module;
     false ->
-      N = ets:update_counter(
-            ?proj_tab,
-            ?proj_id,
-            {3, 1},
-            {?proj_id, ?proj_id, 0}),
       binary_to_atom(<<  "anvl_config##"
                       , (list_to_binary(filename:basename(Dir)))/binary
-                      , (integer_to_binary(N))/binary
+                      , (integer_to_binary(ProjId))/binary
                      >>)
   end.
 
@@ -314,7 +322,7 @@ obtain_project_conf_bytecode(ConfFile, Module) ->
 
 custom_conditions(AdHoc) ->
   Invoked = anvl_plugin:conf([custom_conditions]),
-  Mod = config_module(root_dir()),
+  Mod = config_module(root()),
   Defined = anvl_project:conf(root(), [conditions]),
   Funs = case {Invoked, Defined} of
            {[], [First | _]} when AdHoc =:= [] ->
@@ -338,7 +346,7 @@ custom_conditions(AdHoc) ->
       anvl_terminator:setfail()
   end.
 
-load_project_conf(IsNew, ProjectDir, Module, Storage) ->
+load_project_conf(IsNew, ProjectDir, Project = #proj{mod = Module}, Storage) ->
   ConfTree = case erlang:function_exported(Module, conf, 0) of
                true -> Module:conf();
                false -> #{}
@@ -349,28 +357,36 @@ load_project_conf(IsNew, ProjectDir, Module, Storage) ->
   PreloadPlugins = anvl_plugin:conf([preload_plugins]),
   Plugins = [anvl_core, anvl_erlc | PreloadPlugins ++ lee:get(Storage, [plugins])],
   %% 2. Load plugins:
-  [load_plugin(Module, ConfTree, Overrides, Storage, I) || I <- Plugins],
+  [load_plugin(ProjectDir, Project, ConfTree, Overrides, Storage, I) || I <- Plugins],
   %% 3. Optionally, run init function.
   IsNew andalso erlang:function_exported(Module, init, 0) andalso
     Module:init(),
   ?LOG_INFO("Loaded project ~p", [ProjectDir]),
   false.
 
-load_plugin(Project, ConfTree, Overrides, Storage, Plugin) ->
+-spec load_plugin(
+        file:filename(),
+        t(),
+        conf_tree(),
+        list(),
+        lee:data(),
+        anvl_plugin:t()
+       ) -> ok.
+load_plugin(ProjectDir, Project, ConfTree, Overrides, Storage, Plugin) ->
   precondition(anvl_plugin:loaded(Plugin)),
-  read_project_conf(Project, ConfTree, Overrides, Storage),
+  read_project_conf(ProjectDir, ConfTree, Overrides, Storage),
   anvl_plugin:load_config(),
   anvl_plugin:init_for_project(Plugin, Project).
 
 read_override(ProjectDir) ->
+  Mod = config_module(root()),
   case ProjectDir =:= root_dir() of
     true ->
       [];
     false ->
-      Root = root(),
-      case erlang:function_exported(Root, conf_override, 1) of
+      case erlang:function_exported(Mod, conf_override, 1) of
         true ->
-          Root:conf_override(ProjectDir);
+          Mod:conf_override(ProjectDir);
         false ->
           []
       end
@@ -397,3 +413,10 @@ read_project_conf(ProjectDir, ConfTree, Overrides, Data0) ->
 
 project_config_file(Dir) ->
   filename:join(Dir, "anvl.erl").
+
+new_project_id() ->
+  ets:update_counter(
+    ?proj_tab,
+    ?proj_id,
+    {3, 1},
+    {?proj_id, ?proj_id, 0}).

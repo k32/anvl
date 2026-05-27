@@ -142,8 +142,8 @@ set_complete() ->
 
 -doc false.
 -spec init_for_project(module(), anvl_project:t()) -> ok.
-init_for_project(Plugin, Dir) ->
-  Plugin:init_for_project(Dir).
+init_for_project(Plugin, Project) ->
+  Plugin:init_for_project(Project).
 
 %%================================================================================
 %% gen_server callbacks:
