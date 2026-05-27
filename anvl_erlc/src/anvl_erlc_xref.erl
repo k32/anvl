@@ -50,7 +50,12 @@ Parameters for this condition are set in the project configuration.
 -spec passed(anvl_erlc:profile()) -> anvl_condition:t().
 ?MEMO(passed, Profile,
       begin
-        Apps = anvl_erlc:pcfg(anvl_project:root(), Profile, [static_checks, apps]),
+        case anvl_erlc:pcfg(anvl_project:root(), Profile, [static_checks, apps]) of
+          umbrella ->
+            Apps = anvl_erlc:umbrella(Profile, anvl_project:root());
+          Apps when is_list(Apps) ->
+            ok
+        end,
         NRDeps = anvl_erlc:pcfg(anvl_project:root(), Profile, [static_checks, non_runtime_deps]),
         Analysis = anvl_erlc:pcfg(anvl_project:root(), Profile, [static_checks, xref, analysis]),
         {NonOTPApps, OTPApps} = anvl_erlc:app_closure(Profile, NRDeps ++ Apps),

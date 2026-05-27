@@ -50,8 +50,13 @@ Parameters for this condition are set in the project configuration.
 -spec passed(anvl_erlc:profile()) -> anvl_condition:t().
 ?MEMO(passed, Profile,
       begin
-        ?LOG_NOTICE("Running Dialyzer for profile ~p", [Profile]),
-        Apps = anvl_erlc:pcfg(anvl_project:root(), Profile, [static_checks, apps]),
+        case anvl_erlc:pcfg(anvl_project:root(), Profile, [static_checks, apps]) of
+          umbrella ->
+            Apps = anvl_erlc:umbrella(Profile, anvl_project:root());
+          Apps when is_list(Apps) ->
+            ok
+        end,
+        ?LOG_NOTICE("Running Dialyzer for profile ~p~n  Apps: ~p", [Profile, Apps]),
         NRDeps = anvl_erlc:pcfg(anvl_project:root(), Profile, [static_checks, non_runtime_deps]),
         {NonOTPApps, OTPApps} = anvl_erlc:app_closure(Profile, NRDeps ++ Apps),
         Closure = NonOTPApps ++ OTPApps,
@@ -140,7 +145,7 @@ process_result(Profile, []) ->
   false;
 process_result(Profile, Warnings) ->
   IOList = [dialyzer:format_warning(I) || I <- Warnings],
-  ?UNSAT("Dialyzer warnings found (~p):~n~s", [Profile, IOList]).
+  ?UNSAT("Dialyzer warnings found (profile=~p):~n~s", [Profile, IOList]).
 
 app_beams(Profile, Apps) ->
   lists:flatmap(

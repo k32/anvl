@@ -106,10 +106,19 @@ This type is an extention of @ref{t:anvl_erlc:context/0,context/0}.
 -record(erlc_pre_compile_hook, {project :: anvl_project:t()}).
 -record(erlc_app_spec_hook, {project :: anvl_project:t()}).
 
+-doc """
+List of applications that should be statically analyzed.
+
+A special value @code{umbrella} means:
+all applications defined by the root project.
+""".
+-type check_applications() :: [application()] | umbrella.
+
 -reflect_type([ profile/0
               , compile_options/0
               , application/0
               , application_spec/0
+              , check_applications/0
               ]).
 
 %%================================================================================
@@ -368,8 +377,8 @@ project_model() ->
          #{ apps =>
               {[value],
                #{ oneliner => "Set of OTP applications to statically analyze"
-                , type => list(application())
-                , default => []
+                , type => check_applications()
+                , default => umbrella
                 }}
           , non_runtime_deps =>
               {[value],

@@ -39,7 +39,7 @@ conf() ->
                }
             ]
         , static_checks =>
-            #{ apps => apps()
+            #{ apps => umbrella
              }
         }
    , [deps, local] =>
