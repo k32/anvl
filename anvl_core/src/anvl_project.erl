@@ -34,7 +34,6 @@ Handler of ANVL project configurations.
         , conditions/0
         , plugins/1
         , loaded/1
-        , anvl_includes_dir/0
         , is_project/1
         ]).
 -export([add_pre_project_load_hook/1, add_pre_project_load_hook/2]).
@@ -223,18 +222,6 @@ read_patch(pcfg, Model) ->
 %%================================================================================
 
 -doc """
-Return directory containing @file{anvl.hrl} and other ANVL headers.
-""".
--spec anvl_includes_dir() -> file:filename_all().
-anvl_includes_dir() ->
-  case application:get_env(anvl_core, include_dir) of
-    undefined ->
-      filename:join(anvl_app:prefix(), "share/anvl/include");
-    {ok, Dir} ->
-      Dir
-  end.
-
--doc """
 Return @code{true} if input directory is an ANVL project.
 """.
 -spec is_project(file:filename()) -> boolean().
@@ -315,7 +302,7 @@ anvl_config_module(Dir) when is_list(Dir) ->
 obtain_project_conf_bytecode(ConfFile, Module) ->
   Options = [ {d, 'PROJECT', Module}
             , {d, 'PROJECT_STRING', atom_to_list(Module)}
-            , {i, anvl_includes_dir()}
+            , {i, anvl_plugin:includes_dir()}
             , {parse_transform, ?MODULE}
             , report, no_error_module_mismatch
             , nowarn_export_all, export_all, binary

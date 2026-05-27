@@ -25,7 +25,7 @@ An ANVL API for managing plugins.
 -behavior(gen_server).
 
 %% API:
--export([conf/1, list_conf/1, loaded/1]).
+-export([conf/1, list_conf/1, loaded/1, includes_dir/0]).
 
 %% gen_server:
 -export([init/1, handle_call/3, handle_cast/2, terminate/2]).
@@ -98,6 +98,18 @@ Condition: @var{Plugin} has been loaded.
           ?LOG_INFO("Loaded plugin ~p", [Plugin]),
           Changed
       end).
+
+-doc """
+Return location of @file{anvl.hrl} and other ANVL headers.
+""".
+-spec includes_dir() -> file:filename_all().
+includes_dir() ->
+  case application:get_env(anvl_core, include_dir) of
+    undefined ->
+      filename:join(anvl_app:prefix(), "share/anvl/include");
+    {ok, Dir} ->
+      Dir
+  end.
 
 -doc """
 Get global configuration for a key.
