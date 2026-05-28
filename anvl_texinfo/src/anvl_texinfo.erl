@@ -350,14 +350,14 @@ document_category(P, Category, Mod, Specs, L) ->
     fun({Key = {_, Name, Arity}, _Posn, NameStr, DocWrapper, Attrs}) ->
         FullName = [atom_to_binary(Mod), $:, atom_to_binary(Name), $/, integer_to_list(Arity)],
         P([ <<"@anchor{">>, AnchorPrefix, FullName, <<"}\n">>
-          , <<"@item @verb{|">>, NameStr, <<"|}\n">>
+          , <<"@item ">>, texi_escape(NameStr), <<"\n">>
           , Index, FullName, $\n
           ]),
         case Specs of
           #{Key := AST} ->
-            P([ <<"@example\n@verbatim\n">>
-              , erl_prettypr:format(AST)
-              , <<"\n@end verbatim\n@end example\n\n">>
+            P([ <<"@example\n">>
+              , texi_escape(erl_prettypr:format(AST))
+              , <<"\n@end example\n\n">>
               ]);
           #{} ->
             ok
@@ -369,9 +369,9 @@ document_category(P, Category, Mod, Specs, L) ->
             (exported, Exp) ->
               Exp orelse P(<<"@emph{Not exported}\n\n">>);
             (Attr, Val) ->
-             P([ <<"@emph{">>, atom_to_binary(Attr), <<"}: @code{@verb{|">>
-               , io_lib:format("~p", [Val])
-               , <<"|}}\n\n">>
+             P([ <<"@emph{">>, texi_escape(atom_to_binary(Attr)), <<"}: @code{">>
+               , texi_escape(io_lib:format("~p", [Val]))
+               , <<"}\n\n">>
                ])
          end,
          Attrs),
@@ -389,3 +389,16 @@ get_documentation(#{<<"en">> := Doc}) ->
 
 doc_dir(Rest) ->
   anvl_fn:workdir([anvl_plugin:conf([anvl_texinfo, doc_dir]) | Rest]).
+
+texi_escape($@) ->
+  ~"@@";
+texi_escape(${) ->
+  ~"@{";
+texi_escape($}) ->
+  ~"@}";
+texi_escape(L) when is_list(L) ->
+  [texi_escape(I) || I <- L];
+texi_escape(B) when is_binary(B) ->
+  lists:join($@, binary:split(B, [~"@", ~"{", ~"}"], [global]));
+texi_escape(I) ->
+  I.

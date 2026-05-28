@@ -52,7 +52,7 @@ conf() ->
               , options => ["-c", "INFO_JS_DIR=js"]
               }
             ]
-        , formats => [info, html]
+        , formats => [info, html, latex]
         , sources => ["anvl_core/doc/anvl.texi"]
         }
    }.

@@ -149,7 +149,7 @@ conf() ->
 @end example
 
 Note: notation @code{#@{[foo, bar, ...] => quux@}} is a shortcut for
-@code{@verb{|#{foo => #{bar => #{... => quux ...}}}|}}.
+@code{#@{foo => #@{bar => #@{... => quux ...@}@}@}}.
 
 Groups of values can be repeated in the configuration.
 In this case each configuration sub-tree appears as an element of a list:
