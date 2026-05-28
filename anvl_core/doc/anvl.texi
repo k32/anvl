@@ -10,7 +10,7 @@
 
 @macro lee{DIR, PREFIX}
   @node Invokation \PREFIX\
-  @section Invokation
+  @section Invocation
   @lowersections
     @include \DIR\/cli_param.texi
   @raisesections
@@ -90,7 +90,7 @@ that aims to be conceptually simple, universal and flexible.
 
 ANVL solves the problem of transitioning a system into a desired state step-by-step,
 using parallelism when possible.
-It's meant as an alternative to build tools like @command{make},
+It is meant as an alternative to build tools like @command{make},
 as well as system administration tools like @command{ansible},
 but it takes a different approach focusing on @i{conditions} and @i{preconditions},
 expressed in a simple DSL based on Erlang.
@@ -117,12 +117,12 @@ it must not contain @code{-module} attribute (and if such exists, it is ignored)
 That is because ANVL can work with multiple projects simultaneously,
 and to achieve that,
 it names project configuration modules automatically.
-Because of that, it's not allowed to use @code{anvl:Fun(...)} or @code{fun anvl:Fun/N} syntax to refer to local functions.
+Because of that, it is not allowed to use @code{anvl:Fun(...)} or @code{fun anvl:Fun/N} syntax to refer to local functions.
 If needed, @code{fun ?PROJECT:Fun/N} syntax can be used instead.
 Other than that,
 @file{anvl.erl} is compiled and loaded as a normal Erlang module.
 
-Project configuration modules implement @ref{api/anvl_core/anvl_project,@code{anvl_project}} behavior.
+Project configuration modules implement the @ref{api/anvl_core/anvl_project,@code{anvl_project}} behavior.
 
 Project referred to by @ref{cli_param/root,@option{-d}} CLI argument is called the @emph{root} project.
 It can refer to other projects, known as @emph{child} projects.
@@ -194,7 +194,7 @@ config_override(ChildProject) ->
 
 @subsection Plugin
 
-A @emph{plugin} is an Erlang/OTP application containing a module that implements @ref{api/anvl_core/anvl_plugin,@code{anvl_plugin}} behavior.
+A @emph{plugin} is an Erlang/OTP application containing a module that implements the @ref{api/anvl_core/anvl_plugin,@code{anvl_plugin}} behavior.
 
 ANVL comes with a number of built-in plugins, sufficient for bootstrapping other plugins:
 
@@ -260,7 +260,7 @@ Otherwise, it can run a subroutine that transfers the system into the expected s
 When it succeeds, boolean @code{true} is returned,
 indicating presence of side effects.
 @item
-Condition throws an exception when the system can't be transferred to the desired state for any reason.
+Condition throws an exception when the system cannot be transferred to the desired state for any reason.
 @item
 Conditions can depend on each other.
 Such dependencies are called @emph{preconditions}.
@@ -297,9 +297,9 @@ First, conditions are defined using @code{MEMO} macro.
 Its syntax is the following:
 @code{?MEMO(FunctionName, Arg1, Arg2, ..., BODY)}.
 
-Second, ANVL framework don't assume anything about the nature of conditions,
+Second, ANVL framework does not assume anything about the nature of conditions,
 it only concerns with the presence of side effects.
-Here, @code{newer} is a library function that compares modification time of the files (similar to @command{make}),
+Here, @code{newer} is a library function that compares modification times of the files (similar to @command{make}),
 but the user is free to implement any change detection,
 for example using hash comparison.
 
@@ -354,7 +354,7 @@ Dependencies between the targets are encoded in the build recipe as a graph.
 This way of doing things works very well as long as build system only works with files,
 but falls short when it’s no longer the case.
 
-ANVL's conditions, on the opposite, are not tied to the file system or anything concrete.
+ANVL's conditions, in contrast, are not tied to the file system or anything concrete.
 
 Additionally, traditional build systems usually mix several concepts together:
 
@@ -369,8 +369,8 @@ In contrast, ANVL presents these as independent library primitives.
 @macro anvl-custom-conditions
   Select conditions from the @ref{value/conditions,[conditions]} list of the root project.
 
-  If user didn't explicitly specify any conditions to satisfy,
-  then ANVL will run the first condition from @ref{value/conditions,[conditions]} list.
+  If the user did not explicitly specify any conditions to satisfy,
+  then ANVL will run the first condition from the @ref{value/conditions,[conditions]} list.
 
 @end macro
 
