@@ -127,9 +127,10 @@ and running a subroutine transferring it to the desired state otherwise.
 
 Conditions are defined using @code{MEMO} macro,
 which stands for ``memoize''.
-Its syntax is the following:
+It has the following syntax:
+
 @example
-?MEMO(condition_name, Arg1, Arg2, ArgN,
+?MEMO(condition_name, Arg1, Arg2, ..., ArgN,
       begin
          <Body>
       end).
@@ -141,13 +142,14 @@ that has the following properties:
 @enumerate
 @item
 It returns a boolean,
-indicating whether or not it produced side effects that changed the system.
+indicating whether or not it has produced side effects changing the system.
 
 It returns @code{false} if the system state already satisfies the expectations,
 and no changes were made.
 Otherwise, it can run a subroutine that transfers the system into the expected state.
 When it succeeds, boolean @code{true} is returned,
 indicating presence of side effects.
+
 @item
 It throws an exception when the system cannot be transferred into the desired state for any reason.
 
@@ -169,7 +171,7 @@ Such dependencies are called @emph{preconditions}.
 ANVL doesn't require a preliminary scheduling stage to build and analyze the dependency graph.
 Instead, any condition can invoke any precondition at any time,
 making the system very flexible.
-Precondition dependency graph is updated dynamically when a condition calls a built-in @ref{anvl_condition:precondition/1, precondition} function,
+Precondition dependency graph is updated dynamically when a condition calls a built-in @link{anvl_condition:precondition/1, precondition} function,
 as demonstrated by the example below:
 
 @example
@@ -188,7 +190,7 @@ as demonstrated by the example below:
       end).
 @end example
 
-Note that, with exception of @code{?MEMO} macro used to define functions @code{foo} and @code{bar},
+Note that with an exception of @code{?MEMO} macro used to define functions @code{foo} and @code{bar},
 bodies of conditions use standard Erlang.
 
 ANVL is optimized for the happy path:
@@ -215,9 +217,9 @@ If needed, @code{fun ?MODULE:Fun/N} syntax can be used instead.
 Other than that,
 @file{anvl.erl} is compiled and loaded as a normal Erlang module.
 
-Project configuration modules implement the @ref{api/anvl_core/anvl_project,@code{anvl_project}} behavior.
+Project configuration modules implement the @link{api/anvl_core/anvl_project,@code{anvl_project}} behavior.
 
-Project referred to by @ref{cli_param/root,@option{-d}} CLI argument is called the @emph{root} project.
+Project referred to by @link{cli_param/root,@option{-d}} CLI argument is called the @emph{root} project.
 Project can refer to other projects, known as @emph{child} projects.
 
 @anchor{Project Configuration}
@@ -230,21 +232,21 @@ is to take a look at an abridged @file{anvl.erl} that ANVL uses to build itself:
 -include("anvl.hrl").
 
 %% Project configuration:
-@ref{c:anvl_project:conf/0,conf}() ->
+@link{c:anvl_project:conf/0,conf}() ->
   EmuArgs = "-dist_listen false -escript main anvl_app",
-  #@{ @ref{value/plugins,plugins} => [@ref{Erlc Builtin ANVL Plugin,anvl_erlc}, @ref{TexInfo Builtin ANVL Plugin,anvl_erlc,anvl_texinfo}]
-   , @ref{value/conditions,conditions} => [@ref{conf_example/install,install}, @ref{conf_example/static_checks,static_checks}, @ref{conf_example/escript,escript}]
+  #@{ @link{value/plugins,plugins} => [@link{Erlc Builtin ANVL Plugin,anvl_erlc}, @link{TexInfo Builtin ANVL Plugin,anvl_texinfo}]
+   , @link{value/conditions,conditions} => [@link{conf_example/install,install}, @link{conf_example/static_checks,static_checks}, @link{conf_example/escript,escript}]
    , erlang =>
-       #@{ @ref{value/erlang/app_paths,app_paths} =>
+       #@{ @link{value/erlang/app_paths,app_paths} =>
             ["$@{app@}", "."]
-        , @ref{value/erlang/escript,escript} =>
+        , @link{value/erlang/escript,escript} =>
             [ #@{ name => anvl
                , emu_args => EmuArgs
                , apps => [lee, typerefl | apps()]
                @}
             ]
         @}
-   , [deps, @ref{value/deps/local,local}] =>
+   , [deps, @link{value/deps/local,local}] =>
        [#@{ dir => "vendor/*"
          , kind => otp_application
          @}]
@@ -255,7 +257,7 @@ is to take a look at an abridged @file{anvl.erl} that ANVL uses to build itself:
 ?MEMO(install,
       begin
         Prefix = filename:join(os:getenv("HOME"), ".local"),
-        precondition([@ref{conf_example/escript,escript()}]) or
+        precondition([@link{conf_example/escript,escript()}]) or
           install(Prefix, "$@{prefix@}/bin/anvl", anvl_fn:rootdir(["anvl"]), 8#755)
       end).
 
@@ -264,14 +266,14 @@ is to take a look at an abridged @file{anvl.erl} that ANVL uses to build itself:
 %%  module:
 @anchor{conf_example/escript}
 escript() ->
-  @ref{anvl_erlc_escript:created/2,anvl_erlc_escript:created}(anvl_project:root(), anvl).
+  @link{anvl_erlc_escript:created/2,anvl_erlc_escript:created}(anvl_project:root(), anvl).
 
 %% Condition: code passed static checks
 @anchor{conf_example/static_checks}
 ?MEMO(static_checks,
       precondition(
-        [ @ref{anvl_erlc_xref:passed/1,anvl_erlc_xref:passed}(default)
-        , @ref{anvl_erlc_dialyzer:passed/1,anvl_erlc_dialyzer:passed}(default)
+        [ @link{anvl_erlc_xref:passed/1,anvl_erlc_xref:passed}(default)
+        , @link{anvl_erlc_dialyzer:passed/1,anvl_erlc_dialyzer:passed}(default)
         ])).
 
 %% A regular helper function
@@ -299,11 +301,11 @@ Note: notation @code{#@{[foo, bar, ...] => quux@}} is a shortcut for
 The configuration of any project includes two standard options:
 
 @itemize
-@item @ref{value/plugins, [plugins]},
+@item @link{value/plugins, [plugins]},
 a list of ANVL plugins used by the project.
 ANVL can automatically install the plugins before loading the project.
 
-@item @ref{value/conditions, [conditions]},
+@item @link{value/conditions, [conditions]},
 a list of top-level conditions defined by the project.
 It is possible to invoke them by passing their names as CLI arguments to the @command{anvl} executable,
 for example:
@@ -317,7 +319,7 @@ In this case each configuration sub-tree appears as an element of a list.
 Another example could look like this:
 
 @example erlang
-  #@{ [deps, @ref{value/deps/git,git}] =>
+  #@{ [deps, @link{value/deps/git,git}] =>
        [ #@{ id => my_awesome_dependency
           , repo => "https://git.savannah.gnu.org/git/my_awesome_dependency.git"
           , ref => @{branch, "master"@}
@@ -350,8 +352,8 @@ and @code{@{rm, Key@}},
 that resets the value associated with the key to the default or deletes it.
 
 @example erlang
-@ref{c:anvl_project:conf_override/1,conf_override}(ChildProject) ->
-  case filename:basename(@ref{anvl_project:dir/1,anvl_project:dir}(ChildProject)) of
+@link{c:anvl_project:conf_override/1,conf_override}(ChildProject) ->
+  case filename:basename(@link{anvl_project:dir/1,anvl_project:dir}(ChildProject)) of
     "some_project" ->
       %% If project is located in a directory ending with "some_project",
       %% apply an override:
@@ -366,7 +368,7 @@ that resets the value associated with the key to the default or deletes it.
 
 @subsection Plugin
 
-A @emph{plugin} is an Erlang/OTP application containing a module that implements the @ref{api/anvl_core/anvl_plugin,@code{anvl_plugin}} behavior.
+A @emph{plugin} is an Erlang/OTP application containing a module that implements the @link{api/anvl_core/anvl_plugin,@code{anvl_plugin}} behavior.
 
 ANVL comes with a number of built-in plugins,
 sufficient for bootstrapping other plugins:
@@ -384,7 +386,7 @@ a lightweight client for @url{hex.pm} package repository.
 a @url{https://www.rebar3.org/, rebar3} compatibility layer.
 @end itemize
 
-@ref{API Reference ANVL, anvl_core} application provides functionality that allows projects to load the plugins on demand,
+@link{API Reference ANVL, anvl_core} application provides functionality that allows projects to load the plugins on demand,
 deals with configuration, CLI interface, documentation, etc.
 It also contains a number of utility functions to aid plugin development.
 
@@ -401,7 +403,7 @@ Tool configuration is site-specific and global.
 @item
 @cindex project configuration
 @emph{Project Configuration},
-that is set by ANVL projects via @ref{c:anvl_project:conf/0, anvl_project:conf/0} callback.
+that is set by ANVL projects via @link{c:anvl_project:conf/0, anvl_project:conf/0} callback.
 ANVL keeps such configurations separate for each project.
 The root project can override configuration of its dependencies.
 @end enumerate
@@ -427,8 +429,8 @@ or after compiling the source file with GCC.
 
 ?MEMO(source_compiled, Src, Obj,
       begin
-        @ref{anvl_lib:newer/2,newer}(Src, Obj) andalso
-          @ref{anvl_lib:exec/2,anvl_lib:exec}("gcc", ["-c", "-o", Obj, Src])
+        @link{anvl_lib:newer/2,newer}(Src, Obj) andalso
+          @link{anvl_lib:exec/2,anvl_lib:exec}("gcc", ["-c", "-o", Obj, Src])
       end).
 @end example
 
@@ -448,13 +450,13 @@ Next, let's define a condition that ensures that the target executable is built 
         Executable = "build/hello",
         Sources = filelib:wildcard("c_src/*.c"),
         Objs = lists:map(fun obj_name/1, Sources),
-        @ref{anvl_condition:precondition/1,precondition}([source_compiled(Src, obj_name(Src)) || Src <- Sources]) or
+        @link{anvl_condition:precondition/1,precondition}([source_compiled(Src, obj_name(Src)) || Src <- Sources]) or
           newer(Objs, Executable) andalso
           anvl_lib:exec("gcc", ["-o", Executable | Objs])
       end).
 
 obj_name(Src) ->
-  @ref{anvl_lib:patsubst/2,patsubst}("build/$@{basename@}.o", Src).
+  @link{anvl_lib:patsubst/2,patsubst}("build/$@{basename@}.o", Src).
 @end example
 
 Finally, setting @code{conditions} project configuration will let ANVL framework know that @code{executable_built/0} function is a condition that can be invoked by the user:
@@ -504,10 +506,10 @@ Additionally, traditional build systems usually mix several concepts together:
 In contrast, ANVL presents these as independent library primitives.
 
 @macro anvl-custom-conditions
-  Select conditions from the @ref{value/conditions,[conditions]} list of the root project.
+  Select conditions from the @link{value/conditions,[conditions]} list of the root project.
 
   If the user did not explicitly specify any conditions to satisfy,
-  then ANVL will run the first condition from the @ref{value/conditions,[conditions]} list.
+  then ANVL will run the first condition from the @link{value/conditions,[conditions]} list.
 
 @end macro
 
