@@ -310,7 +310,7 @@ set_location(Kind, Dependency, Owner, PathEntry, Dir) ->
          , dir     => Dir
          },
   ?LOG_INFO(
-     "Location of ~p:~p was set to ~s. Project: ~s",
+     "Location of ~p:~p was set to ~s. Project: ~p",
      [Kind, Dependency, Dir, Project]),
   anvl_condition:set_result(#?result_key{kind = Kind, dep = Dependency}, Loc).
 
