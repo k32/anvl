@@ -288,7 +288,7 @@ model() ->
             #{ apps =>
                  {[value, cli_positional],
                   #{ oneliner => "Names of OTP applications to compile"
-                   , type => nonempty_list(atom())
+                   , type => nonempty_list(application())
                    , cli_arg_position => rest
                    }}
              , profile =>
@@ -448,7 +448,8 @@ conditions(ProjectRoot) ->
   get_compile_apps(ProjectRoot) ++
     anvl_erlc_escript:conditions(ProjectRoot) ++
     anvl_erlc_xref:conditions() ++
-    anvl_erlc_dialyzer:conditions().
+    anvl_erlc_dialyzer:conditions() ++
+    anvl_erlc_reltool:conditions().
 
 %%================================================================================
 %% Condition implementations
@@ -638,10 +639,10 @@ Precondition: module defined in the same application is compiled and loaded.
 get_compile_apps(_Project) ->
   [begin
      Profile = anvl_plugin:conf(Key ++ [profile]),
-     Apps = anvl_plugin:conf(Key ++ [apps]),
-     [app_compiled(Profile, I) || I <- Apps]
+     app_compiled(Profile, App)
    end
-   || Key <- anvl_plugin:list_conf([anvl_erlc, compile, {}])].
+   || Key <- anvl_plugin:list_conf([anvl_erlc, compile, {}]),
+      App <- anvl_plugin:conf(Key ++ [apps])].
 
 -doc "Copy priv files from the source directory to build directory".
 manage_priv(#{src_root := SrcRoot, build_dir := BuildDir}) ->

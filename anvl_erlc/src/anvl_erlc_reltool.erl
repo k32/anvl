@@ -77,7 +77,9 @@ Parameters for this condition are set in the project configuration.
 
 -doc false.
 conditions() ->
-  [].
+  Ids = anvl_plugin:list_conf([anvl_erlc, reltool, {}]),
+  [released(anvl_project:root(), Id) ||
+    [_, _, {Id}] <- Ids].
 
 -doc false.
 model() ->
@@ -87,10 +89,10 @@ model() ->
     , cli_operand => "erl_reltool"
     },
    #{ id =>
-        {[value, cli_param],
+        {[value, cli_positional],
          #{ oneliner => "Name of the release to be created"
           , type => release_id()
-          , cli_short => $r
+          , cli_arg_position => 1
           }}
     }}.
 
