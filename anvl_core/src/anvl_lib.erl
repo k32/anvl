@@ -24,7 +24,7 @@ A collection of functions useful for implementing conditions.
 
 %% API:
 -export([template/3, patsubst/3, patsubst/2]).
--export([newer/2, newer/3, max_mtime/1, hash/1]).
+-export([newer/2, newer/3, max_mtime/1, hash/1, term_to_file/2]).
 -export([exec/2, exec/3, exec_/2, exec_/3]).
 -export([ensure_string/1]).
 -export([safe_call/3]).
@@ -249,10 +249,28 @@ exec_(Command, Args, Options) ->
     false -> log_port_output(Port)
   end.
 
-%% @doc Return SHA256 of an arbitrary Erlang term
+-doc """
+Return SHA256 of an arbitrary Erlang term
+""".
 -spec hash(any()) -> binary().
 hash(Term) ->
   binary:encode_hex(crypto:hash(sha256, term_to_iovec(Term)), lowercase).
+
+-doc """
+Save an Erlang term to file in text format understood by `file:consult`.
+The file's mtime is not updated if its contents are not changed.
+""".
+-spec term_to_file(file:filename(), term()) -> ok.
+term_to_file(Path, Term) ->
+  case file:consult(Path) of
+    {ok, [Term]} ->
+      ok;
+    _ ->
+      ok = filelib:ensure_dir(Path),
+      {ok, FD} = file:open(Path, [write, raw]),
+      io:format(FD, "~p.", [Term]),
+      file:close(FD)
+  end.
 
 -spec ensure_string(binary() | string()) -> string().
 ensure_string(Bin) when is_binary(Bin) ->
@@ -273,7 +291,9 @@ Put a process into infinite sleep,
 from which it wakes up only when an 'EXIT' message arrives.
 Then it returns exit reason.
 
-Common use, when no cleanup actions is needed:
+Common usecase,
+when cleanup actions are not needed:
+
 @code{
 exit(anvl_lib:linger())
 }
