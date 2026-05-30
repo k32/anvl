@@ -434,9 +434,7 @@ or after compiling the source file with GCC.
       end).
 @end example
 
-This first example condition demonstrates a few things:
-
-Second, ANVL framework does not assume anything about the nature of conditions,
+ANVL framework does not assume anything about the nature of conditions,
 it only concerns with the presence of side effects.
 Here, @code{newer} is a library function that compares modification times of the files (similar to @command{make}),
 but the user is free to implement any change detection,
