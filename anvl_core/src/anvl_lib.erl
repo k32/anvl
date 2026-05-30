@@ -267,7 +267,7 @@ term_to_file(Path, Term) ->
       ok;
     _ ->
       ok = filelib:ensure_dir(Path),
-      {ok, FD} = file:open(Path, [write, raw]),
+      {ok, FD} = file:open(Path, [write]),
       io:format(FD, "~p.", [Term]),
       file:close(FD)
   end.

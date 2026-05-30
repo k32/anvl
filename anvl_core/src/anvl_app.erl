@@ -59,9 +59,7 @@ main(CLIArgs) ->
       %% Start top anyway, as shell may be required:
       anvl_sup:top([])
   end,
-  anvl_sup:wait(),
-  ?LOG_WARNING("Why are we here?"),
-  timer:sleep(1000).
+  anvl_sup:wait().
 
 -spec help() -> no_return().
 help() ->
