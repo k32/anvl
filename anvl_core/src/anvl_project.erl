@@ -184,14 +184,11 @@ root_dir() ->
 
 conditions() ->
   Plugins = plugins(root()),
-  AdHoc = lists:flatmap(fun(Plugin) ->
-                            case erlang:function_exported(Plugin, conditions, 1) of
-                              true -> Plugin:conditions(anvl_project:root());
-                              false -> []
-                            end
-                        end,
-                        Plugins),
-  custom_conditions(AdHoc) ++ lists:append(AdHoc).
+  AdHoc = [Cond ||
+           Plugin <- Plugins,
+           erlang:function_exported(Plugin, conditions, 1),
+           Cond <- Plugin:conditions(root())],
+  custom_conditions(AdHoc) ++ AdHoc.
 
 -spec plugins(Project :: t()) -> [anvl_plugin:t()].
 plugins(Project) ->
