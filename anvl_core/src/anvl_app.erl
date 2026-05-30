@@ -23,7 +23,7 @@
 -behavior(application).
 
 %% escript entrypoint:
--export([main/1]).
+-export([main/0, main/1]).
 
 %% behavior callbacks:
 -export([start/2, stop/1]).
@@ -40,6 +40,12 @@
 %%================================================================================
 %% API
 %%================================================================================
+
+-spec main() -> no_return().
+main() ->
+  Args = init:get_arguments(),
+  io:format("Args: ~p~n", [Args]),
+  main(Args).
 
 %% @doc Entrypoint for `anvl' escript.
 -spec main([string()]) -> no_return().

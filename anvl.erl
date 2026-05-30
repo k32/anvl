@@ -23,7 +23,7 @@ conf() ->
   EmuArgs = "-dist_listen false -escript main anvl_app",
   Escript = #{apps => [lee, typerefl | apps()]},
   #{ plugins => [anvl_erlc, anvl_texinfo, anvl_git]
-   , conditions => [install, static_checks, escript, docs, test, git_tests, deadlock_test, otp_install_test]
+   , conditions => [install, static_checks, escript, docs, test, git_tests, deadlock_test, otp_install_test, release]
    , erlang =>
        #{ app_paths =>
             ["${app}", "."]
@@ -41,6 +41,17 @@ conf() ->
         , static_checks =>
             #{ apps => umbrella
              }
+        , reltool =>
+            [#{ id => anvl
+              , version => "0.0.1"
+              , apps => apps()
+              , config =>
+                  [ {boot_rel, "anvl"}
+                  , {relocatable, false}
+                  , {excl_app_filters, ["^wx"]}
+                  ]
+              }
+            ]
         }
    , [deps, local] =>
        [#{ dir => "vendor/*"
@@ -183,6 +194,9 @@ install(Prefix, Template, Src, Mode) ->
 
 escript() ->
   anvl_erlc_escript:created(anvl_project:root(), anvl).
+
+release() ->
+  anvl_erlc_reltool:released(anvl_project:root(), anvl).
 
 ?MEMO(static_checks,
       precondition(

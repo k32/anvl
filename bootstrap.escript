@@ -54,7 +54,7 @@ main(Args) ->
            [ exit_status
            , nouse_stdio
            , {cd, "."}
-           , {args, ["install" | Args]}
+           , {args, ["--log-level", "notice", "install" | Args]}
            ]),
   receive
     {Port, {exit_status, E}} -> halt(E)

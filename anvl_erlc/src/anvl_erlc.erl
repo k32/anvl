@@ -294,6 +294,8 @@ model() ->
              , profile =>
                  Profile
              }}
+       , reltool =>
+           anvl_erlc_reltool:model()
        , escript =>
            anvl_erlc_escript:model()
        , xref =>
@@ -421,6 +423,8 @@ project_model() ->
              }}
        , escript =>
            anvl_erlc_escript:project_model()
+       , reltool =>
+           anvl_erlc_reltool:project_model()
        }}.
 
 -doc false.
@@ -685,10 +689,13 @@ copy_includes(#{build_dir := BuildDir, src_root := SrcRoot}) ->
               Includes).
 
 %% @private Render application specification:
-render_app_spec(AppSrcProperties, Sources, Context) ->
+render_app_spec(AppSrcProperties0, Sources, Context) ->
   #{project := Project, app := App, profile := Profile, build_dir := BuildDir} = Context,
   AppFile = app_file(Context),
   Modules = [module_of_erl(I) || I <- Sources],
+  AppSrcProperties = [{Key, Val} ||
+                       {Key, Val} <- AppSrcProperties0,
+                       filter_app_key(Key)],
   NewContent0 = {application, App, [{modules, Modules} | AppSrcProperties]},
   NewContent = anvl_hook:fold(#erlc_app_spec_hook{project = Project}, NewContent0),
   anvl_condition:set_result(?app_info(Profile, App),
@@ -705,6 +712,37 @@ render_app_spec(AppSrcProperties, Sources, Context) ->
       file:close(FD),
       true
   end.
+
+filter_app_key(description) ->
+  true;
+filter_app_key(id) ->
+  true;
+filter_app_key(vsn) ->
+  true;
+filter_app_key(modules) ->
+  false;
+filter_app_key(maxP) ->
+  true;
+filter_app_key(maxT) ->
+  true;
+filter_app_key(registered) ->
+  true;
+filter_app_key(optional_applications) ->
+  true;
+filter_app_key(included_applications) ->
+  true;
+filter_app_key(applications) ->
+  true;
+filter_app_key(env) ->
+  true;
+filter_app_key(mod) ->
+  true;
+filter_app_key(start_phases) ->
+  true;
+filter_app_key(runtime_dependencies) ->
+  true;
+filter_app_key(_) ->
+  false.
 
 app_src(App, AppRoot) ->
   maybe
