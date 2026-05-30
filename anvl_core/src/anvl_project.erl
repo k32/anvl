@@ -153,7 +153,7 @@ conf(Project, Key) when is_record(Project, proj) ->
 Get a value from project configuration,
 non-throwing version.
 """.
--spec maybe_conf(t(), lee:model_key()) -> {ok, _Result} | undefined.
+-spec maybe_conf(t(), lee:key()) -> {ok, _Result} | undefined.
 maybe_conf(ProjectRoot, Key) ->
   try
     Val = conf(ProjectRoot, Key),

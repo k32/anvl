@@ -294,6 +294,8 @@ model() ->
              , profile =>
                  Profile
              }}
+       , reltool =>
+           anvl_erlc_reltool:model()
        , escript =>
            anvl_erlc_escript:model()
        , xref =>
@@ -317,6 +319,14 @@ project_model() ->
           #{ oneliner => "List of include directories"
            , type => list(anvl_lib:filename_pattern())
            , default => ["${src_root}/include", "${src_root}/src"]
+           }}
+     , app_properties =>
+         {[value],
+          #{ oneliner => "List of app.src properties preserved during creation of app file"
+           , type => list(atom())
+           , default => [ description, id, vsn, modules, maxP, maxT, registered, optional
+                        , included, applications, env, mod, start, runtime, key
+                        ]
            }}
      , bdeps =>
          {[value],
@@ -421,6 +431,8 @@ project_model() ->
              }}
        , escript =>
            anvl_erlc_escript:project_model()
+       , reltool =>
+           anvl_erlc_reltool:project_model()
        }}.
 
 -doc false.
@@ -685,10 +697,14 @@ copy_includes(#{build_dir := BuildDir, src_root := SrcRoot}) ->
               Includes).
 
 %% @private Render application specification:
-render_app_spec(AppSrcProperties, Sources, Context) ->
+render_app_spec(AppSrcProperties0, Sources, Context) ->
   #{project := Project, app := App, profile := Profile, build_dir := BuildDir} = Context,
+  KeepProperties = pcfg(Project, Profile, [app_properties]),
   AppFile = app_file(Context),
   Modules = [module_of_erl(I) || I <- Sources],
+  AppSrcProperties = [{Key, Val} ||
+                       {Key, Val} <- AppSrcProperties0,
+                       lists:member(Key, KeepProperties)],
   NewContent0 = {application, App, [{modules, Modules} | AppSrcProperties]},
   NewContent = anvl_hook:fold(#erlc_app_spec_hook{project = Project}, NewContent0),
   anvl_condition:set_result(?app_info(Profile, App),
