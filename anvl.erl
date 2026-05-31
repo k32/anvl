@@ -69,7 +69,7 @@ conf() ->
    }.
 
 apps() ->
-  [anvl_core, anvl_erlc, anvl_git, anvl_texinfo, anvl_hex_pm, anvl_rebar3, anvl_otp_install].
+  [anvl_core, anvl_erlc, anvl_git, anvl_texinfo, anvl_hex_pm, anvl_rebar3, anvl_eunit, anvl_otp_install].
 
 ?MEMO(install,
       begin

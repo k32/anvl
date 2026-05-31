@@ -1,0 +1,6 @@
+%% -*- mode:erlang -*-
+{application, anvl_eunit,
+ [ {description, "A wrapper for Erlang/OTP EUnit"}
+ , {vsn, "0.0.1"}
+ , {applications, [kernel, stdlib, eunit, anvl_core]}
+ ]}.
