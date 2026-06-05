@@ -324,8 +324,9 @@ project_model() ->
          {[value],
           #{ oneliner => "List of app.src properties preserved during creation of app file"
            , type => list(atom())
-           , default => [ description, id, vsn, modules, maxP, maxT, registered, optional
-                        , included, applications, env, mod, start, runtime, key
+           , default => [ description, id, vsn, modules, maxP, maxT, registered
+                        , included_applications, optional_applications, applications
+                        , env, mod, start_phases
                         ]
            }}
      , bdeps =>
@@ -849,9 +850,10 @@ do_app_closure(Profile, [App | Rest], AccNonOTP0, AccOTP0) ->
           AccNonOTP1 = ordsets:add_element(App, AccNonOTP0),
           #{spec := {application, _, AppSpec}} = app_info(Profile, App),
           Deps = proplists:get_value(applications, AppSpec, []),
+          OptDeps = proplists:get_value(optional_applications, AppSpec, []),
           {AccNonOTP, AccOTP} = do_app_closure(
                                   Profile,
-                                  Deps,
+                                  OptDeps ++ Deps,
                                   AccNonOTP1,
                                   AccOTP0),
           do_app_closure(
