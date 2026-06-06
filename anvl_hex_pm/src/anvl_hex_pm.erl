@@ -383,7 +383,7 @@ list_versions(Package) ->
     Other ->
       Msg = "Failed to get versions of ~p",
       ?LOG_DEBUG(Msg ++ ": ~p", [Package, Other]),
-      ?UNSAT(Msg ++ ": ~P", [Package, Other, 10])
+      ?UNSAT(Msg ++ ": ~P", [Package, Other, 20])
   end.
 version_range(VRange, Versions) ->
   case lists:search(
