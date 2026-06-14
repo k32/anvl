@@ -5,9 +5,9 @@ conf() ->
    , conditions => [default]
    }.
 
-init() ->
+init(This) ->
   anvl_erlc:add_pre_compile_hook(
-    anvl_project:root(),
+    This,
     fun(#{src_root := SrcRoot}) ->
         precondition(sources_created(SrcRoot, 1000))
     end).

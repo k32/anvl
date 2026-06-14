@@ -89,8 +89,10 @@ but should not assume anything else about this type.
 -doc """
 An optional callback that is executed after loading the plugins and project configuration.
 Project can use it, for example, to install hooks.
+
+Project's own ID is passed as an argument.
 """.
--callback init() -> term().
+-callback init(t()) -> term().
 
 -type pre_project_load_hook() :: fun((file:filename()) -> _).
 
@@ -102,7 +104,7 @@ Project can use it, for example, to install hooks.
 %% Result key:
 -record(project_of_dir, {directory}).
 
--optional_callbacks([conf/0, conf_override/1, init/0]).
+-optional_callbacks([conf/0, conf_override/1, init/1]).
 
 -export_type([t/0, conf_tree/0]).
 
@@ -356,8 +358,8 @@ load_project_conf(IsNew, ProjectDir, Project = #proj{mod = Module}, Storage) ->
   %% 2. Load plugins:
   [load_plugin(ProjectDir, Project, ConfTree, Overrides, Storage, I) || I <- Plugins],
   %% 3. Optionally, run init function.
-  IsNew andalso erlang:function_exported(Module, init, 0) andalso
-    Module:init(),
+  IsNew andalso erlang:function_exported(Module, init, 1) andalso
+    Module:init(Project),
   ?LOG_INFO("Loaded project ~p", [ProjectDir]),
   false.
 
