@@ -112,6 +112,19 @@ build_target(Target) ->
 
 -define(aborted, anvl_condition_abort).
 
+-record(cycle_precondition,
+        { pid :: pid()
+        , condition
+        , dep_pid :: pid()
+        , dep_cond :: pid()
+        , stack :: list()
+        }).
+-record(cycle_speculative,
+        { pid :: pid()
+        , condition
+        , stack :: list()
+        }).
+
 %%================================================================================
 %% API functions
 %%================================================================================
@@ -712,12 +725,13 @@ handle_deadlock(_) ->
 dep_graph(Vertices, Edges, []) ->
   {Vertices, Edges};
 dep_graph(V0, E0, [Pid | Rest]) ->
-  case waiting_for(Pid) of
-    {depends, Cond, WaitingPid, _WaitingCond} ->
-      V = [{Pid, Cond} | V0],
+  Info = waiting_for(Pid),
+  case Info of
+    #cycle_precondition{dep_pid = WaitingPid} ->
+      V = [{Pid, Info} | V0],
       E = [{WaitingPid, Pid} | E0];
-    {speculative, Cond} ->
-      V = [{Pid, Cond} | V0],
+    #cycle_speculative{} ->
+      V = [{Pid, Info} | V0],
       E = E0;
     undefined ->
       V = V0,
@@ -731,9 +745,14 @@ dump_graph(Vertices, Edges, File) ->
   {ok, FD} = file:open(File, [write]),
   io:put_chars(FD, "digraph{\n"),
   lists:foreach(
-    fun({V, Cond}) ->
-        Bin = binary:replace(iolist_to_binary(format_condition(Cond)), <<"\"">>, <<"\\\"">>, [global]),
-        io:format(FD, "~p [label=\"~s\"];~n", [V, Bin])
+    fun({V, Info}) ->
+        case Info of
+          #cycle_precondition{condition = Cond, stack = Stack} -> ok;
+          #cycle_speculative{condition = Cond, stack = Stack} -> ok
+        end,
+        CondStr = dot_escape(format_condition(Cond)),
+        StackStr = dot_escape(io_lib:format("~p", [Stack])),
+        io:format(FD, "~p [label=\"~s\" tooltip=\"~s\"];~n", [V, CondStr, StackStr])
     end,
     Vertices),
   lists:foreach(
@@ -756,25 +775,37 @@ unresolved_speculative(Vertices) ->
     end,
     Vertices).
 
--spec waiting_for(pid()) -> {depends, t(), pid(), t()}
-                          | {speculative, t()}
+-spec waiting_for(pid()) -> #cycle_precondition{}
+                          | #cycle_speculative{}
                           | undefined.
 waiting_for(Pid) ->
   case erlang:process_info(Pid, [current_function]) of
     [{current_function, {?MODULE, wait_result, 3}}] ->
       maybe
-        [{dictionary, Dict}] ?= erlang:process_info(Pid, [dictionary]),
+        [ {dictionary, Dict}
+        , {current_stacktrace, Stack}
+        ] ?= erlang:process_info(Pid, [dictionary, current_stacktrace]),
         {_, Cond} ?= lists:keyfind(?anvl_cond_self, 1, Dict),
         {_, {WaitingPid, Waiting}} ?= lists:keyfind(?anvl_cond_waiting_for, 1, Dict),
-        {depends, Cond, WaitingPid, Waiting}
+        #cycle_precondition{ pid = Pid
+                           , condition = Cond
+                           , dep_pid = WaitingPid
+                           , dep_cond = Waiting
+                           , stack = filter_stacktrace(Stack)
+                           }
       else
         _ -> undefined
       end;
     [{current_function, {?MODULE, wait_speculative, 1}}] ->
       maybe
-        [{dictionary, Dict}] ?= erlang:process_info(Pid, [dictionary]),
+        [ {dictionary, Dict}
+        , {current_stacktrace, Stack}
+        ] ?= erlang:process_info(Pid, [dictionary, current_stacktrace]),
         {_, Cond} ?= lists:keyfind(?anvl_cond_self, 1, Dict),
-        {speculative, Cond}
+        #cycle_speculative{ condition = Cond
+                          , pid = Pid
+                          , stack = filter_stacktrace(Stack)
+                          }
       else
         _ -> undefined
       end;
@@ -834,3 +865,9 @@ dec_counter(Idx) ->
 
 get_counter(Idx) ->
   counters:get(persistent_term:get(?counters), Idx).
+
+filter_stacktrace(Stack) ->
+  [I || I <- Stack, element(1, I) =/= ?MODULE].
+
+dot_escape(IOList) ->
+  binary:replace(iolist_to_binary(IOList), <<"\"">>, <<"\\\"">>, [global]).
