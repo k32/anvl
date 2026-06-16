@@ -28,7 +28,7 @@
 -include_lib("typerefl/include/types.hrl").
 
 init() ->
-  ok.
+  anvl_locate:init().
 
 init_for_project(Dir) ->
   anvl_locate:init_for_project(Dir).
