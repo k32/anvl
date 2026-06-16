@@ -669,15 +669,9 @@ manage_priv(#{src_root := SrcRoot, build_dir := BuildDir}) ->
 -doc "Clean ebin directory of files that don't have sources".
 clean_orphans(Sources, Context) ->
   Orphans = filelib:wildcard(beam_of_erl("*.erl", Context)) -- [beam_of_erl(Src, Context) || Src <- Sources],
-  {ok, CWD} = file:get_cwd(),
   lists:foreach(fun(Path) ->
-                    case filelib:safe_relative_path(Path, CWD) of
-                      unsafe ->
-                        ?LOG_ERROR("Unsafe BEAM file location ~s in context ~p", [Path, Context]);
-                      SafePath ->
-                        ?LOG_NOTICE("Removing orphaned file ~s", [SafePath]),
-                        file:delete(SafePath)
-                    end
+                    ?LOG_NOTICE("Removing orphaned file ~s", [Path]),
+                    file:delete(Path)
                 end,
                 Orphans),
   false.
