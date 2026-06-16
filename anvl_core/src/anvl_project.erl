@@ -356,26 +356,20 @@ load_project_conf(IsNew, ProjectDir, Project = #proj{mod = Module}, Storage) ->
   PreloadPlugins = anvl_plugin:conf([preload_plugins]),
   Plugins = [anvl_core, anvl_erlc | PreloadPlugins ++ lee:get(Storage, [plugins])],
   %% 2. Load plugins:
-  [load_plugin(ProjectDir, Project, ConfTree, Overrides, Storage, I) || I <- Plugins],
+  [load_plugin(ProjectDir, ConfTree, Overrides, Storage, I) || I <- Plugins],
+  %% 3. Notify plugins about the project:
+  [anvl_plugin:init_for_project(I, Project) || I <- Plugins],
   %% 3. Optionally, run init function.
   IsNew andalso erlang:function_exported(Module, init, 1) andalso
     Module:init(Project),
   ?LOG_INFO("Loaded project ~p", [ProjectDir]),
   false.
 
--spec load_plugin(
-        file:filename(),
-        t(),
-        conf_tree(),
-        list(),
-        lee:data(),
-        anvl_plugin:t()
-       ) -> ok.
-load_plugin(ProjectDir, Project, ConfTree, Overrides, Storage, Plugin) ->
+-spec load_plugin(file:filename(), conf_tree(), list(), lee:data(), anvl_plugin:t()) -> ok.
+load_plugin(ProjectDir, ConfTree, Overrides, Storage, Plugin) ->
   precondition(anvl_plugin:loaded(Plugin)),
   read_project_conf(ProjectDir, ConfTree, Overrides, Storage),
-  anvl_plugin:load_config(),
-  anvl_plugin:init_for_project(Plugin, Project).
+  anvl_plugin:load_config().
 
 read_override(ProjectDir) ->
   Mod = config_module(root()),
