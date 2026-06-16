@@ -91,7 +91,7 @@ Condition: @var{Plugin} has been loaded.
                         %% Don't recompile builtin plugins:
                         false;
                        true ->
-                        precondition(anvl_erlc:app_compiled(default, Plugin))
+                        precondition(anvl_erlc:plugin_compiled(Plugin))
                     end,
           load_model(Plugin),
           anvl_sup:ensure_plugin(Plugin),
