@@ -292,7 +292,9 @@ project_embryo(Dir) ->
         Project = project_of_dir(Dir),
         {ConfTree, Overrides} = persistent_term:get(#anvl_project_conf_tree{project = Project}),
         Storage = ?proj_conf_storage(Project),
-        %% Make sure the predecessor is loaded first:
+        %% Make sure the predecessor is loaded first.
+        %% This creates a chain on targets with at most one target being active at a time.
+        %% This ensures that they don't run into race conditions when modifying the project config.
         load_predecessor(Dir, Plugin, list_plugins(Storage)),
         %% Now load self:
         precondition(anvl_plugin:loaded(Plugin)),
@@ -303,7 +305,6 @@ project_embryo(Dir) ->
       end).
 
 load_predecessor(Dir, Plugin, [Predecessor, Plugin | _]) ->
-  ?LOG_NOTICE("~p's predecessor: ~p", [Plugin, Predecessor]),
   precondition(plugin_initialized(Dir, Predecessor));
 load_predecessor(_Dir, Plugin, [Plugin | _]) ->
   %% I am the first:
