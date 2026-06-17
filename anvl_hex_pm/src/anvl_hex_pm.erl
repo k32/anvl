@@ -108,12 +108,13 @@ init() ->
 -doc false.
 -spec init_for_project(anvl_project:t()) -> ok.
 init_for_project(Project) ->
+  ?LOG_NOTICE("Init hex for ~p", [Project]),
   lists:member(anvl_hex_pm, anvl_project:plugins(Project)) andalso
     anvl_locate:add_hook(
       fun(Kind, Dependency) ->
           case Kind of
             otp_application ->
-              ?LOG_INFO("Locating hex package ~p:~p", [Kind, Dependency]),
+              ?LOG_NOTICE("Locating hex package ~p:~p", [Kind, Dependency]),
               locate_in_project(Project, Kind, Dependency);
             _ ->
               {false, []}

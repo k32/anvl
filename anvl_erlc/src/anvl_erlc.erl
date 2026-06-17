@@ -811,7 +811,7 @@ src_root(_Profile, App) ->
   {Proj, Dir}.
 
 locate_in_project(otp_application, App, ProjectDir) ->
-  precondition(anvl_project:loaded(ProjectDir)),
+  precondition(anvl_project:plugin_initialized(ProjectDir, ?MODULE)),
   Project = anvl_project:project_of_dir(ProjectDir),
   AppPathTemplates = pcfg(Project, [app_paths]),
   (fun Go([]) ->
