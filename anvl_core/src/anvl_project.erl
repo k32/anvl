@@ -36,6 +36,7 @@ This module contains routines for managing ANVL projects.
         , plugins/1
         , loaded/1
         , plugin_initialized/2
+        , project_embryo/1
         , is_project/1
         ]).
 -export([add_pre_project_load_hook/1, add_pre_project_load_hook/2]).
@@ -239,6 +240,29 @@ Return @code{true} if input directory is an ANVL project.
 is_project(Dir) ->
   filelib:is_regular(project_config_file(Dir)).
 
+-doc false.
+project_embryo(Dir) ->
+  project_embryo_(anvl_lib:ensure_string(Dir)).
+
+-doc false.
+?MEMO(plugin_initialized, Dir, Plugin,
+      begin
+        precondition(project_embryo(Dir)),
+        Project = project_of_dir(Dir),
+        {ConfTree, Overrides} = persistent_term:get(#anvl_project_conf_tree{project = Project}),
+        Storage = ?proj_conf_storage(Project),
+        %% Make sure the predecessor is loaded first.
+        %% This creates a chain on targets with at most one target being active at a time.
+        %% This ensures that they don't run into race conditions when modifying the project config.
+        load_predecessor(Dir, Plugin, list_plugins(Storage)),
+        %% Now load self:
+        precondition(anvl_plugin:loaded(Plugin)),
+        read_project_conf(Dir, ConfTree, Overrides, Storage),
+        anvl_plugin:load_config(),
+        anvl_plugin:init_for_project(Plugin, Project),
+        false
+      end).
+
 %%================================================================================
 %% Internal functions
 %%================================================================================
@@ -257,9 +281,6 @@ parse_transform(Forms, Opts) ->
     [File = {attribute, Loc, file, _} | Rest] ->
       [File, {attribute, Loc, module, Module} | Rest]
   end.
-
-project_embryo(Dir) ->
-  project_embryo_(anvl_lib:ensure_string(Dir)).
 
 ?MEMO(project_embryo_, Dir,
       begin
@@ -284,24 +305,6 @@ project_embryo(Dir) ->
         %% Load basic project config to enable quering list of plugins:
         _ = read_project_conf(Dir, ConfTree, Overrides, ConfStorage),
         IsNew
-      end).
-
-?MEMO(plugin_initialized, Dir, Plugin,
-      begin
-        precondition(project_embryo(Dir)),
-        Project = project_of_dir(Dir),
-        {ConfTree, Overrides} = persistent_term:get(#anvl_project_conf_tree{project = Project}),
-        Storage = ?proj_conf_storage(Project),
-        %% Make sure the predecessor is loaded first.
-        %% This creates a chain on targets with at most one target being active at a time.
-        %% This ensures that they don't run into race conditions when modifying the project config.
-        load_predecessor(Dir, Plugin, list_plugins(Storage)),
-        %% Now load self:
-        precondition(anvl_plugin:loaded(Plugin)),
-        read_project_conf(Dir, ConfTree, Overrides, Storage),
-        anvl_plugin:load_config(),
-        anvl_plugin:init_for_project(Plugin, Project),
-        false
       end).
 
 load_predecessor(Dir, Plugin, [Predecessor, Plugin | _]) ->
