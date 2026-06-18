@@ -22,7 +22,7 @@
 conf() ->
   EmuArgs = "-dist_listen false -escript main anvl_app",
   Escript = #{apps => [lee, typerefl | apps()]},
-  #{ plugins => [anvl_erlc, anvl_texinfo, anvl_git]
+  #{ plugins => [anvl_git, anvl_erlc, anvl_texinfo]
    , conditions => [install, static_checks, escript, docs, test, git_tests, deadlock_test, otp_install_test, release]
    , erlang =>
        #{ app_paths =>

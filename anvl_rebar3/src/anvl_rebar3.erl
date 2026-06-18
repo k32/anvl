@@ -89,7 +89,7 @@ init() ->
 
 -spec translate_conf(proplists:proplist()) -> map().
 translate_conf(Rebar3Conf) ->
-  #{ plugins => [anvl_git, anvl_erlc, anvl_hex_pm, anvl_rebar3]
+  #{ plugins => [anvl_git, anvl_hex_pm, anvl_rebar3, anvl_erlc]
    , [deps, git] => translate_git_deps(Rebar3Conf)
    , [deps, hex_pm] => translate_hex_deps(Rebar3Conf)
    , erlang =>

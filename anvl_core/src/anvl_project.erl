@@ -35,6 +35,8 @@ This module contains routines for managing ANVL projects.
         , conditions/0
         , plugins/1
         , loaded/1
+        , plugin_initialized/2
+        , project_embryo/1
         , is_project/1
         ]).
 -export([add_pre_project_load_hook/1, add_pre_project_load_hook/2]).
@@ -101,8 +103,9 @@ Project's own ID is passed as an argument.
         , dir :: file:filename()
         }).
 
-%% Result key:
+%% Result keys and persistent terms:
 -record(project_of_dir, {directory}).
+-record(anvl_project_conf_tree, {project :: t()}).
 
 -optional_callbacks([conf/0, conf_override/1, init/1]).
 
@@ -117,7 +120,7 @@ Condition: project configuarion is loaded.
 """.
 -spec loaded(file:filename()) -> anvl_condition:t().
 loaded(ProjectDir) when is_list(ProjectDir); is_binary(ProjectDir) ->
-  config_loaded(anvl_lib:ensure_string(ProjectDir)).
+  fully_loaded(anvl_lib:ensure_string(ProjectDir)).
 
 -doc """
 Return directory containing a project.
@@ -137,7 +140,7 @@ and return project ID.
 -spec project_of_dir(file:filename()) -> t().
 project_of_dir(ProjectDir0) when is_list(ProjectDir0); is_binary(ProjectDir0) ->
   ProjectDir = anvl_lib:ensure_string(ProjectDir0),
-  anvl_condition:precondition(loaded(ProjectDir)),
+  anvl_condition:precondition(project_embryo(ProjectDir)),
   anvl_condition:get_result(#project_of_dir{directory = ProjectDir}).
 
 -spec config_module(t()) -> module().
@@ -237,6 +240,29 @@ Return @code{true} if input directory is an ANVL project.
 is_project(Dir) ->
   filelib:is_regular(project_config_file(Dir)).
 
+-doc false.
+project_embryo(Dir) ->
+  project_embryo_(anvl_lib:ensure_string(Dir)).
+
+-doc false.
+?MEMO(plugin_initialized, Dir, Plugin,
+      begin
+        precondition(project_embryo(Dir)),
+        Project = project_of_dir(Dir),
+        {ConfTree, Overrides} = persistent_term:get(#anvl_project_conf_tree{project = Project}),
+        Storage = ?proj_conf_storage(Project),
+        %% Make sure the predecessor is loaded first.
+        %% This creates a chain on targets with at most one target being active at a time.
+        %% This ensures that they don't run into race conditions when modifying the project config.
+        load_predecessor(Dir, Plugin, list_plugins(Storage)),
+        %% Now load self:
+        precondition(anvl_plugin:loaded(Plugin)),
+        read_project_conf(Dir, ConfTree, Overrides, Storage),
+        anvl_plugin:load_config(),
+        anvl_plugin:init_for_project(Plugin, Project),
+        false
+      end).
+
 %%================================================================================
 %% Internal functions
 %%================================================================================
@@ -256,20 +282,57 @@ parse_transform(Forms, Opts) ->
       [File, {attribute, Loc, module, Module} | Rest]
   end.
 
-?MEMO(config_loaded, Dir,
+?MEMO(project_embryo_, Dir,
       begin
         ProjId = new_project_id(),
         anvl_hook:foreach(pre_project_load_hook, Dir),
         {IsNew, ProjectMod} = obtain_project_conf_module(Dir, ProjId),
         Project = #proj{id = ProjId, mod = ProjectMod},
         anvl_condition:set_result(#project_of_dir{directory = Dir}, Project),
-        Conf = lee_storage:new(lee_persistent_term_storage, ?proj_conf_storage_token(Project)),
         true = ets:insert_new(?proj_tab, #project{ project = Project
                                                  , dir = Dir
                                                  }),
-        load_project_conf(IsNew, Dir, Project, Conf),
+        ConfStorage = lee_storage:new(lee_persistent_term_storage, ?proj_conf_storage_token(Project)),
+        %% Cache configuration tree and overrides:
+        ConfTree = case erlang:function_exported(ProjectMod, conf, 0) of
+               true -> ProjectMod:conf();
+               false -> #{}
+             end,
+        Overrides = read_override(Dir),
+        persistent_term:put(
+          #anvl_project_conf_tree{project = Project},
+          {ConfTree, Overrides}),
+        %% Load basic project config to enable quering list of plugins:
+        _ = read_project_conf(Dir, ConfTree, Overrides, ConfStorage),
+        IsNew
+      end).
+
+load_predecessor(Dir, Plugin, [Predecessor, Plugin | _]) ->
+  precondition(plugin_initialized(Dir, Predecessor));
+load_predecessor(_Dir, Plugin, [Plugin | _]) ->
+  %% I am the first:
+  ok;
+load_predecessor(Dir, Plugin, [_ | Rest]) ->
+  load_predecessor(Dir, Plugin, Rest).
+
+?MEMO(fully_loaded, Dir,
+      begin
+        IsNew = precondition(project_embryo(Dir)),
+        Project = #proj{mod = Module} = project_of_dir(Dir),
+        Storage = ?proj_conf_storage(Project),
+        %% Load all plugins (each plugin loads its predecessor, so order is ensured):
+        LastPlugin = lists:last(list_plugins(Storage)),
+        precondition(plugin_initialized(Dir, LastPlugin)),
+        %% Optionally, run init function.
+        IsNew andalso erlang:function_exported(Module, init, 1) andalso
+          Module:init(Project),
+        ?LOG_INFO("Loaded project ~p", [Dir]),
         false
       end).
+
+list_plugins(ConfStorage) ->
+  PreloadPlugins = anvl_plugin:conf([preload_plugins]),
+  [anvl_core | PreloadPlugins] ++ lee:get(ConfStorage, [plugins]).
 
 -spec obtain_project_conf_module(file:filename(), integer()) -> {boolean(), module()}.
 obtain_project_conf_module(Dir, ProjId) when is_list(Dir) ->
@@ -344,38 +407,6 @@ custom_conditions(AdHoc) ->
       ?LOG_CRITICAL("Condition(s) are declared, but undefined: ~p", [Undefined]),
       anvl_terminator:setfail()
   end.
-
-load_project_conf(IsNew, ProjectDir, Project = #proj{mod = Module}, Storage) ->
-  ConfTree = case erlang:function_exported(Module, conf, 0) of
-               true -> Module:conf();
-               false -> #{}
-             end,
-  Overrides = read_override(ProjectDir),
-  %% 1. Load basic config to get the list of plugins:
-  _ = read_project_conf(ProjectDir, ConfTree, Overrides, Storage),
-  PreloadPlugins = anvl_plugin:conf([preload_plugins]),
-  Plugins = [anvl_core, anvl_erlc | PreloadPlugins ++ lee:get(Storage, [plugins])],
-  %% 2. Load plugins:
-  [load_plugin(ProjectDir, Project, ConfTree, Overrides, Storage, I) || I <- Plugins],
-  %% 3. Optionally, run init function.
-  IsNew andalso erlang:function_exported(Module, init, 1) andalso
-    Module:init(Project),
-  ?LOG_INFO("Loaded project ~p", [ProjectDir]),
-  false.
-
--spec load_plugin(
-        file:filename(),
-        t(),
-        conf_tree(),
-        list(),
-        lee:data(),
-        anvl_plugin:t()
-       ) -> ok.
-load_plugin(ProjectDir, Project, ConfTree, Overrides, Storage, Plugin) ->
-  precondition(anvl_plugin:loaded(Plugin)),
-  read_project_conf(ProjectDir, ConfTree, Overrides, Storage),
-  anvl_plugin:load_config(),
-  anvl_plugin:init_for_project(Plugin, Project).
 
 read_override(ProjectDir) ->
   Mod = config_module(root()),

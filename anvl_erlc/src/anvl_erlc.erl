@@ -29,7 +29,7 @@ the Erlang compiler.
 %% API:
 -export([umbrella/2]).
 -export([add_pre_compile_hook/2, add_app_spec_hook/2, pcfg/2, pcfg/3]).
--export([app_info/2, app_compiled/2, module/2]).
+-export([app_info/2, app_compiled/2, plugin_compiled/1, module/2]).
 -export([app_file/1, beam_file/2]).
 -export([app_closure/2, app_path/2]).
 
@@ -219,6 +219,13 @@ with overrides for the given profile.
 -spec pcfg(anvl_project:t(), profile(), lee:key()) -> term().
 pcfg(Project, Profile, Key) ->
   anvl_project:conf(Project, [erlang, overrides, {Profile} | Key]).
+
+-doc """
+Condition: ANVL plugin is compiled.
+""".
+-spec plugin_compiled(anvl_plugin:t()) -> anvl_condition:t().
+plugin_compiled(Plugin) ->
+  app_compiled(default, Plugin).
 
 -doc """
 Condition: OTP application has been compiled with the given profile.
@@ -804,7 +811,7 @@ src_root(_Profile, App) ->
   {Proj, Dir}.
 
 locate_in_project(otp_application, App, ProjectDir) ->
-  precondition(anvl_project:loaded(ProjectDir)),
+  precondition(anvl_project:plugin_initialized(ProjectDir, ?MODULE)),
   Project = anvl_project:project_of_dir(ProjectDir),
   AppPathTemplates = pcfg(Project, [app_paths]),
   (fun Go([]) ->

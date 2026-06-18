@@ -28,7 +28,7 @@
 -include_lib("typerefl/include/types.hrl").
 
 init() ->
-  ok.
+  anvl_locate:init().
 
 init_for_project(Dir) ->
   anvl_locate:init_for_project(Dir).
@@ -137,6 +137,15 @@ project_model() ->
    #{ plugins =>
        {[value],
         #{ oneliner  => "List of plugins needed for the project"
+         , doc       => """
+                        Project's plugins are loaded in sequence,
+                        so order of plugins matters.
+
+                        Plugins that are loaded later may rely on the ones that appear in the list earlier.
+                        For example,
+                        @link{api/anvl_erlc/anvl_erlc, anvl_erlc} may try to resolve application dependencies
+                        using @link{api/anvl_git/anvl_git, anvl_git}.
+                        """
          , type      => list(anvl_plugin:t())
          , default   => []
          }}

@@ -113,7 +113,7 @@ init_for_project(Project) ->
       fun(Kind, Dependency) ->
           case Kind of
             otp_application ->
-              ?LOG_INFO("Locating hex package ~p:~p", [Kind, Dependency]),
+              ?LOG_DEBUG("Locating hex package ~p:~p", [Kind, Dependency]),
               locate_in_project(Project, Kind, Dependency);
             _ ->
               {false, []}
