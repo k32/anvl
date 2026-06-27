@@ -85,7 +85,7 @@ that is available at its build time.
 Application info is a summary of data about the application
 that becomes available after application is built.
 
-This type is an extention of @ref{t:anvl_erlc:context/0,context/0}.
+This type is an extention of @erlfn{ref,erlref,t,anvl_erlc,context,0}.
 """.
 -type app_info() ::
         #{ app := atom()

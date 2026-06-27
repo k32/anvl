@@ -26,10 +26,12 @@ A plugin for creating and compiling @url{https://www.gnu.org/software/texinfo/, 
 -behavior(anvl_plugin).
 
 %% API
--export([available/0, compiled/1, compiled/3, anvl_plugin_documented/1, erl_doc/2, erl_module_doc/3]).
+-export([available/0, compiled/1, compiled/3, anvl_plugin_documented/1, erl_doc/2, erl_doc/3]).
 
 %% behavior callbacks:
 -export([init/0, init_for_project/1, model/0, project_model/0]).
+
+-export_type([erl_extraction_config/0]).
 
 -include_lib("typerefl/include/types.hrl").
 -include_lib("anvl_core/include/anvl.hrl").
@@ -37,6 +39,10 @@ A plugin for creating and compiling @url{https://www.gnu.org/software/texinfo/, 
 %%================================================================================
 %% Type declarations
 %%================================================================================
+
+-type erl_extraction_config() ::
+        #{ ref_prefix := binary()
+         }.
 
 -type doc_format() :: info | docbook | html | epub3 | latex | plaintext.
 
@@ -217,10 +223,20 @@ is compiled to format @var{Format}.
       end).
 
 -doc """
-Render documentation for an Erlang application @var{App} compiled in profile @var{Profile}.
+Equivalent to
+@example erlang
+erl_doc(Profile, App, #@{ref_prefix => <<"erl_api">>@})
+@end example
 """.
 -spec erl_doc(Profile :: anvl_erlc:profile(), App :: anvl_erlc:application()) -> anvl_condition:t().
-?MEMO(erl_doc, Profile, App,
+erl_doc(Profile, App) ->
+  erl_doc(Profile, App, #{ref_prefix => <<"erl_api">>}).
+
+-doc """
+Render documentation for an Erlang application @var{App} compiled in profile @var{Profile}.
+""".
+-spec erl_doc(Profile :: anvl_erlc:profile(), App :: anvl_erlc:application(), erl_extraction_config()) -> anvl_condition:t().
+?MEMO(erl_doc, Profile, App, Config,
       begin
         OutDir = doc_dir([App]),
         ModulesDir = filename:join(OutDir, "mod"),
@@ -229,7 +245,7 @@ Render documentation for an Erlang application @var{App} compiled in profile @va
         {application, _, AppKVs} = Spec,
         Modules = proplists:get_value(modules, AppKVs),
         newer(anvl_erlc:app_file(Ctx), OutFile) or
-        precondition([erl_module_doc(ModulesDir, Ctx, I) || I <- Modules]) andalso
+        precondition([erl_module_doc(ModulesDir, Ctx, Config, I) || I <- Modules]) andalso
           begin
             {ok, FD} = file:open(OutFile, [write]),
             lists:foreach(
@@ -251,9 +267,10 @@ Render documentation for an Erlang module.
 -spec erl_module_doc(
         OutputDir :: file:filename(),
         AppInfo :: anvl_erlc:app_info(),
+        Config :: erl_extraction_config(),
         Mod :: module()
        ) -> anvl_condition:t().
-?MEMO(erl_module_doc, OutDir, Ctx = #{app := App}, Mod,
+?MEMO(erl_module_doc, OutDir, Ctx = #{app := App}, Config, Mod,
       begin
         OutFile = erl_module_doc_fn(OutDir, Mod),
         BeamFile = anvl_erlc:beam_file(Ctx, Mod),
@@ -262,7 +279,7 @@ Render documentation for an Erlang module.
             logger:debug("Rendering texi for ~p", [Mod]),
             {ok, FD} = file:open(OutFile, [write]),
             P = fun(L) -> io:put_chars(FD, L) end,
-            render_module_doc(P, App, BeamFile),
+            render_module_doc(P, Config, App, BeamFile),
             file:close(FD),
             true
           end
@@ -275,8 +292,9 @@ Render documentation for an Erlang module.
 erl_module_doc_fn(OutDir, Module) ->
   filename:join([OutDir, atom_to_list(Module) ++ ".texi"]).
 
-render_module_doc(P, App, FName) ->
+render_module_doc(P, Config, App, FName) ->
   maybe
+    #{ref_prefix := Prefix} = Config,
     {ok, {Mod, [{abstract_code, Code}, {documentation, Documenation}]}} ?=
       beam_lib:chunks(FName, [abstract_code, documentation]),
     Specs = code_to_typespecs(Code),
@@ -289,7 +307,7 @@ render_module_doc(P, App, FName) ->
      Docs} = Documenation,
     ModuleDoc = get_documentation(MDocWrapper),
     true ?= ModuleDoc =/= false,
-    Chapter = <<"api/", (atom_to_binary(App))/binary, "/", (atom_to_binary(Mod))/binary>>,
+    Chapter = <<Prefix/binary, "/m/", (atom_to_binary(Mod))/binary>>,
     P([<<"@node ">>, Chapter, $\n]),
     P([<<"@section Module @code{">>, atom_to_binary(Mod), <<"}\n@lowersections\n">>]),
     P(get_documentation(MDocWrapper)),
@@ -302,9 +320,9 @@ render_module_doc(P, App, FName) ->
     Callbacks = [I ||
                   I = {{callback, _, _}, _Posn, _NameStr, DocWrapper, _Attr} <- Docs,
                   DocWrapper =/= hidden],
-    document_category(P, callback, Mod, Specs, Callbacks),
-    document_category(P, type, Mod, Specs, Types),
-    document_category(P, function, Mod, Specs, Functions),
+    document_category(P, Prefix, callback, Mod, Specs, Callbacks),
+    document_category(P, Prefix, type, Mod, Specs, Types),
+    document_category(P, Prefix, function, Mod, Specs, Functions),
     P([<<"\n@raisesections\n">>]),
     true
   else
@@ -328,27 +346,27 @@ code_to_typespecs({raw_abstract_v1, AST}) ->
     #{},
     AST).
 
-document_category(_, _, _, _, []) ->
+document_category(_, _, _, _, _, []) ->
   ok;
-document_category(P, Category, Mod, Specs, L) ->
+document_category(P, Prefix, Category, Mod, Specs, L) ->
   case Category of
     type ->
       Index = <<"@tindex ">>,
       Title = <<"Types">>,
-      AnchorPrefix = <<"t:">>;
+      AnchorPrefix = <<Prefix/binary, "/t/">>;
     function ->
       Index = <<"@findex ">>,
       Title = <<"Functions">>,
-      AnchorPrefix = <<>>;
+      AnchorPrefix = <<Prefix/binary, "/f/">>;
     callback ->
       Index = <<"@findex ">>,
       Title = <<"Callbacks">>,
-      AnchorPrefix = <<"c:">>
+      AnchorPrefix = <<Prefix/binary, "/c/">>
   end,
   P([<<"@section ">>, Title, <<"\n@table @strong\n">>]),
   lists:foreach(
     fun({Key = {_, Name, Arity}, _Posn, NameStr, DocWrapper, Attrs}) ->
-        FullName = [atom_to_binary(Mod), $:, atom_to_binary(Name), $/, integer_to_list(Arity)],
+        FullName = [atom_to_binary(Mod), $/, atom_to_binary(Name), $/, integer_to_list(Arity)],
         P([ <<"@anchor{">>, AnchorPrefix, FullName, <<"}\n">>
           , <<"@item ">>, texi_escape(NameStr), <<"\n">>
           , Index, FullName, $\n

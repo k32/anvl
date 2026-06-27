@@ -226,7 +226,7 @@ satisfies(Cond) ->
 -doc """
 ANVL condition's return value is a boolean that specifies presense of side-effects.
 If it needs to return any other data,
-@code{get_result/1} and @code{(@ref{anvl_condition:set_result/2, set_result/2})} functions can be used.
+@code{get_result/1} and @erlfn{ref,erlref,f,anvl_condition,set_result,2} functions can be used.
 These functions, essentially, allow to set and access global variables.
 
 Note on the code style:
@@ -235,9 +235,9 @@ Plugins must wrap @code{get_result} function in a proper API complete with retur
 Raw global variables should be never exposed to the outside,
 because it leads to unmaintainable code.
 
-@xref{anvl_condition:maybe_get_result/1}
+@erlfn{xref,erlref,f,anvl_condition,maybe_get_result,1}
 
-@xref{anvl_condition:has_result/1}.
+@erlfn{xref,erlref,f,anvl_condition,has_result,1}.
 """.
 -spec get_result(_Key) -> _Value.
 get_result(Key) ->
@@ -249,7 +249,7 @@ get_result(Key) ->
   end.
 
 -doc """
-Non-throwing version of @ref{anvl_condition:get_result/1}.
+@erlfn{xref,erlref,f,anvl_condition,get_result,1}, non-throwing version.
 """.
 -spec maybe_get_result(_Key) -> {value, _Value} | false.
 maybe_get_result(Key) ->
