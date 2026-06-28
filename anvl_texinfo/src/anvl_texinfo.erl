@@ -42,6 +42,8 @@ A plugin for creating and compiling @url{https://www.gnu.org/software/texinfo/, 
 
 -type erl_extraction_config() ::
         #{ ref_prefix := binary()
+         , erl_ribbon := pos_integer()
+         , erl_paper  := pos_integer()
          }.
 
 -type doc_format() :: info | docbook | html | epub3 | latex | plaintext.
@@ -225,12 +227,15 @@ is compiled to format @var{Format}.
 -doc """
 Equivalent to
 @example erlang
-erl_doc(Profile, App, #@{ref_prefix => <<"erl_api">>@})
+erl_doc(Profile, App, #@{ ref_prefix => <<"Erlang">>
+                       , erl_paper => 60
+                       , erl_ribbon => 50
+                       @})
 @end example
 """.
 -spec erl_doc(Profile :: anvl_erlc:profile(), App :: anvl_erlc:application()) -> anvl_condition:t().
 erl_doc(Profile, App) ->
-  erl_doc(Profile, App, #{ref_prefix => <<"erl_api">>}).
+  erl_doc(Profile, App, #{ref_prefix => <<"Erlang">>, erl_paper => 60, erl_ribbon => 50}).
 
 -doc """
 Render documentation for an Erlang application @var{App} compiled in profile @var{Profile}.
@@ -307,7 +312,7 @@ render_module_doc(P, Config, App, FName) ->
      Docs} = Documenation,
     ModuleDoc = get_documentation(MDocWrapper),
     true ?= ModuleDoc =/= false,
-    Chapter = <<Prefix/binary, "/m/", (atom_to_binary(Mod))/binary>>,
+    Chapter = <<(atom_to_binary(Mod))/binary, " ", Prefix/binary, " Module">>,
     P([<<"@node ">>, Chapter, $\n]),
     P([<<"@section Module @code{">>, atom_to_binary(Mod), <<"}\n@lowersections\n">>]),
     P(get_documentation(MDocWrapper)),
@@ -320,9 +325,9 @@ render_module_doc(P, Config, App, FName) ->
     Callbacks = [I ||
                   I = {{callback, _, _}, _Posn, _NameStr, DocWrapper, _Attr} <- Docs,
                   DocWrapper =/= hidden],
-    document_category(P, Prefix, callback, Mod, Specs, Callbacks),
-    document_category(P, Prefix, type, Mod, Specs, Types),
-    document_category(P, Prefix, function, Mod, Specs, Functions),
+    document_category(P, Config, callback, Mod, Specs, Callbacks),
+    document_category(P, Config, type, Mod, Specs, Types),
+    document_category(P, Config, function, Mod, Specs, Functions),
     P([<<"\n@raisesections\n">>]),
     true
   else
@@ -348,33 +353,34 @@ code_to_typespecs({raw_abstract_v1, AST}) ->
 
 document_category(_, _, _, _, _, []) ->
   ok;
-document_category(P, Prefix, Category, Mod, Specs, L) ->
+document_category(P, Config, Category, Mod, Specs, L) ->
+  #{ref_prefix := Prefix, erl_ribbon := Ribbon, erl_paper := Paper} = Config,
   case Category of
     type ->
       Index = <<"@tindex ">>,
       Title = <<"Types">>,
-      AnchorPrefix = <<Prefix/binary, "/t/">>;
+      AnchorPrefix = <<Prefix/binary, " Type ">>;
     function ->
       Index = <<"@findex ">>,
       Title = <<"Functions">>,
-      AnchorPrefix = <<Prefix/binary, "/f/">>;
+      AnchorPrefix = <<Prefix/binary, " Function ">>;
     callback ->
       Index = <<"@findex ">>,
       Title = <<"Callbacks">>,
-      AnchorPrefix = <<Prefix/binary, "/c/">>
+      AnchorPrefix = <<Prefix/binary, " Callback ">>
   end,
   P([<<"@section ">>, Title, <<"\n@table @strong\n">>]),
   lists:foreach(
     fun({Key = {_, Name, Arity}, _Posn, NameStr, DocWrapper, Attrs}) ->
-        FullName = [atom_to_binary(Mod), $/, atom_to_binary(Name), $/, integer_to_list(Arity)],
-        P([ <<"@anchor{">>, AnchorPrefix, FullName, <<"}\n">>
+        FullName = [atom_to_binary(Name), "/", integer_to_list(Arity), " ", atom_to_binary(Mod)],
+        P([ <<"@anchor{">>, FullName, " ", AnchorPrefix, <<"}\n">>
           , <<"@item ">>, texi_escape(NameStr), <<"\n">>
           , Index, FullName, $\n
           ]),
         case Specs of
           #{Key := AST} ->
             P([ <<"@example\n">>
-              , texi_escape(erl_prettypr:format(AST))
+              , texi_escape(erl_prettypr:format(AST, [{paper, Paper}, {ribbon, Ribbon}]))
               , <<"\n@end example\n\n">>
               ]);
           #{} ->
