@@ -369,12 +369,12 @@ document_category(P, Config, Category, Mod, Specs, L) ->
       Title = <<"Callbacks">>,
       AnchorPrefix = <<Prefix/binary, " Callback ">>
   end,
-  P([<<"@section ">>, Title, <<"\n@table @strong\n">>]),
+  P([<<"@section ">>, Title, $\n]),
   lists:foreach(
     fun({Key = {_, Name, Arity}, _Posn, NameStr, DocWrapper, Attrs}) ->
         FullName = [atom_to_binary(Name), "/", integer_to_list(Arity), " ", atom_to_binary(Mod)],
         P([ <<"@anchor{">>, FullName, " ", AnchorPrefix, <<"}\n">>
-          , <<"@item ">>, texi_escape(NameStr), <<"\n">>
+          , <<"@subheading ">>, texi_escape(NameStr), <<"\n">>
           , Index, FullName, $\n
           ]),
         case Specs of
@@ -401,8 +401,8 @@ document_category(P, Config, Category, Mod, Specs, L) ->
          Attrs),
         P(get_documentation(DocWrapper))
     end,
-    L),
-  P([<<"@end table\n">>]).
+    L).
+
 
 get_documentation(none) ->
   [];
