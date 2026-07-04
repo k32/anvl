@@ -106,6 +106,10 @@ project_model() ->
                     , default => []
                     }}
              }}
+       , extraction =>
+           #{ erlang => anvl_texinfo_erlang:project_model()
+            , lee => anvl_texinfo_lee:project_model()
+            }
        , include_dirs =>
            {[value],
             #{ oneliner => "List of TexInfo include directories relative to the project root directory"
@@ -135,7 +139,10 @@ This condition is specific for ANVL plugins.
       begin
         precondition(anvl_plugin:loaded(Plugin)) or
           precondition(
-            [ anvl_texinfo_erlang:app_docs_extracted(default, Plugin)
+            [ anvl_texinfo_erlang:app_docs_extracted(
+                anvl_project:root(),
+                default,
+                Plugin)
             , anvl_texinfo_lee:extracted(
                 default,
                 Plugin,

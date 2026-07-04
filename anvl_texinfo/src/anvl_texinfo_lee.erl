@@ -22,13 +22,17 @@
 This module contains routines for extracting documentation of Lee models to TexInfo files.
 """.
 
--export([dir/2, extracted/5]).
+-export([project_model/0, dir/2, extracted/5]).
 
 -include_lib("anvl_core/include/anvl.hrl").
 
 %%================================================================================
 %% API
 %%================================================================================
+
+-doc false.
+project_model() ->
+  #{}.
 
 -spec dir(anvl_erlc:profile(), anvl_erlc:otp_application()) -> file:filename().
 dir(Profile, App) ->

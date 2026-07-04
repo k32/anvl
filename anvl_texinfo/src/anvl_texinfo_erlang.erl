@@ -23,12 +23,14 @@ This module provides functions for extracting doc chunks from Erlang modules
 and converting them to texinfo sources.
 """.
 
--export([ app_docs_extracted/2
-        , app_docs_extracted/3
-        , module_docs_extracted/4
+-export([ app_docs_extracted/3
+        , app_docs_extracted/4
+        , module_docs_extracted/5
         , app_doc_dir/2
+        , project_model/0
         ]).
 
+-include_lib("typerefl/include/types.hrl").
 -include_lib("anvl_core/include/anvl.hrl").
 
 -export_type([extraction_config/0]).
@@ -47,6 +49,26 @@ and converting them to texinfo sources.
 %% API
 %%================================================================================
 
+-doc false.
+project_model() ->
+  #{ paper =>
+       {[value],
+        #{ oneliner => "Paper width for the Erlang source prettyprinter"
+         , type => pos_integer()
+         , default => 60
+         }}
+   , ribbon =>
+       {[value],
+        #{ oneliner => "Maximum number of characters per line in Erlang listings"
+         , doc => """
+                  This parameter is related to Erlang code listings.
+                  It sets the preferred maximum number of characters on any line, not counting indentation.
+                  """
+         , type => pos_integer()
+         , default => 50
+         }}
+   }.
+
 -doc """
 Return directory where the documentation is located.
 """.
@@ -57,21 +79,18 @@ app_doc_dir(Profile, App) ->
 -doc """
 Equivalent to
 @example erlang
-erl_doc(Profile, App, #@{ ref_prefix => <<"Erlang">>
-                       , erl_paper => 60
-                       , erl_ribbon => 50
-                       @})
+erl_doc(Profile, App, #@{ref_prefix => <<"Erlang">>@})
 @end example
 """.
--spec app_docs_extracted(Profile :: anvl_erlc:profile(), App :: anvl_erlc:application()) -> anvl_condition:t().
-app_docs_extracted(Profile, App) ->
-  app_docs_extracted(Profile, App, #{ref_prefix => <<"Erlang">>, erl_paper => 60, erl_ribbon => 50}).
+-spec app_docs_extracted(anvl_project:t(), anvl_erlc:profile(), anvl_erlc:application()) -> anvl_condition:t().
+app_docs_extracted(Project, Profile, App) ->
+  app_docs_extracted(Project, Profile, App, #{ref_prefix => <<"Erlang">>}).
 
 -doc """
 Render documentation for an Erlang application @var{App} compiled in profile @var{Profile}.
 """.
--spec app_docs_extracted(Profile :: anvl_erlc:profile(), App :: anvl_erlc:application(), extraction_config()) -> anvl_condition:t().
-?MEMO(app_docs_extracted, Profile, App, Config,
+-spec app_docs_extracted(Project :: anvl_project:t(), Profile :: anvl_erlc:profile(), App :: anvl_erlc:application(), extraction_config()) -> anvl_condition:t().
+?MEMO(app_docs_extracted, Project, Profile, App, Config,
       begin
         OutDir = app_doc_dir(Profile, App),
         ModulesDir = filename:join(OutDir, "mod"),
@@ -80,7 +99,7 @@ Render documentation for an Erlang application @var{App} compiled in profile @va
         {application, _, AppKVs} = Spec,
         Modules = proplists:get_value(modules, AppKVs),
         newer(anvl_erlc:app_file(Ctx), OutFile) or
-        precondition([module_docs_extracted(ModulesDir, Ctx, Config, I) || I <- Modules]) andalso
+        precondition([module_docs_extracted(Project, ModulesDir, Ctx, Config, I) || I <- Modules]) andalso
           begin
             {ok, FD} = file:open(OutFile, [write]),
             lists:foreach(
@@ -100,12 +119,13 @@ Render documentation for an Erlang application @var{App} compiled in profile @va
 Render documentation for an Erlang module.
 """.
 -spec module_docs_extracted(
+        Project :: anvl_project:t(),
         OutputDir :: file:filename(),
         AppInfo :: anvl_erlc:app_info(),
         Config :: extraction_config(),
         Mod :: module()
        ) -> anvl_condition:t().
-?MEMO(module_docs_extracted, OutDir, Ctx, Config, Mod,
+?MEMO(module_docs_extracted, Project, OutDir, Ctx, Config, Mod,
       begin
         OutFile = erl_module_doc_fn(OutDir, Mod),
         BeamFile = anvl_erlc:beam_file(Ctx, Mod),
@@ -114,7 +134,7 @@ Render documentation for an Erlang module.
             logger:debug("Rendering texi for ~p", [Mod]),
             {ok, FD} = file:open(OutFile, [write]),
             P = fun(L) -> io:put_chars(FD, L) end,
-            render_module_doc(P, Config, BeamFile),
+            render_module_doc(P, Project, Config, BeamFile),
             file:close(FD),
             true
           end
@@ -124,7 +144,7 @@ Render documentation for an Erlang module.
 %% Internal functions
 %%================================================================================
 
-render_module_doc(P, Config, FName) ->
+render_module_doc(P, Project, Config, FName) ->
   maybe
     #{ref_prefix := Prefix} = Config,
     {ok, {Mod, [{abstract_code, Code}, {documentation, Documenation}]}} ?=
@@ -152,9 +172,9 @@ render_module_doc(P, Config, FName) ->
     Callbacks = [I ||
                   I = {{callback, _, _}, _Posn, _NameStr, DocWrapper, _Attr} <- Docs,
                   DocWrapper =/= hidden],
-    document_category(P, Config, callback, Mod, Specs, Callbacks),
-    document_category(P, Config, type, Mod, Specs, Types),
-    document_category(P, Config, function, Mod, Specs, Functions),
+    document_category(P, Project, Config, callback, Mod, Specs, Callbacks),
+    document_category(P, Project, Config, type, Mod, Specs, Types),
+    document_category(P, Project, Config, function, Mod, Specs, Functions),
     P([<<"\n@raisesections\n">>]),
     true
   else
@@ -178,10 +198,12 @@ code_to_typespecs({raw_abstract_v1, AST}) ->
     #{},
     AST).
 
-document_category(_, _, _, _, _, []) ->
+document_category(_, _, _, _, _, _, []) ->
   ok;
-document_category(P, Config, Category, Mod, Specs, L) ->
-  #{ref_prefix := Prefix, erl_ribbon := Ribbon, erl_paper := Paper} = Config,
+document_category(P, Project, Config, Category, Mod, Specs, L) ->
+  #{ref_prefix := Prefix} = Config,
+  Paper = anvl_project:conf(Project, [texinfo, extraction, erlang, paper]),
+  Ribbon = anvl_project:conf(Project, [texinfo, extraction, erlang, ribbon]),
   case Category of
     type ->
       Index = <<"@tindex ">>,
