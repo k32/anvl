@@ -43,7 +43,8 @@ A client for @url{hex.pm}.
 Hex lock is a binary consisting of hex-encoded SHA256 hash of the tarball,
 followed by dash and SemVer version.
 
-For example: @code{e87a9dd6e7fe9c5804887850d4cdbcd83db4da7a27f928174f11e4e06fb7902e-2.10.0}
+For example: @code{e87a9dd6e7fe9c5804887850d4cdbcd8-2.10.0}
+(hash was contracted for brevity).
 """.
 -type lock() :: binary().
 

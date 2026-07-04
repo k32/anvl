@@ -70,4 +70,12 @@ NAME(__A, __B, __C, __D, __E, __F) ->
 NAME(__A, __B, __C, __D, __E, __F, __G) ->
    ?MEMO_THUNK(?MEMO_NAMESPACE ":" ??NAME, fun(A, B, C, D, E, F, G) -> BODY end, [__A, __B, __C, __D, __E, __F, __G])).
 
+-define(MEMO(NAME, A, B, C, D, E, F, G, H, BODY),
+NAME(__A, __B, __C, __D, __E, __F, __G, __H) ->
+   ?MEMO_THUNK(?MEMO_NAMESPACE ":" ??NAME, fun(A, B, C, D, E, F, G, H) -> BODY end, [__A, __B, __C, __D, __E, __F, __G, __H])).
+
+-define(MEMO(NAME, A, B, C, D, E, F, G, H, I, BODY),
+NAME(__A, __B, __C, __D, __E, __F, __G, __H, __I) ->
+   ?MEMO_THUNK(?MEMO_NAMESPACE ":" ??NAME, fun(A, B, C, D, E, F, G, H, I) -> BODY end, [__A, __B, __C, __D, __E, __F, __G, __H, __I])).
+
 -endif.

@@ -12,29 +12,29 @@
   @node Invokation \PREFIX\
   @section Invocation
   @lowersections
-    @include \DIR\/cli_param.texi
+    @include lee/default/\DIR\/cli_param.texi
   @raisesections
 
   @node Environment variables \PREFIX\
   @section Environment Variables
-  @include \DIR\/os_env.texi
+  @include lee/default/\DIR\/os_env.texi
 
   @node All Configurable Values \PREFIX\
   @section Index of All Configurable Values
   @lowersections
-    @include \DIR\/value.texi
+    @include lee/default/\DIR\/value.texi
   @raisesections
 
   @node Project Configuration \PREFIX\
   @section Project Configuration
   @lowersections
-    @include \DIR\/value.proj.texi
+    @include lee/default/\DIR\/value.proj.texi
   @raisesections
 
   @node API Reference \PREFIX\
   @section API Reference
   @lowersections
-    @include \DIR\/app.texi
+    @include erlang/default/\DIR\/app.texi
   @raisesections
 @end macro
 
