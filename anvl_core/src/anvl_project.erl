@@ -274,7 +274,7 @@ tab() ->
 -doc false.
 %% Simple parse transform that replaces (or adds) -module attribute
 parse_transform(Forms, Opts) ->
-  [Module | _] = [I || {d, 'PROJECT', I} <- Opts],
+  [Module | _] = [Module || {d, 'PROJECT', Module} <- Opts],
   case Forms of
     [File = {attribute, Loc, file, _}, {attribute, _, module, _} | Rest] ->
       [File, {attribute, Loc, module, Module} | Rest];
