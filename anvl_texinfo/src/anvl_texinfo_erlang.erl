@@ -25,6 +25,7 @@ and converting them to texinfo sources.
 
 -export([ app_docs_extracted/3
         , app_docs_extracted/4
+        , includes_dir/0
         , module_docs_extracted/5
         , app_doc_dir/2
         , project_model/0
@@ -66,6 +67,18 @@ project_model() ->
          , default => 50
          }}
    }.
+
+-doc """
+Path to the include file containing definitions of TexInfo macros.
+""".
+-spec includes_dir() -> file:filename().
+includes_dir() ->
+  case os:getenv("STAGE2") of
+    false ->
+      filename:join([anvl_app:prefix(), "share", "anvl", "texinfo"]);
+    _ ->
+      anvl_fn:proj_dir(anvl_project:root(), ["anvl_texinfo", "priv"])
+  end.
 
 -doc """
 Return directory where the documentation is located.
