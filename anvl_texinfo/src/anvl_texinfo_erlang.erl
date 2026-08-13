@@ -159,6 +159,7 @@ render_module_doc(P, Project, Config, FName) ->
     true ?= ModuleDoc =/= false,
     Chapter = <<(atom_to_binary(Mod))/binary, " ", Prefix/binary, " Module">>,
     P([<<"@node ">>, Chapter, $\n]),
+    P([<<"@findex ">>, atom_to_binary(Mod), <<" module\n">>]),
     P([<<"@section Module @code{">>, atom_to_binary(Mod), <<"}\n@lowersections\n">>]),
     P(get_documentation(MDocWrapper)),
     Functions = [I ||
