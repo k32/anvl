@@ -41,8 +41,6 @@ and converting them to texinfo sources.
 
 -type extraction_config() ::
         #{ ref_prefix := binary()
-         , erl_ribbon := pos_integer()
-         , erl_paper  := pos_integer()
          }.
 
 %%================================================================================

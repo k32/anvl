@@ -230,7 +230,7 @@ is compiled to format @var{Format}.
 -doc """
 Directory where generated TexInfo sources are found.
 """.
--spec gen_src_dir(anvl_fn:component()) -> file:filename().
+-spec gen_src_dir([anvl_fn:component()]) -> file:filename().
 gen_src_dir(Components) ->
   anvl_fn:workdir(["anvl_texinfo", "gen_src" | Components]).
 

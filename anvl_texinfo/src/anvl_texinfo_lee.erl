@@ -34,16 +34,16 @@ This module contains routines for extracting documentation of Lee models to TexI
 project_model() ->
   #{}.
 
--spec dir(anvl_erlc:profile(), anvl_erlc:otp_application()) -> file:filename().
+-spec dir(anvl_erlc:profile(), anvl_erlc:application()) -> file:filename().
 dir(Profile, App) ->
   anvl_texinfo:gen_src_dir(["lee", Profile, App]).
 
 -spec extracted(
         anvl_erlc:profile(),
-        anvl_erlc:otp_application(),
+        anvl_erlc:application(),
         {module(), atom()},
         {module(), atom()},
-        lee_doc:options()
+        map()
        ) -> anvl_condition:t().
 ?MEMO(extracted, Profile, App, MetaModelGetter, ModelGetter, Conf,
       begin
