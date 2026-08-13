@@ -55,6 +55,7 @@ main(Args) ->
            , nouse_stdio
            , {cd, "."}
            , {args, ["--log-level", "notice", "install" | Args]}
+           , {env, [{"STAGE2", "true"}]}
            ]),
   receive
     {Port, {exit_status, E}} -> halt(E)

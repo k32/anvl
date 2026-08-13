@@ -113,6 +113,16 @@ project_model() ->
        , include_dirs =>
            {[value],
             #{ oneliner => "List of TexInfo include directories relative to the project root directory"
+             , doc => """
+                      The following substitutions are available:
+
+                      @table @code
+                      @item project
+                      Replaced with the project directory
+                      @item workdir
+                      Working directory
+                      @end table
+                      """
              , type => list(string())
              , default => []
              }}
@@ -198,9 +208,12 @@ is compiled to format @var{Format}.
 ?MEMO(compiled, Project, DocSrc, Format,
       begin
         Dir = doc_dir([]),
+        PathSubst = #{ project => anvl_project:dir(Project)
+                     , workdir => anvl_fn:workdir([])
+                     },
         IncludeDirs =
           [ gen_src_dir([])
-          | [filename:join(anvl_project:dir(Project), I) ||
+          | [anvl_lib:template(I, PathSubst, path) ||
               I <- anvl_project:conf(Project, [texinfo, include_dirs])]
           ],
         Name = filename:rootname(filename:basename(DocSrc)),

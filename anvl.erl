@@ -65,6 +65,7 @@ conf() ->
             ]
         , formats => [info, html, latex]
         , sources => ["anvl_core/doc/anvl.texi"]
+        , include_dirs => [anvl_texinfo_erlang:includes_dir()]
         }
    }.
 
@@ -74,7 +75,7 @@ apps() ->
 ?MEMO(install,
       begin
         Prefix = filename:join(os:getenv("HOME"), ".local"),
-        precondition([escript(), docs()]) or
+        precondition([escript(), docs(Prefix)]) or
           install_includes(Prefix) or
           install(Prefix, "${prefix}/bin/anvl", anvl_fn:rootdir(["anvl"]), 8#755) or
           install_docs(Prefix)
@@ -172,12 +173,22 @@ install_includes(Prefix) ->
     Files).
 
 install_docs(Prefix) ->
+  %% Install compiled documentation:
   anvl_texinfo:available() andalso
     install(
       Prefix,
       "${prefix}/share/anvl/info/anvl.info",
       anvl_fn:rootdir(["_anvl_build/doc/anvl.info"]),
       8#644).
+
+?MEMO(install_texinfo_includes, Prefix,
+      begin
+        install(
+          Prefix,
+          "${prefix}/share/anvl/texinfo/anvl_erlang.texi",
+          filename:join([anvl_erlc:app_path(default, anvl_texinfo), "priv", "anvl_erlang.texi"]),
+          8#644)
+      end).
 
 install(Prefix, Template, Src, Mode) ->
   Dest = patsubst(Template, Src, #{prefix => Prefix}),
@@ -204,12 +215,15 @@ release() ->
         , anvl_erlc_dialyzer:passed(default)
         ])).
 
-?MEMO(docs,
-      case anvl_texinfo:available() of
-        false ->
-          logger:warning("GNU TexInfo is not found, documentation is not built.", []),
-          false;
-        true ->
-          precondition([anvl_texinfo:anvl_plugin_documented(I) || I <- apps()]),
-          precondition(anvl_texinfo:compiled(anvl_project:root()))
+?MEMO(docs, Prefix,
+      begin
+        _ = precondition(install_texinfo_includes(Prefix)),
+        case anvl_texinfo:available() of
+          false ->
+            logger:warning("GNU TexInfo is not found, documentation is not built.", []),
+            false;
+          true ->
+            precondition([anvl_texinfo:anvl_plugin_documented(I) || I <- apps()]),
+            precondition(anvl_texinfo:compiled(anvl_project:root()))
+        end
       end).
