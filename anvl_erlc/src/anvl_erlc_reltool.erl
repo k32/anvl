@@ -56,9 +56,7 @@ a release management tool.
 %%================================================================================
 
 -doc """
-Condition: @url{https://www.erlang.org/doc/apps/tools/xref.html, XRef} analysis passed for a profile.
-
-Parameters for this condition are set in the project configuration.
+Condition: a release has been created.
 """.
 -spec released(anvl_project:t(), release_id()) -> anvl_condition:t().
 ?MEMO(released, Project, Id,

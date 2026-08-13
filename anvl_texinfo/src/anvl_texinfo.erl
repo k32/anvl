@@ -26,7 +26,13 @@ A plugin for creating and compiling @url{https://www.gnu.org/software/texinfo/, 
 -behavior(anvl_plugin).
 
 %% API
--export([available/0, compiled/1, compiled/3, anvl_plugin_documented/1, erl_doc/2, erl_module_doc/3]).
+-export([ available/0
+        , compiled/1
+        , compiled/3
+        , anvl_plugin_documented/1
+        , texi_escape/1
+        , gen_src_dir/1
+        ]).
 
 %% behavior callbacks:
 -export([init/0, init_for_project/1, model/0, project_model/0]).
@@ -95,10 +101,20 @@ project_model() ->
                    }}
              , options =>
                  {[value],
-                  #{ oneliner => "List of additional CLI options"
-                   , type => list(string())
-                   , default => []
-                   }}
+                   #{ oneliner => "List of additional CLI options"
+                    , type => list(string())
+                    , default => []
+                    }}
+             }}
+       , extraction =>
+           #{ erlang => anvl_texinfo_erlang:project_model()
+            , lee => anvl_texinfo_lee:project_model()
+            }
+       , include_dirs =>
+           {[value],
+            #{ oneliner => "List of TexInfo include directories relative to the project root directory"
+             , type => list(string())
+             , default => []
              }}
        , sources =>
            {[value],
@@ -121,43 +137,32 @@ This condition is specific for ANVL plugins.
 """.
 ?MEMO(anvl_plugin_documented, Plugin,
       begin
-        _ = precondition(anvl_plugin:loaded(Plugin)),
-        Dir = doc_dir([Plugin]),
-        %% Render API reference:
-        _ = precondition(erl_doc(default, Plugin)),
-        %% Render model documentation:
-        with_model(
-          anvl_plugin:metamodel(),
-          #{ output_dir => Dir
-           , extension => ".texi"
-           , formatter => fun lee_doc:texinfo/3
-           , metatypes => [cli_param, value, os_env]
-           },
-          Plugin,
-          model),
-        with_model(
-          anvl_plugin:project_metamodel(),
-          #{ output_dir => Dir
-           , extension => ".proj.texi"
-           , formatter => fun lee_doc:texinfo/3
-           , metatypes => [value]
-           },
-          Plugin,
-          project_model)
+        precondition(anvl_plugin:loaded(Plugin)) or
+          precondition(
+            [ anvl_texinfo_erlang:app_docs_extracted(
+                anvl_project:root(),
+                default,
+                Plugin)
+            , anvl_texinfo_lee:extracted(
+                default,
+                Plugin,
+                {anvl_plugin, metamodel},
+                {Plugin, model},
+                #{ extension => ".texi"
+                 , formatter => fun lee_doc:texinfo/3
+                 , metatypes => [cli_param, value, os_env]
+                 })
+            , anvl_texinfo_lee:extracted(
+                default,
+                Plugin,
+                {anvl_plugin, project_metamodel},
+                {Plugin, project_model},
+                #{ extension => ".proj.texi"
+                 , formatter => fun lee_doc:texinfo/3
+                 , metatypes => [value]
+                 })
+            ])
       end).
-
-with_model(Metamodel, ExtractorConfig, Plugin, ModelCB) ->
-  erlang:function_exported(Plugin, ModelCB, 0) andalso
-    begin
-      case lee_model:compile(Metamodel, [Plugin:ModelCB()]) of
-        {ok, Model} ->
-          _ = lee_doc:make_docs(Model, ExtractorConfig),
-          true;
-        {error, Errors} ->
-          [logger:critical(E) || E <- Errors],
-          ?UNSAT("Failed to compile ~p", [ModelCB])
-      end
-    end.
 
 -doc """
 Check if the system has @command{texi2any} executable necessary for building TexInfo.
@@ -170,7 +175,7 @@ available() ->
   end.
 
 -doc """
-Condition: all texinfo sources listend in the project configuration
+Condition: all texinfo sources listed in the project configuration
 are compiled to all formats requested by the project.
 """.
 -spec compiled(anvl_project:t()) -> anvl_condition:t().
@@ -193,6 +198,11 @@ is compiled to format @var{Format}.
 ?MEMO(compiled, Project, DocSrc, Format,
       begin
         Dir = doc_dir([]),
+        IncludeDirs =
+          [ gen_src_dir([])
+          | [filename:join(anvl_project:dir(Project), I) ||
+              I <- anvl_project:conf(Project, [texinfo, include_dirs])]
+          ],
         Name = filename:rootname(filename:basename(DocSrc)),
         case Format of
           html ->
@@ -207,189 +217,27 @@ is compiled to format @var{Format}.
             filelib:ensure_dir(DocTarget),
             CustomArgs = anvl_project:conf(Project, [texinfo, compile, {Format}, options]),
             ?LOG_NOTICE("Creating ~s", [DocTarget]),
-            Args = CustomArgs ++ [ "-I", Dir
-                                 , "--" ++ atom_to_list(Format)
-                                 , "-o", Output
-                                 , DocSrc
-                                 ],
+            Args = CustomArgs ++
+              include_args(IncludeDirs) ++
+              [ "--" ++ atom_to_list(Format)
+              , "-o", Output
+              , DocSrc
+              ],
             anvl_lib:exec("texi2any", Args, [{cd, anvl_project:dir(Project)}])
           end
       end).
 
 -doc """
-Render documentation for an Erlang application @var{App} compiled in profile @var{Profile}.
+Directory where generated TexInfo sources are found.
 """.
--spec erl_doc(Profile :: anvl_erlc:profile(), App :: anvl_erlc:application()) -> anvl_condition:t().
-?MEMO(erl_doc, Profile, App,
-      begin
-        OutDir = doc_dir([App]),
-        ModulesDir = filename:join(OutDir, "mod"),
-        OutFile = filename:join(OutDir, "app.texi"),
-        #{spec := Spec} = Ctx = anvl_erlc:app_info(Profile, App),
-        {application, _, AppKVs} = Spec,
-        Modules = proplists:get_value(modules, AppKVs),
-        newer(anvl_erlc:app_file(Ctx), OutFile) or
-        precondition([erl_module_doc(ModulesDir, Ctx, I) || I <- Modules]) andalso
-          begin
-            {ok, FD} = file:open(OutFile, [write]),
-            lists:foreach(
-              fun(Mod) ->
-                  io:put_chars(FD, [ <<"@include ">>
-                                   , filename:join(ModulesDir, atom_to_list(Mod))
-                                   , <<".texi\n">>
-                                   ])
-              end,
-              Modules),
-            file:close(FD),
-            true
-          end
-      end).
+-spec gen_src_dir([anvl_fn:component()]) -> file:filename().
+gen_src_dir(Components) ->
+  anvl_fn:workdir(["anvl_texinfo", "gen_src" | Components]).
 
 -doc """
-Render documentation for an Erlang module.
+Escape @@, @{ and @} symbols.
 """.
--spec erl_module_doc(
-        OutputDir :: file:filename(),
-        AppInfo :: anvl_erlc:app_info(),
-        Mod :: module()
-       ) -> anvl_condition:t().
-?MEMO(erl_module_doc, OutDir, Ctx = #{app := App}, Mod,
-      begin
-        OutFile = erl_module_doc_fn(OutDir, Mod),
-        BeamFile = anvl_erlc:beam_file(Ctx, Mod),
-        newer(BeamFile, OutFile) andalso
-          begin
-            logger:debug("Rendering texi for ~p", [Mod]),
-            {ok, FD} = file:open(OutFile, [write]),
-            P = fun(L) -> io:put_chars(FD, L) end,
-            render_module_doc(P, App, BeamFile),
-            file:close(FD),
-            true
-          end
-      end).
-
-%%================================================================================
-%% Internal functions
-%%================================================================================
-
-erl_module_doc_fn(OutDir, Module) ->
-  filename:join([OutDir, atom_to_list(Module) ++ ".texi"]).
-
-render_module_doc(P, App, FName) ->
-  maybe
-    {ok, {Mod, [{abstract_code, Code}, {documentation, Documenation}]}} ?=
-      beam_lib:chunks(FName, [abstract_code, documentation]),
-    Specs = code_to_typespecs(Code),
-    {docs_v1,
-     _Anno,                     % erl_anno:anno(),
-     _BeamLanguage,             % atom(),
-     _Format,                   % binary(),
-     MDocWrapper,
-     _Metadata,                 % map(),
-     Docs} = Documenation,
-    ModuleDoc = get_documentation(MDocWrapper),
-    true ?= ModuleDoc =/= false,
-    Chapter = <<"api/", (atom_to_binary(App))/binary, "/", (atom_to_binary(Mod))/binary>>,
-    P([<<"@node ">>, Chapter, $\n]),
-    P([<<"@section Module @code{">>, atom_to_binary(Mod), <<"}\n@lowersections\n">>]),
-    P(get_documentation(MDocWrapper)),
-    Functions = [I ||
-                  I = {{function, _, _}, _Posn, _NameStr, DocWrapper, _Attr} <- Docs,
-                  DocWrapper =/= hidden],
-    Types = [I ||
-              I = {{type, _, _}, _Posn, _NameStr, DocWrapper, _Attr} <- Docs,
-              DocWrapper =/= hidden],
-    Callbacks = [I ||
-                  I = {{callback, _, _}, _Posn, _NameStr, DocWrapper, _Attr} <- Docs,
-                  DocWrapper =/= hidden],
-    document_category(P, callback, Mod, Specs, Callbacks),
-    document_category(P, type, Mod, Specs, Types),
-    document_category(P, function, Mod, Specs, Functions),
-    P([<<"\n@raisesections\n">>]),
-    true
-  else
-    {error,beam_lib, {missing_chunk, _, "Docs"}} ->
-      false;
-    false ->
-      false
-  end.
-
-code_to_typespecs({raw_abstract_v1, AST}) ->
-  lists:foldl(
-    fun(I = {attribute, _Anno, spec, {{Name, Arity}, _}}, Acc) ->
-        Acc#{{function, Name, Arity} => I};
-       (I = {attribute, _Anno, type, {Name, _AST, Params}}, Acc) ->
-        Acc#{{type, Name, length(Params)} => I};
-       (I = {attribute, _Anno, callback, {{Name, Arity}, _}}, Acc) ->
-        Acc#{{callback, Name, Arity} => I};
-       (_, Acc) ->
-        Acc
-    end,
-    #{},
-    AST).
-
-document_category(_, _, _, _, []) ->
-  ok;
-document_category(P, Category, Mod, Specs, L) ->
-  case Category of
-    type ->
-      Index = <<"@tindex ">>,
-      Title = <<"Types">>,
-      AnchorPrefix = <<"t:">>;
-    function ->
-      Index = <<"@findex ">>,
-      Title = <<"Functions">>,
-      AnchorPrefix = <<>>;
-    callback ->
-      Index = <<"@findex ">>,
-      Title = <<"Callbacks">>,
-      AnchorPrefix = <<"c:">>
-  end,
-  P([<<"@section ">>, Title, <<"\n@table @strong\n">>]),
-  lists:foreach(
-    fun({Key = {_, Name, Arity}, _Posn, NameStr, DocWrapper, Attrs}) ->
-        FullName = [atom_to_binary(Mod), $:, atom_to_binary(Name), $/, integer_to_list(Arity)],
-        P([ <<"@anchor{">>, AnchorPrefix, FullName, <<"}\n">>
-          , <<"@item ">>, texi_escape(NameStr), <<"\n">>
-          , Index, FullName, $\n
-          ]),
-        case Specs of
-          #{Key := AST} ->
-            P([ <<"@example\n">>
-              , texi_escape(erl_prettypr:format(AST))
-              , <<"\n@end example\n\n">>
-              ]);
-          #{} ->
-            ok
-        end,
-        maps:foreach(
-          fun
-            (source_anno, _) ->
-              ok;
-            (exported, Exp) ->
-              Exp orelse P(<<"@emph{Not exported}\n\n">>);
-            (Attr, Val) ->
-             P([ <<"@emph{">>, texi_escape(atom_to_binary(Attr)), <<"}: @code{">>
-               , texi_escape(io_lib:format("~p", [Val]))
-               , <<"}\n\n">>
-               ])
-         end,
-         Attrs),
-        P(get_documentation(DocWrapper))
-    end,
-    L),
-  P([<<"@end table\n">>]).
-
-get_documentation(none) ->
-  [];
-get_documentation(hidden) ->
-  false;
-get_documentation(#{<<"en">> := Doc}) ->
-  [Doc, <<"\n\n">>].
-
-doc_dir(Rest) ->
-  anvl_fn:workdir([anvl_plugin:conf([anvl_texinfo, doc_dir]) | Rest]).
-
+-spec texi_escape(iodata()) -> iodata().
 texi_escape($@) ->
   ~"@@";
 texi_escape(${) ->
@@ -402,3 +250,15 @@ texi_escape(B) when is_binary(B) ->
   lists:join($@, binary:split(B, [~"@", ~"{", ~"}"], [global]));
 texi_escape(I) ->
   I.
+
+%%================================================================================
+%% Internal functions
+%%================================================================================
+
+doc_dir(Rest) ->
+  anvl_fn:workdir([anvl_plugin:conf([anvl_texinfo, doc_dir]) | Rest]).
+
+include_args([]) ->
+  [];
+include_args([Dir | Rest]) ->
+  [ "-I", Dir | include_args(Rest)].

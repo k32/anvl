@@ -143,8 +143,8 @@ project_model() ->
 
                         Plugins that are loaded later may rely on the ones that appear in the list earlier.
                         For example,
-                        @link{api/anvl_erlc/anvl_erlc, anvl_erlc} may try to resolve application dependencies
-                        using @link{api/anvl_git/anvl_git, anvl_git}.
+                        @erlmodref{link,anvl_erlc} may try to resolve application dependencies
+                        using @erlmodref{link,anvl_git}.
                         """
          , type      => list(anvl_plugin:t())
          , default   => []

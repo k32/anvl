@@ -12,29 +12,29 @@
   @node Invokation \PREFIX\
   @section Invocation
   @lowersections
-    @include \DIR\/cli_param.texi
+    @include lee/default/\DIR\/cli_param.texi
   @raisesections
 
   @node Environment variables \PREFIX\
   @section Environment Variables
-  @include \DIR\/os_env.texi
+  @include lee/default/\DIR\/os_env.texi
 
   @node All Configurable Values \PREFIX\
   @section Index of All Configurable Values
   @lowersections
-    @include \DIR\/value.texi
+    @include lee/default/\DIR\/value.texi
   @raisesections
 
   @node Project Configuration \PREFIX\
   @section Project Configuration
   @lowersections
-    @include \DIR\/value.proj.texi
+    @include lee/default/\DIR\/value.proj.texi
   @raisesections
 
   @node API Reference \PREFIX\
   @section API Reference
   @lowersections
-    @include \DIR\/app.texi
+    @include erlang/default/\DIR\/app.texi
   @raisesections
 @end macro
 
@@ -84,6 +84,50 @@ Foundation Web site at @url{https://www.gnu.org/licenses/fdl.html}.
 
 @node Introduction
 @chapter Introduction
+
+@ifinfo
+@macro erlref{MODULE,FUNCTION,ARITY}
+    @code{\MODULE\/\FUNCTION\/\ARITY\}
+@end macro
+@end ifinfo
+
+@ifnotinfo
+@macro erlref{MODULE,FUNCTION,ARITY}
+  @code{\MODULE\:\FUNCTION\/\ARITY\}
+@end macro
+@end ifnotinfo
+
+@macro erlcall{MODULE,FUNCTION,ARITY}
+\MODULE\:\FUNCTION\
+@end macro
+
+@macro erlicall{MODULE,FUNCTION,ARITY}
+\FUNCTION\
+@end macro
+
+@macro erlfunlike{OUTER, INNER, PREFIX, CATEGORY, MODULE, FUNCTION, ARITY}
+@\OUTER\{\FUNCTION\/\ARITY\ \MODULE\ \PREFIX\ \CATEGORY\,@\INNER\{\MODULE\,\FUNCTION\,\ARITY\}}
+@end macro
+
+@macro erlfn{OUTER, INNER, MODULE, FUNCTION, ARITY}
+@erlfunlike{\OUTER\,\INNER\,Erlang,Function,\MODULE\,\FUNCTION\,\ARITY\}
+@end macro
+
+@macro erltp{OUTER, INNER, MODULE, FUNCTION, ARITY}
+@erlfunlike{\OUTER\,\INNER\,Erlang,Type,\MODULE\,\FUNCTION\,\ARITY\}
+@end macro
+
+@macro erlcb{OUTER, INNER, MODULE, FUNCTION, ARITY}
+@erlfunlike{\OUTER\,\INNER\,Erlang,Callback,\MODULE\,\FUNCTION\,\ARITY\}
+@end macro
+
+@macro erlmoduleref{OUTER, PREFIX, MODULE}
+@\OUTER\{\MODULE\ \PREFIX\ Module,@code{\MODULE\}}
+@end macro
+
+@macro erlmodref{OUTER, MODULE}
+@erlmoduleref{\OUTER\,Erlang,\MODULE\}
+@end macro
 
 ANVL is a general-purpose task planning and execution tool,
 that aims to be conceptually simple, universal and flexible.
@@ -171,7 +215,7 @@ Such dependencies are called @emph{preconditions}.
 ANVL doesn't require a preliminary scheduling stage to build and analyze the dependency graph.
 Instead, any condition can invoke any precondition at any time,
 making the system very flexible.
-Precondition dependency graph is updated dynamically when a condition calls a built-in @link{anvl_condition:precondition/1, precondition} function,
+Precondition dependency graph is updated dynamically when a condition calls a built-in @erlfn{link,erlref,anvl_condition,precondition,1} function,
 as demonstrated by the example below:
 
 @example
@@ -217,7 +261,7 @@ If needed, @code{fun ?MODULE:Fun/N} syntax can be used instead.
 Other than that,
 @file{anvl.erl} is compiled and loaded as a normal Erlang module.
 
-Project configuration modules implement the @link{api/anvl_core/anvl_project,@code{anvl_project}} behavior.
+Project configuration modules implement the @erlmodref{link,anvl_project} behavior.
 
 Project referred to by @link{cli_param/root,@option{-d}} CLI argument is called the @emph{root} project.
 Project can refer to other projects, known as @emph{child} projects.
@@ -232,7 +276,7 @@ is to take a look at an abridged @file{anvl.erl} that ANVL uses to build itself:
 -include("anvl.hrl").
 
 %% Project configuration:
-@link{c:anvl_project:conf/0,conf}() ->
+@erlcb{link,erlicall,anvl_project,conf,0}() ->
   EmuArgs = "-dist_listen false -escript main anvl_app",
   #@{ @link{value/plugins,plugins} => [@link{Erlc Builtin ANVL Plugin,anvl_erlc}, @link{TexInfo Builtin ANVL Plugin,anvl_texinfo}]
    , @link{value/conditions,conditions} => [@link{conf_example/install,install}, @link{conf_example/static_checks,static_checks}, @link{conf_example/escript,escript}]
@@ -266,14 +310,14 @@ is to take a look at an abridged @file{anvl.erl} that ANVL uses to build itself:
 %%  module:
 @anchor{conf_example/escript}
 escript() ->
-  @link{anvl_erlc_escript:created/2,anvl_erlc_escript:created}(anvl_project:root(), anvl).
+  @erlfn{link,erlcall,anvl_erlc_escript,created,2}(anvl_project:root(), anvl).
 
 %% Condition: code passed static checks
 @anchor{conf_example/static_checks}
 ?MEMO(static_checks,
       precondition(
-        [ @link{anvl_erlc_xref:passed/1,anvl_erlc_xref:passed}(default)
-        , @link{anvl_erlc_dialyzer:passed/1,anvl_erlc_dialyzer:passed}(default)
+        [ @erlfn{link,erlcall,anvl_erlc_xref,passed,1}(default)
+        , @erlfn{link,erlcall,anvl_erlc_dialyzer,passed,1}(default)
         ])).
 
 %% A regular helper function
@@ -352,8 +396,8 @@ and @code{@{rm, Key@}},
 that resets the value associated with the key to the default or deletes it.
 
 @example erlang
-@link{c:anvl_project:conf_override/1,conf_override}(ChildProject) ->
-  case filename:basename(@link{anvl_project:dir/1,anvl_project:dir}(ChildProject)) of
+@erlcb{link,erlicall,anvl_project,conf_override,1}(ChildProject) ->
+  case filename:basename(@erlfn{link,erlcall,anvl_project,dir,1}(ChildProject)) of
     "some_project" ->
       %% If project is located in a directory ending with "some_project",
       %% apply an override:
@@ -368,7 +412,7 @@ that resets the value associated with the key to the default or deletes it.
 
 @subsection Plugin
 
-A @emph{plugin} is an Erlang/OTP application containing a module that implements the @link{api/anvl_core/anvl_plugin,@code{anvl_plugin}} behavior.
+A @emph{plugin} is an Erlang/OTP application containing a module that implements the @erlmodref{link,anvl_plugin} behavior.
 
 ANVL comes with a number of built-in plugins,
 sufficient for bootstrapping other plugins:
@@ -380,8 +424,8 @@ for building and statically checking Erlang applications.
 for cloning git repositories.
 @item @ref{TexInfo Builtin ANVL Plugin,TexInfo},
 for building documentation in TexInfo format.
-@item @ref{hex.pm Builtin ANVL Plugin, Hex.pm},
-a lightweight client for @url{hex.pm} package repository.
+@item @ref{hex pm Builtin ANVL Plugin, Hex.pm},
+a lightweight client for @url{https://hex.pm, hex.pm} package repository.
 @item @ref{Rebar3 Builtin ANVL Plugin, rebar3},
 a @url{https://www.rebar3.org/, rebar3} compatibility layer.
 @end itemize
@@ -403,7 +447,7 @@ Tool configuration is site-specific and global.
 @item
 @cindex project configuration
 @emph{Project Configuration},
-that is set by ANVL projects via @link{c:anvl_project:conf/0, anvl_project:conf/0} callback.
+that is set by ANVL projects via a callback (@erlcb{pxref,erlref,anvl_project,conf,0}).
 ANVL keeps such configurations separate for each project.
 The root project can override configuration of its dependencies.
 @end enumerate
@@ -429,8 +473,8 @@ or after compiling the source file with GCC.
 
 ?MEMO(source_compiled, Src, Obj,
       begin
-        @link{anvl_lib:newer/2,newer}(Src, Obj) andalso
-          @link{anvl_lib:exec/2,anvl_lib:exec}("gcc", ["-c", "-o", Obj, Src])
+        @erlfn{link,erlicall,anvl_lib,newer,2}(Src, Obj) andalso
+          @erlfn{link,erlcall,anvl_lib,exec,2}("gcc", ["-c", "-o", Obj, Src])
       end).
 @end example
 
@@ -448,13 +492,13 @@ Next, let's define a condition that ensures that the target executable is built 
         Executable = "build/hello",
         Sources = filelib:wildcard("c_src/*.c"),
         Objs = lists:map(fun obj_name/1, Sources),
-        @link{anvl_condition:precondition/1,precondition}([source_compiled(Src, obj_name(Src)) || Src <- Sources]) or
+        @erlfn{link,erlicall,anvl_condition,precondition,1}([source_compiled(Src, obj_name(Src)) || Src <- Sources]) or
           newer(Objs, Executable) andalso
           anvl_lib:exec("gcc", ["-o", Executable | Objs])
       end).
 
 obj_name(Src) ->
-  @link{anvl_lib:patsubst/2,patsubst}("build/$@{basename@}.o", Src).
+  @erlfn{link,erlcall,anvl_lib,patsubst,2}("build/$@{basename@}.o", Src).
 @end example
 
 Finally, setting @code{conditions} project configuration will let ANVL framework know that @code{executable_built/0} function is a condition that can be invoked by the user:
