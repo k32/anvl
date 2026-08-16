@@ -1,0 +1,6 @@
+%% -*- mode:erlang -*-
+{application, anvl_test,
+ [ {description, "ANVL plugin for running tests"}
+ , {vsn, "0.0.1"}
+ , {applications, [kernel, stdlib, familiar]}
+ ]}.
