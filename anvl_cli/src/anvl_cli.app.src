@@ -1,0 +1,6 @@
+%% -*- mode:erlang -*-
+{application, anvl_cli,
+ [ {description, "A placeholder application for the ANVL command line tool"}
+ , {vsn, "0.0.1"}
+ , {applications, [kernel, stdlib, inets, ssl, lee, anvl_core, anvl_erlc, anvl_git, anvl_texinfo, anvl_hex_pm, anvl_rebar3, anvl_otp_install]}
+ ]}.
