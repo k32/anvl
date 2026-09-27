@@ -6,4 +6,112 @@ This builtin plugin contains routines for building documentation in GNU TexInfo 
 ANVL uses it to produce its own documentation,
 as well as documentation for external plugins.
 
+@node ANVL TexInfo Macros
+@section TexInfo Macros
+
+ANVL provides a small TexInfo library with various helper macros.
+Its location is returned by @erlfn{ref,erlref,anvl_texinfo_erlang,includes_dir,0} function.
+To use it do the following:
+
+@enumerate
+@item Add include directory to the project by setting @ref{value/texinfo/include_dirs} in @code{anvl.erl}:
+
+@example
+conf() ->
+  #@{ [texinfo, include_dirs] => [anvl_texinfo_erlang:includes_dir(), ...]
+   @}.
+@end example
+
+@item Include the necessary files in the top-level TexInfo document:
+
+@example
+@@include anvl_erlang.texi
+@end example
+@end enumerate
+
+This file provides the following macros that can be used to create cross-references to the automatically-generated Erlang documentation:
+
+@itemize
+@item @code{erlfn}:
+@findex erlfn
+refer to an Erlang function.
+@item @code{erltp}:
+@findex erltp
+refer to an Erlang type.
+@item @code{erlcb}:
+@findex erlcb
+refer to an Erlang behavior callback.
+@end itemize
+
+All of them have the same arguments (using @code{erlfn} as an example):
+
+@example
+@@erlfn@{OUTER, INNER, MODULE, NAME, ARITY@}
+@end example
+
+Semantics of @code{MODULE}, @code{NAME} and @code{ARITY} arguments should be pretty self-explanatory.
+@code{OUTER} argument can be set to either @code{xref}, @code{pxref}, @code{ref} or @code{link}.
+The macro will expand into the corresponding TexInfo cross-reference command.
+
+@code{INNER} argument controls how to render the label for the online output.
+It can be one of the following:
+
+@enumerate
+  @item @code{erlref}
+    @findex erlref
+    is rendered as @code{MODULE:NAME/ARITY} in LaTeX and HTML outputs or
+    (due to the limitations of the format)
+    as @code{MODULE/NAME/ARITY} in GNU info files.
+
+    For example, @code{@@erlfn@{pxref,erlref,anvl_condition,precondition,1@}} becomes ``@erlfn{pxref,erlref,anvl_condition,precondition,1}''.
+
+  @item @code{erlcall}
+    @findex erlcall
+    is rendered as @code{MODULE:NAME}.
+    It is used to make links inside the code blocks.
+    For example,
+
+    @example
+    foo() ->
+          @@erlfn@{link,erlcall,anvl_condition,precondition,1@}(bar()).
+    @end example
+
+    becomes
+
+    @example
+    foo() ->
+          @erlfn{link,erlcall,anvl_condition,precondition,1}(bar()).
+    @end example
+
+  @findex erllcall
+  @item @code{erllcall}
+    (where @code{l} stands for ``local'')
+    is very similar to @code{erlcall},
+    but it omits the module name.
+    It is used to refer to local and imported functions.
+    For example,
+
+    @example
+    foo() ->
+          @@erlfn@{link,erllcall,anvl_condition,precondition,1@}(bar()).
+    @end example
+
+    becomes
+
+    @example
+    foo() ->
+          @erlfn{link,erllcall,anvl_condition,precondition,1}(bar()).
+    @end example
+
+@end enumerate
+
+@findex erlmodref
+Finally, there is @code{erlmodref} macro used to cross-reference an entire Erlang module.
+It takes just two arguments: @code{OUTER} and @code{MODULE}.
+Their semantics is the same as the above.
+
+For example,
+@code{@@erlmodref@{pxref,anvl_condition@}} becomes ``@erlmodref{pxref,anvl_condition}''.
+
+
 @lee{anvl_texinfo,ANVL TexInfo}

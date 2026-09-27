@@ -21,7 +21,8 @@
 
 conf() ->
   EmuArgs = "-dist_listen false -escript main anvl_app",
-  Escript = #{apps => [lee, typerefl | apps()]},
+  Apps = [lee, typerefl, anvl_cli | plugins()],
+  Escript = #{apps => Apps},
   #{ plugins => [anvl_git, anvl_erlc, anvl_texinfo]
    , conditions => [install, static_checks, escript, docs, test, git_tests, deadlock_test, otp_install_test, release]
    , erlang =>
@@ -44,7 +45,7 @@ conf() ->
         , reltool =>
             [#{ id => anvl
               , version => "0.0.1"
-              , apps => apps()
+              , apps => Apps
               , config =>
                   [ {boot_rel, "anvl"}
                   , {relocatable, false}
@@ -69,7 +70,7 @@ conf() ->
         }
    }.
 
-apps() ->
+plugins() ->
   [anvl_core, anvl_erlc, anvl_git, anvl_texinfo, anvl_hex_pm, anvl_rebar3, anvl_otp_install].
 
 ?MEMO(install,
@@ -223,7 +224,7 @@ release() ->
             logger:warning("GNU TexInfo is not found, documentation is not built.", []),
             false;
           true ->
-            precondition([anvl_texinfo:anvl_plugin_documented(I) || I <- apps()]),
+            precondition([anvl_texinfo:anvl_plugin_documented(I) || I <- plugins()]),
             precondition(anvl_texinfo:compiled(anvl_project:root()))
         end
       end).

@@ -1,3 +1,7 @@
+@ifclear ERLNAMESPACE
+@set ERLNAMESPACE
+@end ifclear
+
 @ifinfo
 @macro erlref{MODULE,FUNCTION,ARITY}
     @code{\MODULE\/\FUNCTION\/\ARITY\}
@@ -14,30 +18,26 @@
 \MODULE\:\FUNCTION\
 @end macro
 
-@macro erlicall{MODULE,FUNCTION,ARITY}
+@macro erllcall{MODULE,FUNCTION,ARITY}
 \FUNCTION\
 @end macro
 
-@macro erlfunlike{OUTER, INNER, PREFIX, CATEGORY, MODULE, FUNCTION, ARITY}
-@\OUTER\{\FUNCTION\/\ARITY\ \MODULE\ \PREFIX\ \CATEGORY\,@\INNER\{\MODULE\,\FUNCTION\,\ARITY\}}
+@macro erlfunlike{OUTER, INNER, CATEGORY, MODULE, FUNCTION, ARITY}
+@\OUTER\{\FUNCTION\/\ARITY\ \MODULE\ @value{ERLNAMESPACE} \CATEGORY\,@\INNER\{\MODULE\,\FUNCTION\,\ARITY\}}
 @end macro
 
 @macro erlfn{OUTER, INNER, MODULE, FUNCTION, ARITY}
-@erlfunlike{\OUTER\,\INNER\,Erlang,Function,\MODULE\,\FUNCTION\,\ARITY\}
+@erlfunlike{\OUTER\,\INNER\,Function,\MODULE\,\FUNCTION\,\ARITY\}
 @end macro
 
 @macro erltp{OUTER, INNER, MODULE, FUNCTION, ARITY}
-@erlfunlike{\OUTER\,\INNER\,Erlang,Type,\MODULE\,\FUNCTION\,\ARITY\}
+@erlfunlike{\OUTER\,\INNER\,Type,\MODULE\,\FUNCTION\,\ARITY\}
 @end macro
 
 @macro erlcb{OUTER, INNER, MODULE, FUNCTION, ARITY}
-@erlfunlike{\OUTER\,\INNER\,Erlang,Callback,\MODULE\,\FUNCTION\,\ARITY\}
-@end macro
-
-@macro erlmoduleref{OUTER, PREFIX, MODULE}
-@\OUTER\{\MODULE\ \PREFIX\ Module,@code{\MODULE\}}
+@erlfunlike{\OUTER\,\INNER\,Callback,\MODULE\,\FUNCTION\,\ARITY\}
 @end macro
 
 @macro erlmodref{OUTER, MODULE}
-@erlmoduleref{\OUTER\,Erlang,\MODULE\}
+@\OUTER\{\MODULE\ @value{ERLNAMESPACE} Module,@code{\MODULE\}}
 @end macro
