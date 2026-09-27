@@ -148,7 +148,8 @@ Render documentation for an Erlang module.
       begin
         OutFile = erl_module_doc_fn(OutDir, Mod),
         BeamFile = anvl_erlc:beam_file(Ctx, Mod),
-        newer(BeamFile, OutFile) andalso
+        ConfChanged = precondition(conf_dumped(OutDir, Project)),
+        newer(BeamFile, OutFile) or ConfChanged andalso
           begin
             logger:debug("Rendering texi for ~p", [Mod]),
             {ok, FD} = file:open(OutFile, [write]),
@@ -285,3 +286,16 @@ get_documentation(#{<<"en">> := Doc}) ->
 
 erl_module_doc_fn(OutDir, Module) ->
   filename:join([OutDir, atom_to_list(Module) ++ ".texi"]).
+
+?MEMO(conf_dumped, OutDir, Project,
+      begin
+        Config = #{ ns        => anvl_project:conf(Project, [texinfo, extraction, erlang, namespace])
+                  , flat      => anvl_project:conf(Project, [texinfo, extraction, erlang, flat_modules])
+                  , paper     => anvl_project:conf(Project, [texinfo, extraction, erlang, paper])
+                  , ribbon    => anvl_project:conf(Project, [texinfo, extraction, erlang, ribbon])
+                  , extractor => ?MODULE:module_info(md5)
+                  },
+        Suffix = anvl_fn:ensure_type(anvl_project:dir(Project), binary),
+        MarkerFile = filename:join([OutDir, ~".config", Suffix, ~"conf"]),
+        anvl_lib:term_to_file(MarkerFile, Config)
+      end).

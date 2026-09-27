@@ -259,17 +259,21 @@ hash(Term) ->
 -doc """
 Save an Erlang term to file in text format understood by `file:consult`.
 The file's mtime is not updated if its contents are not changed.
+Return @code{true} if the contents of the file have changed or the file didn't exist.
+
+This function automatically creates parent directories.
 """.
--spec term_to_file(file:filename(), term()) -> ok.
+-spec term_to_file(file:filename(), term()) -> boolean().
 term_to_file(Path, Term) ->
   case file:consult(Path) of
     {ok, [Term]} ->
-      ok;
+      false;
     _ ->
       ok = filelib:ensure_dir(Path),
       {ok, FD} = file:open(Path, [write]),
       io:format(FD, "~p.", [Term]),
-      file:close(FD)
+      file:close(FD),
+      true
   end.
 
 -spec ensure_string(binary() | string()) -> string().
