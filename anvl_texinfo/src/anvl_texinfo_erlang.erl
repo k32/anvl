@@ -24,9 +24,8 @@ and converting them to texinfo sources.
 """.
 
 -export([ app_docs_extracted/3
-        , app_docs_extracted/4
         , includes_dir/0
-        , module_docs_extracted/5
+        , module_docs_extracted/4
         , app_doc_dir/2
         , project_model/0
         ]).
@@ -34,15 +33,9 @@ and converting them to texinfo sources.
 -include_lib("typerefl/include/types.hrl").
 -include_lib("anvl_core/include/anvl.hrl").
 
--export_type([extraction_config/0]).
-
 %%================================================================================
 %% Type declarations
 %%================================================================================
-
--type extraction_config() ::
-        #{ ref_prefix := binary()
-         }.
 
 %%================================================================================
 %% API
@@ -66,6 +59,32 @@ project_model() ->
          , type => pos_integer()
          , default => 50
          }}
+   , flat_modules =>
+       {[value],
+        #{ oneliner => "Flag controlling partitioning of module documentation into TexInfo nodes"
+         , doc => """
+                  When @code{true}, all functions and types will be contained in one TexInfo node corresponding to the module.
+                  Otherwise, each item (such as function or type) will be contained in a separate node.
+                  """
+         , type => boolean()
+         , default => false
+         }}
+   , namespace =>
+       {[value],
+        #{ oneliner => "Global namespace for Erlang definitions"
+         , doc => """
+                  Namespace for node or anchor identifiers related to Erlang.
+                  This value can be set to a non-empty string (with trailing space) when there is a possibility
+                  that automatically derived node names of Erlang definitions will collide with other node names.
+                  This is unlikely, though.
+
+                  If set to a non-empty value @code{<value>},
+                  @ref{ANVL TexInfo Macros} have to be configured:
+                  @code{@@set ERLNAMESPACE <value>}.
+                  """
+         , type => binary()
+         , default => <<>>
+         }}
    }.
 
 -doc """
@@ -88,20 +107,10 @@ app_doc_dir(Profile, App) ->
   anvl_texinfo:gen_src_dir(["erlang", Profile, App]).
 
 -doc """
-Equivalent to
-@example erlang
-erl_doc(Profile, App, #@{ref_prefix => <<"Erlang">>@})
-@end example
-""".
--spec app_docs_extracted(anvl_project:t(), anvl_erlc:profile(), anvl_erlc:application()) -> anvl_condition:t().
-app_docs_extracted(Project, Profile, App) ->
-  app_docs_extracted(Project, Profile, App, #{ref_prefix => <<"Erlang">>}).
-
--doc """
 Render documentation for an Erlang application @var{App} compiled in profile @var{Profile}.
 """.
--spec app_docs_extracted(Project :: anvl_project:t(), Profile :: anvl_erlc:profile(), App :: anvl_erlc:application(), extraction_config()) -> anvl_condition:t().
-?MEMO(app_docs_extracted, Project, Profile, App, Config,
+-spec app_docs_extracted(anvl_project:t(), anvl_erlc:profile(), anvl_erlc:application()) -> anvl_condition:t().
+?MEMO(app_docs_extracted, Project, Profile, App,
       begin
         OutDir = app_doc_dir(Profile, App),
         ModulesDir = filename:join(OutDir, "mod"),
@@ -110,7 +119,7 @@ Render documentation for an Erlang application @var{App} compiled in profile @va
         {application, _, AppKVs} = Spec,
         Modules = proplists:get_value(modules, AppKVs),
         newer(anvl_erlc:app_file(Ctx), OutFile) or
-        precondition([module_docs_extracted(Project, ModulesDir, Ctx, Config, I) || I <- Modules]) andalso
+        precondition([module_docs_extracted(Project, ModulesDir, Ctx, I) || I <- Modules]) andalso
           begin
             {ok, FD} = file:open(OutFile, [write]),
             lists:foreach(
@@ -133,10 +142,9 @@ Render documentation for an Erlang module.
         Project :: anvl_project:t(),
         OutputDir :: file:filename(),
         AppInfo :: anvl_erlc:app_info(),
-        Config :: extraction_config(),
         Mod :: module()
        ) -> anvl_condition:t().
-?MEMO(module_docs_extracted, Project, OutDir, Ctx, Config, Mod,
+?MEMO(module_docs_extracted, Project, OutDir, Ctx, Mod,
       begin
         OutFile = erl_module_doc_fn(OutDir, Mod),
         BeamFile = anvl_erlc:beam_file(Ctx, Mod),
@@ -145,7 +153,7 @@ Render documentation for an Erlang module.
             logger:debug("Rendering texi for ~p", [Mod]),
             {ok, FD} = file:open(OutFile, [write]),
             P = fun(L) -> io:put_chars(FD, L) end,
-            render_module_doc(P, Project, Config, BeamFile),
+            render_module_doc(P, Project, BeamFile),
             file:close(FD),
             true
           end
@@ -155,9 +163,9 @@ Render documentation for an Erlang module.
 %% Internal functions
 %%================================================================================
 
-render_module_doc(P, Project, Config, FName) ->
+render_module_doc(P, Project, FName) ->
   maybe
-    #{ref_prefix := Prefix} = Config,
+    Namespace = anvl_project:conf(Project, [texinfo, extraction, erlang, namespace]),
     {ok, {Mod, [{abstract_code, Code}, {documentation, Documenation}]}} ?=
       beam_lib:chunks(FName, [abstract_code, documentation]),
     Specs = code_to_typespecs(Code),
@@ -170,7 +178,7 @@ render_module_doc(P, Project, Config, FName) ->
      Docs} = Documenation,
     ModuleDoc = get_documentation(MDocWrapper),
     true ?= ModuleDoc =/= false,
-    Chapter = <<(atom_to_binary(Mod))/binary, " ", Prefix/binary, " Module">>,
+    Chapter = <<(atom_to_binary(Mod))/binary, " ", Namespace/binary, " Module">>,
     P([<<"@node ">>, Chapter, $\n]),
     P([<<"@findex ">>, atom_to_binary(Mod), <<" module\n">>]),
     P([<<"@section Module @code{">>, atom_to_binary(Mod), <<"}\n@lowersections\n">>]),
@@ -184,9 +192,9 @@ render_module_doc(P, Project, Config, FName) ->
     Callbacks = [I ||
                   I = {{callback, _, _}, _Posn, _NameStr, DocWrapper, _Attr} <- Docs,
                   DocWrapper =/= hidden],
-    document_category(P, Project, Config, callback, Mod, Specs, Callbacks),
-    document_category(P, Project, Config, type, Mod, Specs, Types),
-    document_category(P, Project, Config, function, Mod, Specs, Functions),
+    document_category(P, Project, callback, Mod, Specs, Callbacks),
+    document_category(P, Project, type, Mod, Specs, Types),
+    document_category(P, Project, function, Mod, Specs, Functions),
     P([<<"\n@raisesections\n">>]),
     true
   else
@@ -210,32 +218,36 @@ code_to_typespecs({raw_abstract_v1, AST}) ->
     #{},
     AST).
 
-document_category(_, _, _, _, _, _, []) ->
+document_category(_, _, _, _, _, []) ->
   ok;
-document_category(P, Project, Config, Category, Mod, Specs, L) ->
-  #{ref_prefix := Prefix} = Config,
+document_category(P, Project, Category, Mod, Specs, L) ->
+  Namespace = anvl_project:conf(Project, [texinfo, extraction, erlang, namespace]),
+  FlatModules = anvl_project:conf(Project, [texinfo, extraction, erlang, flat_modules]),
   Paper = anvl_project:conf(Project, [texinfo, extraction, erlang, paper]),
   Ribbon = anvl_project:conf(Project, [texinfo, extraction, erlang, ribbon]),
   case Category of
     type ->
       Index = <<"@tindex ">>,
       Title = <<"Types">>,
-      AnchorPrefix = <<Prefix/binary, " Type ">>;
+      AnchorPrefix = <<Namespace/binary, " Type ">>;
     function ->
       Index = <<"@findex ">>,
       Title = <<"Functions">>,
-      AnchorPrefix = <<Prefix/binary, " Function ">>;
+      AnchorPrefix = <<Namespace/binary, " Function ">>;
     callback ->
       Index = <<"@findex ">>,
       Title = <<"Callbacks">>,
-      AnchorPrefix = <<Prefix/binary, " Callback ">>
+      AnchorPrefix = <<Namespace/binary, " Callback ">>
   end,
-  P([<<"@section ">>, Title, $\n]),
+  FlatModules andalso P([<<"@unnumberedsec ">>, Title, $\n]),
   lists:foreach(
     fun({Key = {_, Name, Arity}, _Posn, NameStr, DocWrapper, Attrs}) ->
         FullName = [atom_to_binary(Name), "/", integer_to_list(Arity), " ", atom_to_binary(Mod)],
-        P([ <<"@anchor{">>, FullName, " ", AnchorPrefix, <<"}\n">>
-          , <<"@subheading ">>, anvl_texinfo:texi_escape(NameStr), $\n
+        case FlatModules of
+          false -> P([<<"@node ">>, FullName, " ", AnchorPrefix, <<"\n">>]);
+          true  -> P([<<"@anchor{">>, FullName, " ", AnchorPrefix, <<"}\n">>])
+        end,
+        P([ <<"@subsubsection ">>, anvl_texinfo:texi_escape(NameStr), $\n
           , Index, FullName, $\n
           ]),
         case Specs of

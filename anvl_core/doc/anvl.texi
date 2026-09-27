@@ -234,7 +234,7 @@ is to take a look at an abridged @file{anvl.erl} that ANVL uses to build itself:
 -include("anvl.hrl").
 
 %% Project configuration:
-@erlcb{link,erlicall,anvl_project,conf,0}() ->
+@erlcb{link,erllcall,anvl_project,conf,0}() ->
   EmuArgs = "-dist_listen false -escript main anvl_app",
   #@{ @link{value/plugins,plugins} => [@link{Erlc Builtin ANVL Plugin,anvl_erlc}, @link{TexInfo Builtin ANVL Plugin,anvl_texinfo}]
    , @link{value/conditions,conditions} => [@link{conf_example/install,install}, @link{conf_example/static_checks,static_checks}, @link{conf_example/escript,escript}]
@@ -354,7 +354,7 @@ and @code{@{rm, Key@}},
 that resets the value associated with the key to the default or deletes it.
 
 @example erlang
-@erlcb{link,erlicall,anvl_project,conf_override,1}(ChildProject) ->
+@erlcb{link,erllcall,anvl_project,conf_override,1}(ChildProject) ->
   case filename:basename(@erlfn{link,erlcall,anvl_project,dir,1}(ChildProject)) of
     "some_project" ->
       %% If project is located in a directory ending with "some_project",
@@ -431,7 +431,7 @@ or after compiling the source file with GCC.
 
 ?MEMO(source_compiled, Src, Obj,
       begin
-        @erlfn{link,erlicall,anvl_lib,newer,2}(Src, Obj) andalso
+        @erlfn{link,erllcall,anvl_lib,newer,2}(Src, Obj) andalso
           @erlfn{link,erlcall,anvl_lib,exec,2}("gcc", ["-c", "-o", Obj, Src])
       end).
 @end example
@@ -450,7 +450,7 @@ Next, let's define a condition that ensures that the target executable is built 
         Executable = "build/hello",
         Sources = filelib:wildcard("c_src/*.c"),
         Objs = lists:map(fun obj_name/1, Sources),
-        @erlfn{link,erlicall,anvl_condition,precondition,1}([source_compiled(Src, obj_name(Src)) || Src <- Sources]) or
+        @erlfn{link,erllcall,anvl_condition,precondition,1}([source_compiled(Src, obj_name(Src)) || Src <- Sources]) or
           newer(Objs, Executable) andalso
           anvl_lib:exec("gcc", ["-o", Executable | Objs])
       end).
