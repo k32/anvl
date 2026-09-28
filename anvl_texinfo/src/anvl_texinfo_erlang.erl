@@ -63,8 +63,8 @@ project_model() ->
        {[value],
         #{ oneliner => "Flag controlling partitioning of module documentation into TexInfo nodes"
          , doc => """
-                  When @code{true}, all functions and types will be contained in one TexInfo node corresponding to the module.
-                  Otherwise, each item (such as function or type) will be contained in a separate node.
+                  When @code{true}, all documentation related to an Erlang module will be contained in one TexInfo node.
+                  Otherwise each item (such as function or type) will be placed in a separate node.
                   """
          , type => boolean()
          , default => false
