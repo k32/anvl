@@ -63,8 +63,8 @@ project_model() ->
        {[value],
         #{ oneliner => "Flag controlling partitioning of module documentation into TexInfo nodes"
          , doc => """
-                  When @code{true}, all functions and types will be contained in one TexInfo node corresponding to the module.
-                  Otherwise, each item (such as function or type) will be contained in a separate node.
+                  When @code{true}, all documentation related to an Erlang module will be contained in one TexInfo node.
+                  Otherwise each item (such as function or type) will be placed in a separate node.
                   """
          , type => boolean()
          , default => false
@@ -182,7 +182,7 @@ render_module_doc(P, Project, FName) ->
     Chapter = <<(atom_to_binary(Mod))/binary, " ", Namespace/binary, " Module">>,
     P([<<"@node ">>, Chapter, $\n]),
     P([<<"@findex ">>, atom_to_binary(Mod), <<" module\n">>]),
-    P([<<"@section Module @code{">>, atom_to_binary(Mod), <<"}\n@lowersections\n">>]),
+    P([<<"@section Module @code{">>, atom_to_binary(Mod), <<"}\n">>]),
     P(get_documentation(MDocWrapper)),
     Functions = [I ||
                   I = {{function, _, _}, _Posn, _NameStr, DocWrapper, _Attr} <- Docs,
@@ -196,7 +196,6 @@ render_module_doc(P, Project, FName) ->
     document_category(P, Project, callback, Mod, Specs, Callbacks),
     document_category(P, Project, type, Mod, Specs, Types),
     document_category(P, Project, function, Mod, Specs, Functions),
-    P([<<"\n@raisesections\n">>]),
     true
   else
     {error,beam_lib, {missing_chunk, _, "Docs"}} ->
@@ -248,7 +247,7 @@ document_category(P, Project, Category, Mod, Specs, L) ->
           false -> P([<<"@node ">>, FullName, " ", AnchorPrefix, <<"\n">>]);
           true  -> P([<<"@anchor{">>, FullName, " ", AnchorPrefix, <<"}\n">>])
         end,
-        P([ <<"@subsubsection ">>, anvl_texinfo:texi_escape(NameStr), $\n
+        P([ <<"@subsection ">>, anvl_texinfo:texi_escape(NameStr), $\n
           , Index, FullName, $\n
           ]),
         case Specs of
