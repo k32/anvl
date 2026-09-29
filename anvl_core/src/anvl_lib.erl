@@ -24,7 +24,8 @@ A collection of functions useful for implementing conditions.
 
 %% API:
 -export([template/3, patsubst/3, patsubst/2]).
--export([newer/2, newer/3, max_mtime/1, hash/1, term_to_file/2]).
+-export([newer/2, newer/3, max_mtime/1, min_mtime/2, file_mtime/1]).
+-export([hash/1, term_to_file/2]).
 -export([exec/2, exec/3, exec_/2, exec_/3]).
 -export([ensure_string/1]).
 -export([safe_call/3]).
@@ -85,6 +86,33 @@ max_mtime(L) ->
     end,
     0,
     L).
+
+-doc false.
+-spec min_mtime(boolean(), [file:filename_all()]) -> integer() | infinity.
+min_mtime(EnsureDirs, L) ->
+  lists:foldl(
+    fun(File, Acc) ->
+        case file_mtime(File) of
+          {ok, Mtime} ->
+            min(Acc, Mtime);
+          {error, enoent} ->
+            EnsureDirs andalso filelib:ensure_dir(File),
+            -1;
+          {error, Err} ->
+            error({error, File, Err})
+        end
+    end,
+    infinity,
+    L).
+
+-spec file_mtime(file:filename_all()) -> {ok, integer()} | {error, _}.
+file_mtime(File) ->
+  case file:read_file_info(File, [raw, {time, posix}]) of
+    {ok, #file_info{mtime = MTime}} when is_integer(MTime) ->
+      {ok, MTime};
+    {error, _} = Err ->
+      Err
+  end.
 
 -doc """
 Version of @code{newer/2} that takes an additional argument
@@ -351,23 +379,6 @@ collect_port_output(Port, Acc) ->
       collect_port_output(Port, [Data | Acc])
   end.
 
--spec min_mtime(boolean(), [file:filename_all()]) -> integer() | infinity.
-min_mtime(EnsureDirs, L) ->
-  lists:foldl(
-    fun(File, Acc) ->
-        case file_mtime(File) of
-          {ok, Mtime} ->
-            min(Acc, Mtime);
-          {error, enoent} ->
-            EnsureDirs andalso filelib:ensure_dir(File),
-            -1;
-          {error, Err} ->
-            error({error, File, Err})
-        end
-    end,
-    infinity,
-    L).
-
 ensure_filename_list(B) when is_binary(B) ->
   [B];
 ensure_filename_list([Hd|_] = L) when is_list(Hd); is_binary(Hd) ->
@@ -376,11 +387,3 @@ ensure_filename_list([Hd|_] = Str) when is_integer(Hd) ->
   [Str];
 ensure_filename_list([]) ->
   [].
-
-file_mtime(File) ->
-  case file:read_file_info(File, [raw, {time, posix}]) of
-    {ok, #file_info{mtime = MTime}} when is_integer(MTime) ->
-      {ok, MTime};
-    {error, _} = Err ->
-      Err
-  end.
