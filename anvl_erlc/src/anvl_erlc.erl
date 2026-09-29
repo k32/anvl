@@ -47,6 +47,12 @@ the Erlang compiler.
 %% Type declarations
 %%================================================================================
 
+%% Dependency on a file:
+-record(f, {file :: binary()}).
+%% Dependency on a module being loaded:
+-record(m, {module :: module()}).
+-type dependency() :: #f{} | #m{}.
+
 -define(app_src_paths,
         [ "src/${app}.app.src"
         , "ebin/${app}.app"       % Used by cowboy and friends
@@ -534,48 +540,6 @@ separate_first_files(#{first_files := FF}, Sources) ->
     end,
     Sources).
 
-?MEMO(beam, Src, CRef,
-      begin
-        #{profile := Profile, compile_options := COpts} = Context = persistent_term:get(CRef),
-        Module = module_of_erl(Src),
-        satisfies(module(Profile, Module)),
-        Beam = beam_of_erl(Src, Context),
-        newer(Src, Beam) or
-          precondition(beam_deps(Src, Beam, CRef)) andalso
-          anvl_resource:with(
-            erlc,
-            fun() ->
-                ?LOG_INFO("Compiling ~s", [Src]),
-                case compile:noenv_file(Src, [no_spawn_compiler_process, report, {outdir, filename:dirname(Beam)} | COpts]) of
-                  {ok, Module} ->
-                    true;
-                  error ->
-                    ?UNSAT("Compilation of ~s failed", [Src])
-                end
-            end)
-      end).
-
--doc """
-Precondition: Compile-time dependencies of the Erlang module are satisfied.
-""".
-?MEMO(beam_deps, Src, Beam, CRef,
-      begin
-        #{profile := Profile} = Ctx = persistent_term:get(CRef),
-        DepFile = dep_of_erl(Src, Ctx),
-        precondition(depfile(Src, DepFile, CRef)),
-        {ok, Bin} = file:read_file(DepFile),
-        Dependencies = binary_to_term(Bin),
-        lists:foldl(fun({file, Dep}, Acc) ->
-                        Acc or newer(Dep, Beam);
-                       ({parse_transform, ParseTransMod}, Acc) ->
-                        Acc or module_loaded(Profile, ParseTransMod, CRef);
-                       ({behavior, Behavior}, Acc) ->
-                        Acc or module_loaded(Profile, Behavior, CRef)
-                    end,
-                    false,
-                    Dependencies)
-      end).
-
 module_loaded(Profile, Module, CRef) ->
   %% The logic is the following:
   %%
@@ -621,24 +585,78 @@ Precondition: module defined in the same application is compiled and loaded.
         end
       end).
 
-%% @private Precondition: .dep file for the module is up to date
-?MEMO(depfile, Src, DepFile, CRef,
+%% Condition: an Erlang file has been compiled.
+?MEMO(beam, Src, CRef,
       begin
-        newer(Src, DepFile) andalso
-          begin
-            ?LOG_INFO("Updating dependencies for ~s", [Src]),
-            #{includes := IncludeDirs, compile_options := COpts} = persistent_term:get(CRef),
-            PredefMacros = lists:filtermap(fun({d, D})    -> {true, D};
-                                              ({d, D, V}) -> {true, {D, V}};
-                                              (_)         -> false
-                                           end,
-                                           COpts),
-            {ok, EPP} = epp:open(Src, IncludeDirs, PredefMacros),
-            Data = process_attributes(Src, EPP, []),
-            ok = file:write_file(DepFile, term_to_binary(Data)),
+        #{profile := Profile} = Ctx = persistent_term:get(CRef),
+        Module = module_of_erl(Src),
+        satisfies(module(Profile, Module)),
+
+        BeamFile = beam_of_erl(Src, Ctx),
+        DepFile = dep_of_erl(Src, Ctx),
+        maybe
+          %% This entire path verifies that file should *NOT* be
+          %% recompiled:
+          {ok, SrcMTime} = anvl_lib:file_mtime(Src),
+          {ok, BeamMTime} ?= anvl_lib:file_mtime(BeamFile),
+          true ?= BeamMTime > SrcMTime,
+          %%   Dependencies:
+          {ok, DepFileMTime} ?= anvl_lib:file_mtime(DepFile),
+          true ?= DepFileMTime > SrcMTime,
+          {ok, Deps} ?= read_depfile(DepFile),
+          %% Check if any file-dependencies has changed after the compilation:
+          false ?= lists:any(
+                     fun(#f{file = I}) ->
+                         case anvl_lib:file_mtime(I) of
+                           {ok, T} -> T > BeamMTime;
+                           _       -> true
+                         end;
+                        (#m{module = M}) ->
+                         module_loaded(Profile, M, CRef)
+                     end,
+                     Deps),
+          false
+        else _Other ->
+            compile_beam(Src, CRef, Ctx, DepFile, BeamFile, Module),
             true
-          end
+        end
       end).
+
+compile_beam(Src, CRef, Ctx, DepFile, Beam, Module) ->
+  #{compile_options := COpts} = Ctx,
+  gen_depfile(Src, DepFile, CRef),
+  anvl_resource:with(
+    erlc,
+    fun() ->
+        ?LOG_INFO("Compiling ~s", [Src]),
+        case compile:noenv_file(Src, [no_spawn_compiler_process, report, {outdir, filename:dirname(Beam)} | COpts]) of
+          {ok, Module} ->
+            true;
+          error ->
+            ?UNSAT("Compilation of ~s failed", [Src])
+        end
+    end).
+
+gen_depfile(Src, DepFile, CRef) ->
+  ?LOG_INFO("Updating dependencies for ~s", [Src]),
+  #{profile := Profile, includes := IncludeDirs, compile_options := COpts} = persistent_term:get(CRef),
+  PredefMacros = lists:filtermap(fun({d, D})    -> {true, D};
+                                    ({d, D, V}) -> {true, {D, V}};
+                                    (_)         -> false
+                                 end,
+                                 COpts),
+  {ok, EPP} = epp:open(Src, IncludeDirs, PredefMacros),
+  Deps = process_attributes(Src, EPP, []),
+  ok = file:write_file(DepFile, term_to_binary(Deps)),
+  [module_loaded(Profile, Module, CRef) || #m{module = Module} <- Deps],
+  ok.
+
+-spec read_depfile(file:filename_all()) -> {ok, [dependency()]} | {error, _}.
+read_depfile(DepFile) ->
+  maybe
+    {ok, Bin} ?= file:read_file(DepFile),
+    {ok, binary_to_term(Bin)}
+  end.
 
 %%================================================================================
 %% Internal functions
@@ -770,11 +788,12 @@ process_attributes(OrigFile, EPP, Acc) ->
     {eof, _} ->
       Acc;
     {ok, {attribute, _, file, {File, _}}} when File =/= OrigFile ->
-      process_attributes(OrigFile, EPP, [{file, File} | Acc]);
+      FileBin = anvl_fn:ensure_type(File, binary),
+      process_attributes(OrigFile, EPP, [#f{file = FileBin} | Acc]);
     {ok, {attribute, _, compile, {parse_transform, ParseTransform}}} ->
-      process_attributes(OrigFile, EPP, [{parse_transform, ParseTransform} | Acc]);
+      process_attributes(OrigFile, EPP, [#m{module = ParseTransform} | Acc]);
     {ok, {attribute, _, BH, Behavior}} when BH =:= behavior; BH =:= behaviour ->
-      process_attributes(OrigFile, EPP, [{behavior, Behavior} | Acc]);
+      process_attributes(OrigFile, EPP, [#m{module = Behavior} | Acc]);
     {error, Err} ->
       ?UNSAT("Failed to derive dependencies~n~s:~s", [OrigFile, epp:format_error(Err)]);
     _ ->
