@@ -47,6 +47,12 @@ the Erlang compiler.
 %% Type declarations
 %%================================================================================
 
+-record(otp_info,
+        { emu :: binary()
+        , libs :: [atom()]
+        }).
+-define(otp_info, anvl_erlc_otp_info).
+
 %% Dependency on a file:
 -record(f, {file :: binary()}).
 %% Dependency on a module being loaded:
@@ -451,6 +457,13 @@ project_model() ->
 
 -doc false.
 init() ->
+  {_, BinDir} = lists:keyfind(bindir, 1, init:get_arguments()),
+  {ok, LibDirs} = file:list_dir(filename:join([BinDir, "..", "..", "lib"])),
+  OTPLibs = [hd(string:lexemes(I, "-")) || I <- LibDirs],
+  true = lists:member("kernel", OTPLibs), % sanity check
+  persistent_term:put(?otp_info, #otp_info{ emu = list_to_binary(BinDir)
+                                          , libs = [list_to_atom(I) || I <- OTPLibs]
+                                          }),
   anvl_resource:declare(erlc, 100).
 
 -doc false.
@@ -476,7 +489,8 @@ do_compile_app(Profile, App) ->
   COpts0 = pcfg(Project, Profile, [compile, options]),
   GOptsA = pcfg(anvl_project:root(), Profile, [compile, global_a]),
   GOptsZ = pcfg(anvl_project:root(), Profile, [compile, global_z]),
-  COpts1 = GOptsA ++ COpts0 ++ GOptsZ,
+  #otp_info{emu = OTPPath} = persistent_term:get(?otp_info),
+  COpts1 = [OTPPath | GOptsA ++ COpts0 ++ GOptsZ],
   IncludePatterns = pcfg(Project, Profile, [includes]),
   SrcPatterns = pcfg(Project, Profile, [sources]),
   BDeps = pcfg(Project, Profile, [bdeps]),
@@ -807,13 +821,8 @@ list_app_sources(Ctx = #{sources := SrcPatterns}) ->
                 SrcPatterns).
 
 otp_apps() ->
-  [compiler, erts, kernel, sasl, stdlib,
-   mnesia, odbc,
-   os_mon, snmp,
-   asn1, crypto, diameter, eldap, erl_interface, ftp, inets, jinterface, megaco, public_key, ssh, ssl, tftp, wx, xmerl,
-   debugger, dialyzer, et, observer, parsetools, reltool, runtime_tools, syntax_tools, tools,
-   common_test, eunit,
-   edoc, erl_docgen].
+  #otp_info{libs = Libs} = persistent_term:get(?otp_info),
+  Libs.
 
 non_otp_apps(Apps) ->
   %% FIXME: find a nicer way to get this list
