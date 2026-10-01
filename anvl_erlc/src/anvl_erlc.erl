@@ -660,7 +660,7 @@ gen_depfile(Src, DepFile, CRef) ->
                                  end,
                                  COpts),
   {ok, EPP} = epp:open(Src, IncludeDirs, PredefMacros),
-  Deps = process_attributes(Src, EPP, []),
+  Deps = lists:usort(process_attributes(Src, EPP, [])),
   ok = file:write_file(DepFile, term_to_binary(Deps)),
   [module_loaded(Profile, Module, CRef) || #m{module = Module} <- Deps],
   ok.
