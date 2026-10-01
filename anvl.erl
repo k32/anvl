@@ -20,7 +20,7 @@
 -include("anvl.hrl").
 
 conf() ->
-  EmuArgs = "-dist_listen false -escript main anvl_app",
+  EmuArgs = "-escript main anvl_app",
   Apps = [lee, typerefl, anvl_cli | plugins()],
   Escript = #{apps => Apps},
   #{ plugins => [anvl_git, anvl_erlc, anvl_texinfo]
