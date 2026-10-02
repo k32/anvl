@@ -24,7 +24,7 @@ A collection of functions useful for implementing conditions.
 
 %% API:
 -export([template/3, patsubst/3, patsubst/2]).
--export([newer/2, newer/3, max_mtime/1, min_mtime/2, file_mtime/1]).
+-export([newer/2, newer/3, newer/4, max_mtime/1, max_mtime_nothrow/1, min_mtime/2, file_mtime/1]).
 -export([hash/1, term_to_file/2]).
 -export([exec/2, exec/3, exec_/2, exec_/3]).
 -export([ensure_string/1]).
@@ -65,7 +65,7 @@ If this is not desirable, use @code{anvl_lib:newer(false, Srcs, Targets)} instea
         file:filename_all() | [file:filename_all()]
        ) -> boolean().
 newer(Src, Target) ->
-  newer(true, Src, Target).
+  newer(true, true, Src, Target).
 
 -doc """
 Returns maximum modification time for a set of files.
@@ -86,6 +86,21 @@ max_mtime(L) ->
     end,
     0,
     L).
+
+-doc """
+Returns maximum modification time for a set of files.
+Unlike @erlfn{ref,erlref,anvl_lib,max_mtime_nothrow,1},
+it doesn't throw an exception when a file doesn't exist:
+it returns @code{infinity} instead.
+""".
+-spec max_mtime_nothrow([file:filename_all()]) -> integer() | infinity.
+max_mtime_nothrow(L) ->
+  try
+    max_mtime(L)
+  catch
+    error:{missing_source_file, _} ->
+      infinity
+  end.
 
 -doc false.
 -spec min_mtime(boolean(), [file:filename_all()]) -> integer() | infinity.
@@ -127,14 +142,31 @@ that specifies whether to ensure directories for the target files or not.
         file:filename_all() | [file:filename_all()]
        ) -> boolean().
 newer(EnsureDirs, Src, Target) ->
+  newer(true, EnsureDirs, Src, Target).
+
+-doc """
+Version of @code{newer/3} that takes an additional argument
+that specifies whether to throw an exception when any source file doesn't exist or return @code{true}.
+""".
+-spec newer(
+        boolean(),
+        boolean(),
+        file:filename_all() | [file:filename_all()],
+        file:filename_all() | [file:filename_all()]
+       ) -> boolean().
+newer(EnsureSourcesExist, EnsureDirs, Src, Target) ->
   SrcL = ensure_filename_list(Src),
   TargetL = ensure_filename_list(Target),
   case TargetL of
     [] -> ?UNSAT("No target files", []);
     _  -> ok
   end,
-  Newer = max_mtime(SrcL) >=
-          min_mtime(EnsureDirs, TargetL),
+  SrcModTime = case EnsureSourcesExist of
+                 true  -> max_mtime(SrcL);
+                 false -> max_mtime_nothrow(SrcL)
+               end,
+  Newer = (SrcModTime =:= infinity) orelse
+          (SrcModTime >= min_mtime(EnsureDirs, TargetL)),
   Newer andalso ?LOG_DEBUG("Source(s) ~p are newer than ~p", [Src, Target]),
   Newer.
 
