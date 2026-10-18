@@ -24,7 +24,7 @@ A collection of functions useful for implementing conditions.
 
 %% API:
 -export([template/3, patsubst/3, patsubst/2]).
--export([newer/2, newer/3, max_mtime/1, min_mtime/2, file_mtime/1]).
+-export([newer/2, newer/3, newer/4, file_mtime/1]).
 -export([hash/1, term_to_file/2]).
 -export([exec/2, exec/3, exec_/2, exec_/3]).
 -export([ensure_string/1]).
@@ -65,45 +65,7 @@ If this is not desirable, use @code{anvl_lib:newer(false, Srcs, Targets)} instea
         file:filename_all() | [file:filename_all()]
        ) -> boolean().
 newer(Src, Target) ->
-  newer(true, Src, Target).
-
--doc """
-Returns maximum modification time for a set of files.
-Throws an exception if any input file doesn't exist.
-""".
--spec max_mtime([file:filename_all()]) -> integer().
-max_mtime(L) ->
-  lists:foldl(
-    fun(File, Acc) ->
-        case file_mtime(File) of
-          {ok, Mtime} ->
-            max(Acc, Mtime);
-          {error, enoent} ->
-            error({missing_source_file, File});
-          {error, Err} ->
-            error({error, File, Err})
-        end
-    end,
-    0,
-    L).
-
--doc false.
--spec min_mtime(boolean(), [file:filename_all()]) -> integer() | infinity.
-min_mtime(EnsureDirs, L) ->
-  lists:foldl(
-    fun(File, Acc) ->
-        case file_mtime(File) of
-          {ok, Mtime} ->
-            min(Acc, Mtime);
-          {error, enoent} ->
-            EnsureDirs andalso filelib:ensure_dir(File),
-            -1;
-          {error, Err} ->
-            error({error, File, Err})
-        end
-    end,
-    infinity,
-    L).
+  newer(true, true, Src, Target).
 
 -doc """
 Return modification time of a file.
@@ -127,16 +89,28 @@ that specifies whether to ensure directories for the target files or not.
         file:filename_all() | [file:filename_all()]
        ) -> boolean().
 newer(EnsureDirs, Src, Target) ->
-  SrcL = ensure_filename_list(Src),
-  TargetL = ensure_filename_list(Target),
-  case TargetL of
-    [] -> ?UNSAT("No target files", []);
-    _  -> ok
-  end,
-  Newer = max_mtime(SrcL) >=
-          min_mtime(EnsureDirs, TargetL),
-  Newer andalso ?LOG_DEBUG("Source(s) ~p are newer than ~p", [Src, Target]),
-  Newer.
+  newer(true, EnsureDirs, Src, Target).
+
+-doc """
+Version of @code{newer/3} that takes an additional argument
+that specifies whether to throw an exception when any source file doesn't exist or return @code{true}.
+""".
+-spec newer(
+        boolean(),
+        boolean(),
+        file:filename_all() | [file:filename_all()],
+        file:filename_all() | [file:filename_all(), ...]
+       ) -> boolean().
+newer(EnsureSourcesExist, EnsureDirs, Src, Target) ->
+  {MinT, MinTarget} = min_target_mtime(
+                        EnsureDirs,
+                        ensure_filename_list(Target)),
+  compare_mtime(
+    EnsureSourcesExist,
+    MinTarget,
+    MinT,
+    ensure_filename_list(Src),
+    false).
 
 -doc """
 template(Pattern, Substitutions, Type)
@@ -288,7 +262,7 @@ hash(Term) ->
   binary:encode_hex(crypto:hash(sha256, term_to_iovec(Term)), lowercase).
 
 -doc """
-Save an Erlang term to file in text format understood by `file:consult`.
+Save an Erlang term to a file with @code{binary_to_term} encoding.
 The file's mtime is not updated if its contents are not changed.
 Return @code{true} if the contents of the file have changed or the file didn't exist.
 
@@ -296,14 +270,17 @@ This function automatically creates parent directories.
 """.
 -spec term_to_file(file:filename(), term()) -> boolean().
 term_to_file(Path, Term) ->
-  case file:consult(Path) of
-    {ok, [Term]} ->
-      false;
-    _ ->
+  maybe
+    {ok, Bin} ?= file:read_file(Path),
+    Term ?= try binary_to_term(Bin, [safe])
+            catch _:_ ->
+                unsafe
+            end,
+    false
+  else Other ->
+      ?LOG_DEBUG("~s manifest changed:~n~P~n~P", [Path, Term, 9, Other, 10]),
       ok = filelib:ensure_dir(Path),
-      {ok, FD} = file:open(Path, [write]),
-      io:format(FD, "~p.", [Term]),
-      file:close(FD),
+      file:write_file(Path, term_to_binary(Term)),
       true
   end.
 
@@ -349,6 +326,59 @@ linger() ->
 %%================================================================================
 %% Internal functions
 %%================================================================================
+
+-spec min_target_mtime(boolean(), [file:filename_all(), ...]) -> {integer(), file:filename_all()}.
+min_target_mtime(_, []) ->
+  error(no_input_files);
+min_target_mtime(EnsureDirs, [First | Rest]) ->
+  GetIt = fun(File) ->
+              case file_mtime(File) of
+                {ok, T} ->
+                  T;
+                {error, enoent} ->
+                  ?LOG_DEBUG("Target is missing ~s", [File]),
+                  EnsureDirs andalso filelib:ensure_dir(File),
+                  -1;
+                {error, Err} ->
+                  error({error, File, Err})
+              end
+          end,
+  lists:foldl(
+    fun(File, {AccT, AccF}) ->
+        T = GetIt(File),
+        if T < AccT ->
+            {T, File};
+           true ->
+            {AccT, AccF}
+        end
+    end,
+    {GetIt(First), First},
+    Rest).
+
+-spec compare_mtime(boolean(), file:filename_all(), integer(), [file:filename_all()], boolean()) -> boolean().
+compare_mtime(_, _, _, [], Acc) ->
+  Acc;
+compare_mtime(EnsureSourcesExist, Target, TMin, [File | Rest], Acc) ->
+  case file_mtime(File) of
+    {ok, T} ->
+      Newer = T > TMin,
+      if Newer, EnsureSourcesExist ->
+          ?LOG_DEBUG("Source ~s is newer than ~s", [File, Target]),
+          compare_mtime(EnsureSourcesExist, Target, TMin, Rest, true);
+         Newer ->
+          ?LOG_DEBUG("Source ~s is newer than ~s", [File, Target]),
+          true;
+         true ->
+          compare_mtime(EnsureSourcesExist, Target, TMin, Rest, Acc)
+      end;
+    {error, enoent} when EnsureSourcesExist ->
+      error({missing_source_file, File});
+    {error, enoent} ->
+      ?LOG_DEBUG("Missing source ~s for target ~s", [File, Target]),
+      true;
+    {error, Err} ->
+      error({error, File, Err})
+  end.
 
 template_normalize_substs(Iter, Acc0) ->
   case maps:next(Iter) of
