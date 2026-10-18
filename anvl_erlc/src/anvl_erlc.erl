@@ -31,7 +31,7 @@ the Erlang compiler.
 -export([add_pre_compile_hook/2, add_app_spec_hook/2, pcfg/2, pcfg/3]).
 -export([app_info/2, app_compiled/2, plugin_compiled/1, module/2]).
 -export([app_file/1, beam_file/2]).
--export([app_closure/2, app_path/2]).
+-export([app_closure/2, app_path/2, app_modules/2]).
 
 %% behavior callbacks:
 -export([model/0, project_model/0, init/0, init_for_project/1, conditions/1]).
@@ -201,6 +201,15 @@ app_path(Profile, App) ->
       #{build_dir := Dir} = app_info(Profile, App),
       Dir
   end.
+
+-doc """
+Return list of modules in a compiled application.
+""".
+-spec app_modules(profile(), application()) -> [module()].
+app_modules(Profile, App) ->
+  #{spec := Spec} = anvl_erlc:app_info(Profile, App),
+  {application, _, AppKVs} = Spec,
+  proplists:get_value(modules, AppKVs).
 
 -doc """
 Return a closure of dependencies for a given set of OTP applications.
