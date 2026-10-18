@@ -4,7 +4,7 @@
 
 1. Git
 2. Erlang/OTP 27 or later
-3. =texi2any= tool.
+3. =texi2any= tool version 7.3 or later.
    It is available as =sys-apps/texinfo= package in Gentoo, or =texinfo= in Debian derivatives.
 
 * Installation
