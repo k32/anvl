@@ -65,7 +65,7 @@ conf() ->
               }
             ]
         , formats => [info, html, latex]
-        , sources => ["anvl_core/doc/anvl.texi"]
+        , sources => ["anvl_cli/doc/anvl.texi"]
         , include_dirs => [anvl_texinfo_erlang:includes_dir()]
         }
    }.

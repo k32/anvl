@@ -121,6 +121,7 @@ Render documentation for an Erlang application @var{App} compiled in profile @va
         newer(anvl_erlc:app_file(Ctx), OutFile) or
         precondition([module_docs_extracted(Project, ModulesDir, Ctx, I) || I <- Modules]) andalso
           begin
+            ?LOG_NOTICE("Extracting Erlang doc chunks from ~p (~p)", [App, Profile]),
             {ok, FD} = file:open(OutFile, [write]),
             lists:foreach(
               fun(Mod) ->
