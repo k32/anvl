@@ -196,7 +196,7 @@ install(Prefix, Template, Src, Mode) ->
   newer(Src, Dest) andalso
     begin
       logger:notice(anvl_logger_formatter:format(
-                      success,
+                      action,
                       "Installing ~s to ~s",
                       [Src, Dest])),
       {ok, _} = file:copy(Src, Dest),

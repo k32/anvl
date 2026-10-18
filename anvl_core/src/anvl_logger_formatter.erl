@@ -67,7 +67,7 @@ Return true if fancy terminal output is allowed.
 fancy() ->
   persistent_term:get(anvl_logger_formatter_fancy, false).
 
--spec format(success | warning | error, string(), list()) -> iolist().
+-spec format(success | action | warning | error, string(), list()) -> iolist().
 format(Kind, FmtString, Args) ->
   case fancy() of
     false ->
@@ -79,7 +79,9 @@ format(Kind, FmtString, Args) ->
                  warning ->
                    "\e[33m";
                  success ->
-                   "\e[32m"
+                   "\e[32m";
+                 action ->
+                   "\e[34m"
                end,
       io_lib:format(Prefix ++ FmtString ++ "\e[0m", Args)
   end.
