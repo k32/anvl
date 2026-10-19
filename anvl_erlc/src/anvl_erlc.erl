@@ -548,8 +548,11 @@ do_compile_app(Profile, App) ->
   Ch3 = precondition([beam(Src, CRef) || Src <- OtherSources]),
   Ch4 = clean_orphans(Sources, Context),
   Ch5 = copy_includes(Context),
-  Ch6 = render_app_spec(AppSrcProperties, Sources, Context),
-  AnyChanges = Ch0 orelse Ch1 orelse Ch2 orelse Ch3 orelse Ch4 orelse Ch5 orelse Ch6,
+  AnyChanges = render_app_spec(
+                 AppSrcProperties,
+                 Sources,
+                 Context,
+                 Ch0 orelse Ch1 orelse Ch2 orelse Ch3 orelse Ch4 orelse Ch5),
   case AnyChanges of
     true ->
       ?LOG_NOTICE("Compiled ~p (profile=~p)", [App, Profile]);
@@ -745,7 +748,7 @@ copy_includes(#{build_dir := BuildDir, src_root := SrcRoot}) ->
               Includes).
 
 %% @private Render application specification:
-render_app_spec(AppSrcProperties0, Sources, Context) ->
+render_app_spec(AppSrcProperties0, Sources, Context, Changed) ->
   #{project := Project, app := App, profile := Profile, build_dir := BuildDir} = Context,
   KeepProperties = pcfg(Project, Profile, [app_properties]),
   AppFile = app_file(Context),
@@ -760,7 +763,7 @@ render_app_spec(AppSrcProperties0, Sources, Context) ->
                             #{ ebin_dir => BuildDir
                              , spec => NewContent
                              }),
-  case file:consult(AppFile) of
+  case Changed orelse file:consult(AppFile) of
     {ok, [OldContent]} when OldContent =:= NewContent ->
       false;
     _ ->
