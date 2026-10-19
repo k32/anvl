@@ -15,7 +15,7 @@ jobs:
   build:
     strategy:
       matrix:
-        otp: ['27', '28']
+        otp: ['28']
         os: ['ubuntu-26.04']
     runs-on: ${{matrix.os}}
     steps:
