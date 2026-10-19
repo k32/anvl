@@ -30,7 +30,7 @@ the Erlang compiler.
 -export([umbrella/2]).
 -export([add_pre_compile_hook/2, add_app_spec_hook/2, pcfg/2, pcfg/3]).
 -export([app_info/2, app_compiled/2, plugin_compiled/1, module/2]).
--export([app_file/1, beam_file/2]).
+-export([app_file/1, app_file/2, beam_file/2]).
 -export([app_closure/2, app_path/2, app_modules/2]).
 
 %% behavior callbacks:
@@ -152,6 +152,10 @@ umbrella(Profile, Project) ->
     Templ <- Templates,
     FN <- filelib:wildcard(Templ),
     filelib:is_regular(FN)].
+
+-spec app_file(profile(), application()) -> file:filename().
+app_file(Profile, App) ->
+  app_file(app_info(Profile, App)).
 
 -spec app_file(
         #{ app := application()
