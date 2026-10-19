@@ -25,7 +25,7 @@
 
 -define(UNSAT(FMT, ARGS),
         begin
-          ?LOG_CRITICAL(FMT, ARGS),
+          ?LOG_CRITICAL(anvl_logger_formatter:format(error, FMT, ARGS)),
           exit(unsat)
         end).
 

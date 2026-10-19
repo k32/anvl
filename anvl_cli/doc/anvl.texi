@@ -30,7 +30,7 @@
   @node Project Configuration \PREFIX\
   @section Project Configuration
   @lowersections
-    @include lee/default/\DIR\/value.proj.texi
+    @include lee/default/\DIR\/proj/value.texi
   @raisesections
 
   @node API Reference \PREFIX\

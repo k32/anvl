@@ -46,6 +46,11 @@ A plugin for creating and compiling @url{https://www.gnu.org/software/texinfo/, 
 
 -type doc_format() :: info | docbook | html | epub3 | latex | plaintext.
 
+-record(manifest,
+        { args :: [string()]
+        , deps :: [binary()]
+        }).
+
 -reflect_type([doc_format/0]).
 
 %%================================================================================
@@ -167,10 +172,11 @@ This condition is specific for ANVL plugins.
                 Plugin,
                 {anvl_plugin, project_metamodel},
                 {Plugin, project_model},
-                #{ extension => ".proj.texi"
+                #{ extension => ".texi"
                  , formatter => fun lee_doc:texinfo/3
                  , metatypes => [value]
-                 })
+                 },
+                [~"proj"])
             ])
       end).
 
@@ -224,18 +230,30 @@ is compiled to format @var{Format}.
           Format ->
             Output = DocTarget = filename:join(Dir, Name ++ "." ++ atom_to_list(Format))
         end,
-        %% TODO: check dependencies
-        newer(DocSrc, DocTarget) or true andalso
+        %% List of arguments that can be customized by the user:
+        CustomArgs = anvl_project:conf(Project, [texinfo, compile, {Format}, options]) ++
+                     include_args(IncludeDirs),
+        Args = CustomArgs ++
+          [ "--" ++ atom_to_list(Format)
+          , "-o", Output
+          , DocSrc
+          ],
+        Ch1 = newer(DocSrc, DocTarget),
+        Ch2 = deps_changed(Args, Output, DocTarget),
+        Ch1 or Ch2 andalso
           begin
-            filelib:ensure_dir(DocTarget),
-            CustomArgs = anvl_project:conf(Project, [texinfo, compile, {Format}, options]),
             ?LOG_NOTICE("Creating ~s", [DocTarget]),
-            Args = CustomArgs ++
-              include_args(IncludeDirs) ++
-              [ "--" ++ atom_to_list(Format)
-              , "-o", Output
-              , DocSrc
-              ],
+            filelib:ensure_dir(DocTarget),
+            %% Generate manifest:
+            {0, Deps} = anvl_lib:exec_(
+                          "texi2any",
+                          ["--trace-includes" | Args],
+                          [{cd, anvl_project:dir(Project)}, collect_output]),
+            Manifest = #manifest{ args = Args
+                                , deps = Deps
+                                },
+            ok = file:write_file(manifest_file(Output), term_to_binary(Manifest)),
+            %% Generate output:
             anvl_lib:exec("texi2any", Args, [{cd, anvl_project:dir(Project)}])
           end
       end).
@@ -270,6 +288,23 @@ texi_escape(I) ->
 
 doc_dir(Rest) ->
   anvl_fn:workdir([anvl_plugin:conf([anvl_texinfo, doc_dir]) | Rest]).
+
+deps_changed(Args, Output, DocTarget) ->
+  maybe
+    {ok, Bin} ?= file:read_file(manifest_file(Output)),
+    #manifest{args = Args, deps = Deps} ?= try
+                                             erlang:binary_to_term(Bin)
+                                           catch _:_ -> bad
+                                           end,
+    anvl_lib:newer(false, false, Deps, DocTarget)
+  else
+    Other ->
+      ?LOG_DEBUG("Args mismatch ~p -> ~p", [Args, Other]),
+      true
+  end.
+
+manifest_file(Output) ->
+  Output ++ ".dep".
 
 include_args([]) ->
   [];

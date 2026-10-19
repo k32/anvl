@@ -65,7 +65,7 @@ conf() ->
               }
             ]
         , formats => [info, html, latex]
-        , sources => ["anvl_core/doc/anvl.texi"]
+        , sources => ["anvl_cli/doc/anvl.texi"]
         , include_dirs => [anvl_texinfo_erlang:includes_dir()]
         }
    }.
@@ -196,7 +196,7 @@ install(Prefix, Template, Src, Mode) ->
   newer(Src, Dest) andalso
     begin
       logger:notice(anvl_logger_formatter:format(
-                      success,
+                      action,
                       "Installing ~s to ~s",
                       [Src, Dest])),
       {ok, _} = file:copy(Src, Dest),

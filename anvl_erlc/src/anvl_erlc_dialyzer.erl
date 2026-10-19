@@ -139,13 +139,13 @@ dialyzer_run(Opts) ->
 process_result(Profile, []) ->
   Msg = anvl_logger_formatter:format(
           success,
-          "No dialyzer problems found (profile=~p)",
+          "✅ Dialyzer passed (profile=~p)",
           [Profile]),
   ?LOG_NOTICE(Msg),
   false;
 process_result(Profile, Warnings) ->
   IOList = [dialyzer:format_warning(I) || I <- Warnings],
-  ?UNSAT("Dialyzer warnings found (profile=~p):~n~s", [Profile, IOList]).
+  ?UNSAT("❌ Dialyzer failed (profile=~p):~n~s", [Profile, IOList]).
 
 app_beams(Profile, Apps) ->
   lists:flatmap(

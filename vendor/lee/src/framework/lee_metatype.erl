@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2022-2024 k32. All Rights Reserved.
+%% Copyright (c) 2022-2026 k32. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@
          metaparams/2,
          validate/3, validate_node/5,
          pre_compile/3, meta_validate/2, meta_validate_node/4,
-         description/3, doc_refer/4,
+         is_documented/2, description/3, doc_refer/4,
          read_patch/2, post_patch/5]).
 
 %% API:
@@ -132,8 +132,8 @@
 %% Macros
 %%================================================================================
 
--define(is_implemented(M),
-        erlang:function_exported(M, ?FUNCTION_NAME, callback_arity(?FUNCTION_NAME))).
+-define(is_implemented(MODULE),
+        erlang:function_exported(MODULE, ?FUNCTION_NAME, callback_arity(?FUNCTION_NAME))).
 
 -define(callbacktp(MT, MODULE, ARGS),
         ?tp(lee_mt_callback,
@@ -267,16 +267,23 @@ post_patch(Metatype, Model, Data, MNode, PatchOp) ->
 %% Documentation
 %%--------------------------------------------------------------------------------
 
+-spec is_documented(lee:model(), lee:metatype()) -> boolean().
+is_documented(Model, Metatype) ->
+    Module = get_module(Model, Metatype),
+    erlang:function_exported(Module, description, callback_arity(description)).
+
 %% @doc Extract documentation for the metatype from the model.
 %%
 %% Documentation uses an internal intermediate format that consists of
 %% a nested forest of `doclets'.
 -spec description(lee:metatype(), lee:model(), lee_doc:options()) -> [lee_doc:doclet()].
 description(Metatype, Model, Options) ->
-    Module = get_module(Model, Metatype),
-    case ?is_implemented(Module) of
-        true  -> Module:?FUNCTION_NAME(Metatype, Model, Options);
-        false -> []
+    case is_documented(Model, Metatype) of
+        true  ->
+            Module = get_module(Model, Metatype),
+            Module:?FUNCTION_NAME(Metatype, Model, Options);
+        false ->
+            []
     end.
 
 %% @doc Create a doclet for a metatype that can be embedded into

@@ -30,8 +30,8 @@ the Erlang compiler.
 -export([umbrella/2]).
 -export([add_pre_compile_hook/2, add_app_spec_hook/2, pcfg/2, pcfg/3]).
 -export([app_info/2, app_compiled/2, plugin_compiled/1, module/2]).
--export([app_file/1, beam_file/2]).
--export([app_closure/2, app_path/2]).
+-export([app_file/1, app_file/2, beam_file/2]).
+-export([app_closure/2, app_path/2, app_modules/2]).
 
 %% behavior callbacks:
 -export([model/0, project_model/0, init/0, init_for_project/1, conditions/1]).
@@ -153,6 +153,10 @@ umbrella(Profile, Project) ->
     FN <- filelib:wildcard(Templ),
     filelib:is_regular(FN)].
 
+-spec app_file(profile(), application()) -> file:filename().
+app_file(Profile, App) ->
+  app_file(app_info(Profile, App)).
+
 -spec app_file(
         #{ app := application()
          , build_dir := file:filename_all()
@@ -201,6 +205,15 @@ app_path(Profile, App) ->
       #{build_dir := Dir} = app_info(Profile, App),
       Dir
   end.
+
+-doc """
+Return list of modules in a compiled application.
+""".
+-spec app_modules(profile(), application()) -> [module()].
+app_modules(Profile, App) ->
+  #{spec := Spec} = anvl_erlc:app_info(Profile, App),
+  {application, _, AppKVs} = Spec,
+  proplists:get_value(modules, AppKVs).
 
 -doc """
 Return a closure of dependencies for a given set of OTP applications.
@@ -535,8 +548,11 @@ do_compile_app(Profile, App) ->
   Ch3 = precondition([beam(Src, CRef) || Src <- OtherSources]),
   Ch4 = clean_orphans(Sources, Context),
   Ch5 = copy_includes(Context),
-  Ch6 = render_app_spec(AppSrcProperties, Sources, Context),
-  AnyChanges = Ch0 orelse Ch1 orelse Ch2 orelse Ch3 orelse Ch4 orelse Ch5 orelse Ch6,
+  AnyChanges = render_app_spec(
+                 AppSrcProperties,
+                 Sources,
+                 Context,
+                 Ch0 orelse Ch1 orelse Ch2 orelse Ch3 orelse Ch4 orelse Ch5),
   case AnyChanges of
     true ->
       ?LOG_NOTICE("Compiled ~p (profile=~p)", [App, Profile]);
@@ -732,7 +748,7 @@ copy_includes(#{build_dir := BuildDir, src_root := SrcRoot}) ->
               Includes).
 
 %% @private Render application specification:
-render_app_spec(AppSrcProperties0, Sources, Context) ->
+render_app_spec(AppSrcProperties0, Sources, Context, Changed) ->
   #{project := Project, app := App, profile := Profile, build_dir := BuildDir} = Context,
   KeepProperties = pcfg(Project, Profile, [app_properties]),
   AppFile = app_file(Context),
@@ -747,7 +763,7 @@ render_app_spec(AppSrcProperties0, Sources, Context) ->
                             #{ ebin_dir => BuildDir
                              , spec => NewContent
                              }),
-  case file:consult(AppFile) of
+  case Changed orelse file:consult(AppFile) of
     {ok, [OldContent]} when OldContent =:= NewContent ->
       false;
     _ ->

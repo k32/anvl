@@ -20,9 +20,14 @@
 -module(anvl_texinfo_lee).
 -moduledoc """
 This module contains routines for extracting documentation of Lee models to TexInfo files.
+
+NOTE: this module assumes that OTP applications exposing Lee models don't have any implicit dependencies.
+If Lee model or metamodel calls a function from an application that is not in
+the dependency closure of the parent OTP application (including @ref{value/erlang/bdeps, bdeps}),
+then the documentation won't be rebuilt.
 """.
 
--export([project_model/0, dir/2, extracted/5]).
+-export([project_model/0, dir/2, dir/3, extracted/5, extracted/6]).
 
 -include_lib("anvl_core/include/anvl.hrl").
 
@@ -36,7 +41,11 @@ project_model() ->
 
 -spec dir(anvl_erlc:profile(), anvl_erlc:application()) -> file:filename().
 dir(Profile, App) ->
-  anvl_texinfo:gen_src_dir(["lee", Profile, App]).
+  dir(Profile, App, []).
+
+-spec dir(anvl_erlc:profile(), anvl_erlc:application(), [file:filename_all()]) -> file:filename().
+dir(Profile, App, SubDir) ->
+  anvl_texinfo:gen_src_dir(["lee", Profile, App | SubDir]).
 
 -spec extracted(
         anvl_erlc:profile(),
@@ -45,41 +54,43 @@ dir(Profile, App) ->
         {module(), atom()},
         map()
        ) -> anvl_condition:t().
-?MEMO(extracted, Profile, App, MetaModelGetter, ModelGetter, Conf,
+extracted(Profile, App, MetaModelGetter, ModelGetter, Conf) ->
+  extracted(Profile, App, MetaModelGetter, ModelGetter, Conf, []).
+
+-spec extracted(
+        anvl_erlc:profile(),
+        anvl_erlc:application(),
+        {module(), atom()},
+        {module(), atom()},
+        map(),
+        [file:filename_all()]
+       ) -> anvl_condition:t().
+?MEMO(extracted, Profile, App, MetaModelGetter, ModelGetter, Conf0, SubDir,
       begin
         {MetaModelMod, MetaModelFun} = MetaModelGetter,
         {ModelMod, ModelFun} = ModelGetter,
-
-        Dir = dir(Profile, App),
-        Hash = anvl_lib:hash({MetaModelGetter, ModelGetter, Conf}),
-        HashFile = filename:join(Dir, ".anvl"),
-        Ch1 = precondition(anvl_erlc:app_compiled(Profile, App)),
-        Ch2 = maybe
-                %% Did configuration change (or documentation was never built)
-                {ok, Hash} ?= file:read_file(HashFile),
-                %% Did the involved modules change?
-                MetaModelModPath = code:which(MetaModelMod),
-                ModelModPath = code:which(ModelMod),
-                false ?= is_atom(MetaModelModPath),
-                false ?= is_atom(ModelModPath),
-                false ?= newer([MetaModelModPath, ModelModPath], HashFile),
-                false
-              else
-                _ -> true
-              end,
-        Ch1 or Ch2 andalso
-          maybe
-            RawMetaModel = apply(MetaModelMod, MetaModelFun, []),
-            RawModel = apply(ModelMod, ModelFun, []),
-            {ok, Model} ?= lee_model:compile(maybe_to_list(RawMetaModel), maybe_to_list(RawModel)),
-            _ = lee_doc:make_docs(Model, Conf#{output_dir => Dir}),
-            true
-          else
-            {error, Errs} when is_list(Errs) ->
-              ?UNSAT(
-                 "Failed to compile model:~n~s",
-                 [lists:join($\n, Errs)])
-          end
+        Dir = dir(Profile, App, SubDir),
+        Conf = Conf0#{output_dir => Dir},
+        Manifest = filename:join(Dir, ".anvl"),
+        _ = precondition(anvl_erlc:app_compiled(Profile, App)),
+        %% Did configuration change (or documentation was never built)
+        ManifestChanged = anvl_lib:term_to_file(Manifest, {MetaModelGetter, ModelGetter, Conf}),
+        RawMetaModel = apply(MetaModelMod, MetaModelFun, []),
+        RawModel = apply(ModelMod, ModelFun, []),
+        maybe
+          {ok, Model} ?= lee_model:compile(maybe_to_list(RawMetaModel), maybe_to_list(RawModel)),
+          ManifestChanged or files_changed(Profile, App, Model, Conf) andalso
+            begin
+              ?LOG_NOTICE("Extracting Lee documentation ~p (~p)", [App, Profile]),
+              _ = lee_doc:make_docs(Model, Conf),
+              true
+            end
+        else
+          {error, Errs} when is_list(Errs) ->
+            ?UNSAT(
+               "Failed to compile model:~n~s",
+               [lists:join($\n, Errs)])
+        end
       end).
 
 %%================================================================================
@@ -90,3 +101,9 @@ maybe_to_list(L) when is_list(L) ->
   L;
 maybe_to_list(Term) ->
   [Term].
+
+files_changed(Profile, RootApp, Model, Options) ->
+  {Apps, _} = anvl_erlc:app_closure(Profile, [RootApp]),
+  Sources = [anvl_erlc:app_file(Profile, I) || I <- Apps],
+  Targets = lee_doc:doc_files(Model, Options),
+  newer(Sources, Targets).

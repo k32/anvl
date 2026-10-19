@@ -136,12 +136,12 @@ process_results(Profile, Results) ->
     [] ->
       Msg = anvl_logger_formatter:format(
               success,
-              "No cross-reference problems found (profile=~p)",
+              "✅ xref passed (profile=~p)",
               [Profile]),
       ?LOG_NOTICE(Msg),
       false;
     _ ->
-      ?UNSAT("Analysis failed for profile ~p~n~s", [Profile, IOList])
+      ?UNSAT("❌ xref failed (profile=~p)~n~s", [Profile, IOList])
   end.
 
 format_warnings({Analysis, Result}) ->
