@@ -1,7 +1,7 @@
 %% @doc Utilities for extracting documentation from the model
 -module(lee_doc).
 
--export([make_docs/2, get_description/2, get_oneliner/3]).
+-export([doc_files/2, make_docs/2, get_description/2, get_oneliner/3]).
 -export([texinfo/3, texi_key/1]).
 
 -export([documented/0]).
@@ -124,28 +124,25 @@ texinfo(Options, FD, Doclet) ->
               ])
     end.
 
+-spec doc_files(lee:model(), options()) -> [file:filename_all()].
+doc_files(Model, Options) ->
+    [output_file(Options, I) || I <- get_mts(Model, Options)].
+
 -spec make_docs(lee:model(), options()) -> [file:filename_all()].
-make_docs(Model, Options = #{formatter := F, metatypes := Metatypes}) ->
-    Dir = maps:get(output_dir, Options, "lee_doc"),
-    Extension = maps:get(extension, Options, ""),
-    MTs = case Metatypes of
-              all ->
-                  lee_model:all_metatypes(Model);
-              L when is_list(L) ->
-                  L
-          end,
-    ok = filelib:ensure_path(Dir),
-    lists:flatmap(fun(MT) ->
-                          Filename = filename:join(Dir, atom_to_list(MT) ++ Extension),
-                          {ok, FD} = file:open(Filename, [write]),
-                          try
-                              F(Options, FD, lee_metatype:description(MT, Model, Options)),
-                              [Filename]
-                          after
-                              ok = file:close(FD)
-                          end
-                  end,
-                  MTs).
+make_docs(Model, Options = #{formatter := F}) ->
+    MTs = get_mts(Model, Options),
+    lists:map(fun(MT) ->
+                  Filename = output_file(Options, MT),
+                  ok = filelib:ensure_dir(Filename),
+                  {ok, FD} = file:open(Filename, [write]),
+                  try
+                    F(Options, FD, lee_metatype:description(MT, Model, Options)),
+                    Filename
+                  after
+                    ok = file:close(FD)
+                  end
+              end,
+              MTs).
 
 -spec get_description(lee:model(), lee:model_key()) -> [doclet()].
 get_description(Model, Key) ->
@@ -184,3 +181,18 @@ documented() ->
 %%================================================================================
 %% Internal functions
 %%================================================================================
+
+get_mts(Model, #{metatypes := Metatypes}) ->
+    [I ||
+      I <- case Metatypes of
+             all ->
+               lee_model:all_metatypes(Model);
+             L when is_list(L) ->
+               L
+           end,
+      lee_metatype:is_documented(Model, I)].
+
+output_file(Options, MT) ->
+    Dir = maps:get(output_dir, Options, "lee_doc"),
+    Extension = maps:get(extension, Options, ""),
+    filename:join(Dir, atom_to_list(MT) ++ Extension).
