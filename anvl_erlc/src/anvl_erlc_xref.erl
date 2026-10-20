@@ -73,7 +73,7 @@ Parameters for this condition are set in the project configuration.
                {ok, App} ->
                  ok;
                Err ->
-                 ?UNSAT("Failed to add appliction ~p: ~p", [App, Err])
+                 ?UNSAT("Failed to add application ~p: ~p", [App, Err])
              end
            end || App <- Apps],
           process_results(

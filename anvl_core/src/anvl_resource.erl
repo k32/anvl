@@ -116,7 +116,7 @@ set_max(Resource, Max) when is_integer(Max), Max > 0 ->
   gen_server:call(server(Resource), #set_max{max = Max}).
 
 -doc """
-Run an operation with an aquired resource semaphore.
+Run an operation with an acquired resource semaphore.
 
 Warning: don't abuse this API.
 It is only useful for calling external commands,

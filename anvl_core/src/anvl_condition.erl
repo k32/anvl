@@ -143,9 +143,9 @@ stats() ->
 
 -doc """
 Block execution of the function until all preconditions in @var{L} are satisfied.
-Throws an exception if any precondition could not be satisified.
+Throws an exception if any precondition could not be satisfied.
 
-Returns whether any changes were made to the system to satify the preconditions.
+Returns whether any changes were made to the system to satisfy the preconditions.
 """.
 -spec precondition(L :: [t()] | t()) -> boolean().
 precondition(Tup) when is_record(Tup, anvl_memo_thunk) ->
@@ -188,8 +188,8 @@ is_changed(Cond) ->
 -doc """
 Sometimes a condition doesn't know the recipe to resolve a precondition,
 but it assumes that it will be resolved eventually @emph{somehow}.
-For example, a module in appliction X can use a parse transform declared in another application,
-but it don't know which one.
+For example, a module in application X can use a parse transform declared in another application,
+but it doesn't know which one.
 We call this situation @strong{speculative} precondition.
 
 This function is a built-in condition that serves as a placeholder in such situations.
@@ -197,7 +197,7 @@ While ANVL can detect unresolved speculative preconditions,
 it's better to make all dependencies explicit.
 Therefore, this functionality should be used as the last resort.
 
-@var{Cond} token that represents the result.
+Returns a @var{Cond} token that represents the result.
 """.
 -spec speculative(speculative()) -> t().
 speculative(Cond) ->
@@ -212,7 +212,7 @@ It's a counterpart to @code{speculative/1}.
 
 Once a condition that called @code{satisfies(X)} is resolved
 (with any result, including failure),
-speculative condition @var{X} is resolved with the same result.
+the speculative condition @var{X} is resolved with the same result.
 
 It's recommended to call this function at the very beginning of the condition:
 in case of failure, this will automatically mark speculative condition as failed
@@ -225,15 +225,15 @@ satisfies(Cond) ->
 %%% Return values:
 
 -doc """
-ANVL condition's return value is a boolean that specifies presense of side-effects.
+ANVL condition's return value is a boolean that specifies presence of side-effects.
 If it needs to return any other data,
 @code{get_result/1} and @erlfn{ref,erlref,anvl_condition,set_result,2} functions can be used.
-These functions, essentially, allow to set and access global variables.
+These functions, essentially, allow setting and accessing global variables.
 
 Note on the code style:
 this function must be called @emph{only} by the same plugin that @emph{sets} the result.
 Plugins must wrap @code{get_result} function in a proper API complete with return type.
-Raw global variables should be never exposed to the outside,
+Raw global variables should never be exposed to the outside,
 because it leads to unmaintainable code.
 
 @erlfn{xref,erlref,anvl_condition,maybe_get_result,1}.
@@ -635,7 +635,7 @@ resolve_speculative(Result) ->
                           [#in_progress{pid = Pid}] ->
                             Pid ! Result;
                           [#done{}] ->
-                            ?LOG_WARNING("Speculative condition ~p has been resolved by multiple recipies", [Cond]);
+                            ?LOG_WARNING("Speculative condition ~p has been resolved by multiple recipes", [Cond]);
                           [#failed{}] ->
                             ?LOG_DEBUG("Speculative condition ~p has already failed", [Cond]);
                           [] ->

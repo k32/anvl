@@ -31,7 +31,7 @@ Consumer of the external dependency supplies the following parameters:
 @code{Kind}, a type of a dependency that needs resolution.
 Kinds serve as "namespaces" for dependencies,
 for example,
-they allow to distinguish dependencies for different languages used within the project.
+they allow distinguishing dependencies for different languages used within the project.
 @item
 @code{Dependency}, a term identifying the dependency.
 @item
@@ -99,7 +99,7 @@ External dependency that has to be resolved.
 -type dependency() :: term().
 
 -doc """
-Different path IDs allow to discriminate between types of dependencies.
+Different path IDs allow discriminating between types of dependencies.
 """.
 -type kind() :: atom().
 
