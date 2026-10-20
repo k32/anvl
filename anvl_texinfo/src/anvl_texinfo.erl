@@ -240,6 +240,7 @@ is compiled to format @var{Format}.
           ],
         Ch1 = newer(DocSrc, DocTarget),
         Ch2 = deps_changed(Args, Output, DocTarget),
+        ProjDir = anvl_project:dir(Project),
         Ch1 or Ch2 andalso
           begin
             ?LOG_NOTICE("Creating ~s", [DocTarget]),
@@ -248,9 +249,9 @@ is compiled to format @var{Format}.
             {0, Deps} = anvl_lib:exec_(
                           "texi2any",
                           ["--trace-includes" | Args],
-                          [{cd, anvl_project:dir(Project)}, collect_output]),
+                          [{cd, ProjDir}, collect_output]),
             Manifest = #manifest{ args = Args
-                                , deps = Deps
+                                , deps = [filename:join(ProjDir, I) || I <- Deps]
                                 },
             ok = file:write_file(manifest_file(Output), term_to_binary(Manifest)),
             %% Generate output:
