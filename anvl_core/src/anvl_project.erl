@@ -116,7 +116,7 @@ Project's own ID is passed as an argument.
 %%================================================================================
 
 -doc """
-Condition: project configuarion is loaded.
+Condition: project configuration is loaded.
 """.
 -spec loaded(file:filename()) -> anvl_condition:t().
 loaded(ProjectDir) when is_list(ProjectDir); is_binary(ProjectDir) ->
