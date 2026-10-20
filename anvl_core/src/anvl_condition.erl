@@ -83,7 +83,8 @@ build_target(Target) ->
         }).
 
 -record(failed,
-        { id :: t()
+        { id :: cond_key()
+        , condition :: t()
         , error :: {error | exit | throw, _Error, _Stacktrace}
         }).
 
@@ -446,7 +447,11 @@ condition_entrypoint(Condition, Parent) ->
                      end,
           ?LOG(LogLevel, "!!! Failed ~p~n~p:~p~nStacktrace:~n~p", [Condition, EC, Err, Stack]),
           inc_counter(?cnt_failed),
-          ets:insert(?tab, #failed{id = Condition, error = {EC, Err, Stack}}),
+          ets:insert(?tab,
+                     #failed{ id = key(Condition)
+                            , condition = Condition
+                            , error = {EC, Err, Stack}
+                            }),
           resolve_speculative(unsat),
           report_stats(Condition, T0),
           anvl_terminator:setfail(),
@@ -624,17 +629,37 @@ wait_unfinished_jobs(Map, N0) ->
 
 resolve_speculative(Result) ->
   lists:foreach(fun(Cond) ->
-                    %% Ensure speculative process is running:
-                    _ = precondition_async1(Cond),
-                    case ets:lookup(?tab, key(Cond)) of
-                      [#in_progress{pid = Pid}] ->
-                        Pid ! Result;
-                      [#done{changed = Changed}] ->
-                        ?LOG_WARNING("Speculative condition ~p has been resolved by multiple recipies", [Cond]),
-                        Changed
+                    case ensure_speculative_running(Cond) of
+                      true ->
+                        case ets:lookup(?tab, key(Cond)) of
+                          [#in_progress{pid = Pid}] ->
+                            Pid ! Result;
+                          [#done{}] ->
+                            ?LOG_WARNING("Speculative condition ~p has been resolved by multiple recipies", [Cond]);
+                          [#failed{}] ->
+                            ?LOG_DEBUG("Speculative condition ~p has already failed", [Cond]);
+                          [] ->
+                            ?LOG_WARNING("Speculative condition ~p is not running", [Cond])
+                        end;
+                      false ->
+                        %% The speculative condition has already failed
+                        %% (resolved with `unsat' by another recipe).
+                        ?LOG_DEBUG("Speculative condition ~p has already failed", [Cond])
                     end
                 end,
                 get_resolve_conditions()).
+
+%% Ensure that the speculative condition process is running.
+%% Returns `false' if the condition has already failed, since in this
+%% case `precondition_async1/1' raises `{unsat, _}'.
+-spec ensure_speculative_running(t()) -> boolean().
+ensure_speculative_running(Cond) ->
+  try
+    _ = precondition_async1(Cond),
+    true
+  catch
+    exit:{unsat, _} -> false
+  end.
 
 -spec key(t()) -> cond_key().
 key(#anvl_memo_thunk{func = Fun, args = Args}) ->
