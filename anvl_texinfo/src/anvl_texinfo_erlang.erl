@@ -295,7 +295,7 @@ erl_module_doc_fn(OutDir, Module) ->
                   , ribbon    => anvl_project:conf(Project, [texinfo, extraction, erlang, ribbon])
                   , extractor => ?MODULE:module_info(md5)
                   },
-        Suffix = anvl_fn:ensure_type(anvl_project:dir(Project), binary),
-        MarkerFile = filename:join([OutDir, ~".config", Suffix, ~"conf"]),
+        File = atom_to_binary(anvl_project:config_module(Project)),
+        MarkerFile = filename:join([OutDir, ~".manifest", File]),
         anvl_lib:term_to_file(MarkerFile, Config)
       end).
