@@ -294,6 +294,24 @@ model() ->
       #{ profile =>
            {[value, cli_param, os_env],
              #{ oneliner => "Default profile used by eligible Erlang-related targets"
+              , doc => """
+                       NOTE: this profile is also used for the runtime/compile-time BEAM dependencies,
+                       such as parse transforms and behavior definitions,
+                       even for the code compiled in a different profile.
+
+                       While ANVL can build code with multiple profiles simultaneously,
+                       it can load only one version of the code.
+                       This limitation stems from the BEAM VM.
+
+                       For example,
+                       @code{anvl @@erlc -p test foo}
+                       will use parse transforms compiled with the default profile to build @code{foo} and its dependencies,
+                       and, conversely,
+                       @code{anvl --erlc-profile test @@erlc -p default foo}
+                       will compile @code{foo} using parse transforms compiled with the test profile.
+
+                       Changing this parameter re-builds the relevant code.
+                       """
               , type => profile()
               , default => default
               , cli_operand => "erlc-profile"
@@ -498,19 +516,22 @@ conditions(ProjectRoot) ->
 -spec do_compile_app(profile(), application()) -> boolean().
 do_compile_app(Profile, App) ->
   ?LOG_INFO("Compiling ~p", [App]),
+  BaseProfile = anvl_plugin:conf([anvl_erlc, profile]),
   {Project, SrcRoot} = src_root(Profile, App),
   COpts0 = pcfg(Project, Profile, [compile, options]),
   GOptsA = pcfg(anvl_project:root(), Profile, [compile, global_a]),
   GOptsZ = pcfg(anvl_project:root(), Profile, [compile, global_z]),
   #otp_info{emu = OTPPath} = persistent_term:get(?otp_info),
-  COpts1 = [OTPPath | GOptsA ++ COpts0 ++ GOptsZ],
+  COpts1 = [OTPPath, BaseProfile | GOptsA ++ COpts0 ++ GOptsZ],
   IncludePatterns = pcfg(Project, Profile, [includes]),
   SrcPatterns = pcfg(Project, Profile, [sources]),
   BDeps = pcfg(Project, Profile, [bdeps]),
   AppSrcProperties = app_src(App, SrcRoot),
   Dependencies = non_otp_apps(BDeps ++ proplists:get_value(applications, AppSrcProperties, [])),
   BuildRoot = anvl_fn:workdir(["erlc", anvl_lib:hash(COpts1)], list),
-  %% Satisfy the dependencies:
+  %% Satisfy the dependencies (if compiling in a different profile, satisfy dependencies in the base profile as well):
+  Profile =/= BaseProfile andalso
+    precondition([app_compiled(BaseProfile, Dep) || Dep <- Dependencies]),
   _ = precondition([app_compiled(Profile, Dep) || Dep <- Dependencies]),
   BuildDir = build_dir(BuildRoot, App),
   %% Create the context:
@@ -538,9 +559,12 @@ do_compile_app(Profile, App) ->
   ok = filelib:ensure_path(filename:join(BuildDir, "include")),
   ok = filelib:ensure_path(filename:join(BuildDir, "anvl_deps")),
   Ch0 = anvl_hook:foreach(#erlc_pre_compile_hook{project = Project}, Context),
-  %% TODO: this is a hack, should be done by dependency manager:
-  EbinDir = filename:join(BuildDir, "ebin"),
-  true = code:add_patha(EbinDir),
+  %% If built in the base profile, add compiled code to the load path:
+  Profile =:= BaseProfile andalso
+    begin
+      EbinDir = filename:join(BuildDir, "ebin"),
+      true = code:add_patha(EbinDir)
+    end,
   ?LOG_INFO("Added ~p to the erlang load path (~s)", [App, code:lib_dir(App)]),
   %% Build BEAM files:
   Ch1 = manage_priv(Context),
