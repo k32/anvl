@@ -552,13 +552,15 @@ do_compile_app(Profile, App) ->
   Context = Ctx0 #{includes => IncludeDirs, compile_options => COpts},
   CRef = ?context(Profile, App),
   persistent_term:put(CRef, Context),
-  %% 2. Get list of source files:
+  %% 2. Run pre-compile hooks. They run before the source files are
+  %% listed, since a hook may generate the sources:
+  Ch0 = anvl_hook:foreach(#erlc_pre_compile_hook{project = Project}, Context),
+  %% 3. Get list of source files:
   Sources = list_app_sources(Context),
   {FirstSources, OtherSources} = separate_first_files(Context, Sources),
   ok = filelib:ensure_path(filename:join(BuildDir, "ebin")),
   ok = filelib:ensure_path(filename:join(BuildDir, "include")),
   ok = filelib:ensure_path(filename:join(BuildDir, "anvl_deps")),
-  Ch0 = anvl_hook:foreach(#erlc_pre_compile_hook{project = Project}, Context),
   %% If built in the base profile, add compiled code to the load path:
   Profile =:= BaseProfile andalso
     begin
@@ -693,17 +695,25 @@ compile_beam(Src, CRef, Ctx, DepFile, Beam, Module) ->
 
 gen_depfile(Src, DepFile, CRef) ->
   ?LOG_INFO("Updating dependencies for ~s", [Src]),
-  #{profile := Profile, includes := IncludeDirs, compile_options := COpts} = persistent_term:get(CRef),
-  PredefMacros = lists:filtermap(fun({d, D})    -> {true, D};
-                                    ({d, D, V}) -> {true, {D, V}};
-                                    (_)         -> false
-                                 end,
-                                 COpts),
-  {ok, EPP} = epp:open(Src, IncludeDirs, PredefMacros),
-  Deps = lists:usort(process_attributes(Src, EPP, [])),
-  ok = file:write_file(DepFile, term_to_binary(Deps)),
-  [module_loaded(Profile, Module, CRef) || #m{module = Module} <- Deps],
-  ok.
+  case filename:extension(Src) of
+    ".core" ->
+      %% Core Erlang is already preprocessed: behaviour and
+      %% parse_transform attributes are erased at this stage, so the
+      %% file has no source dependencies
+      ok = file:write_file(DepFile, term_to_binary([]));
+    _ ->
+      #{profile := Profile, includes := IncludeDirs, compile_options := COpts} = persistent_term:get(CRef),
+      PredefMacros = lists:filtermap(fun({d, D})    -> {true, D};
+                                        ({d, D, V}) -> {true, {D, V}};
+                                        (_)         -> false
+                                     end,
+                                     COpts),
+      {ok, EPP} = epp:open(Src, IncludeDirs, PredefMacros),
+      Deps = lists:usort(process_attributes(Src, EPP, [])),
+      ok = file:write_file(DepFile, term_to_binary(Deps)),
+      [module_loaded(Profile, Module, CRef) || #m{module = Module} <- Deps],
+      ok
+  end.
 
 -spec read_depfile(file:filename_all()) -> {ok, [dependency()]} | {error, _}.
 read_depfile(DepFile) ->
@@ -826,7 +836,7 @@ app_src_path(AppRoot, App) ->
   end.
 
 module_of_erl(Src) ->
-  list_to_atom(filename:basename(Src, ".erl")).
+  list_to_atom(filename:basename(Src, filename:extension(Src))).
 
 beam_of_erl(Src, Context) ->
   binary_to_list(patsubst("${build_dir}/ebin/${basename}.beam", Src, Context)).

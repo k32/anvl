@@ -303,8 +303,15 @@ tab() ->
 -spec set_location(kind(), dependency(), anvl_project:t(), file:filename(), file:filename()) -> ok.
 set_location(Kind, Dependency, Owner, PathEntry, Dir) ->
   Project = case anvl_project:is_project(PathEntry) of
-              true  -> anvl_project:project_of_dir(PathEntry);
-              false -> Owner
+              true ->
+                P = anvl_project:project_of_dir(PathEntry),
+                %% Fully load child projects discovered on the
+                %% search path, so that their [init/1] callback
+                %% (e.g. hook registration) runs:
+                _ = precondition(anvl_project:loaded(PathEntry)),
+                P;
+              false ->
+                Owner
             end,
   Loc = #{ project => Project
          , dir     => Dir
