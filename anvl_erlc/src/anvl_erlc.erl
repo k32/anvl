@@ -693,17 +693,25 @@ compile_beam(Src, CRef, Ctx, DepFile, Beam, Module) ->
 
 gen_depfile(Src, DepFile, CRef) ->
   ?LOG_INFO("Updating dependencies for ~s", [Src]),
-  #{profile := Profile, includes := IncludeDirs, compile_options := COpts} = persistent_term:get(CRef),
-  PredefMacros = lists:filtermap(fun({d, D})    -> {true, D};
-                                    ({d, D, V}) -> {true, {D, V}};
-                                    (_)         -> false
-                                 end,
-                                 COpts),
-  {ok, EPP} = epp:open(Src, IncludeDirs, PredefMacros),
-  Deps = lists:usort(process_attributes(Src, EPP, [])),
-  ok = file:write_file(DepFile, term_to_binary(Deps)),
-  [module_loaded(Profile, Module, CRef) || #m{module = Module} <- Deps],
-  ok.
+  case filename:extension(Src) of
+    ".core" ->
+      %% Core Erlang is already preprocessed: behaviour and
+      %% parse_transform attributes are erased at this stage, so the
+      %% file has no source dependencies
+      ok = file:write_file(DepFile, term_to_binary([]));
+    _ ->
+      #{profile := Profile, includes := IncludeDirs, compile_options := COpts} = persistent_term:get(CRef),
+      PredefMacros = lists:filtermap(fun({d, D})    -> {true, D};
+                                        ({d, D, V}) -> {true, {D, V}};
+                                        (_)         -> false
+                                     end,
+                                     COpts),
+      {ok, EPP} = epp:open(Src, IncludeDirs, PredefMacros),
+      Deps = lists:usort(process_attributes(Src, EPP, [])),
+      ok = file:write_file(DepFile, term_to_binary(Deps)),
+      [module_loaded(Profile, Module, CRef) || #m{module = Module} <- Deps],
+      ok
+  end.
 
 -spec read_depfile(file:filename_all()) -> {ok, [dependency()]} | {error, _}.
 read_depfile(DepFile) ->
@@ -826,7 +834,7 @@ app_src_path(AppRoot, App) ->
   end.
 
 module_of_erl(Src) ->
-  list_to_atom(filename:basename(Src, ".erl")).
+  list_to_atom(filename:basename(Src, filename:extension(Src))).
 
 beam_of_erl(Src, Context) ->
   binary_to_list(patsubst("${build_dir}/ebin/${basename}.beam", Src, Context)).
