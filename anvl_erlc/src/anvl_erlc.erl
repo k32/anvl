@@ -392,6 +392,15 @@ project_model() ->
      , sources =>
          {[value],
           #{ oneliner => "List of wildcard pattern matching Erlang sources"
+           , doc => """
+                    By default, only @file{.erl} files are compiled.
+                    Compilation from Core Erlang source files
+                    (with @file{.core} extension) is supported as well:
+                    extend the patterns to match them, e.g.
+                    @code{"$@{src_root@}/src/*.core"}.
+                    The @code{from_core} option is passed to the compiler
+                    automatically based on the file extension.
+                    """
            , type => list(anvl_lib:filename_pattern())
            , default => ["${src_root}/src/*.erl", "${src_root}/src/*/*.erl"]
            }}
@@ -685,7 +694,7 @@ compile_beam(Src, CRef, Ctx, DepFile, Beam, Module) ->
     erlc,
     fun() ->
         ?LOG_INFO("Compiling ~s", [Src]),
-        case compile:noenv_file(Src, [no_spawn_compiler_process, report, {outdir, filename:dirname(Beam)} | COpts]) of
+        case compile:noenv_file(Src, src_compile_options(Src) ++ [no_spawn_compiler_process, report, {outdir, filename:dirname(Beam)} | COpts]) of
           {ok, Module} ->
             true;
           error ->
@@ -693,15 +702,33 @@ compile_beam(Src, CRef, Ctx, DepFile, Beam, Module) ->
         end
     end).
 
+%% Classify the source file by its extension:
+-doc false.
+-spec source_type(file:filename_all()) -> erl | core.
+source_type(Src) ->
+  case filename:extension(Src) of
+    ".core" -> core;
+    _       -> erl
+  end.
+
+%% Format-specific compiler options derived from the source type:
+-doc false.
+-spec src_compile_options(file:filename_all()) -> [atom()].
+src_compile_options(Src) ->
+  case source_type(Src) of
+    core -> [from_core];
+    erl  -> []
+  end.
+
 gen_depfile(Src, DepFile, CRef) ->
   ?LOG_INFO("Updating dependencies for ~s", [Src]),
-  case filename:extension(Src) of
-    ".core" ->
+  case source_type(Src) of
+    core ->
       %% Core Erlang is already preprocessed: behaviour and
       %% parse_transform attributes are erased at this stage, so the
       %% file has no source dependencies
       ok = file:write_file(DepFile, term_to_binary([]));
-    _ ->
+    erl ->
       #{profile := Profile, includes := IncludeDirs, compile_options := COpts} = persistent_term:get(CRef),
       PredefMacros = lists:filtermap(fun({d, D})    -> {true, D};
                                         ({d, D, V}) -> {true, {D, V}};
