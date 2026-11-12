@@ -552,13 +552,15 @@ do_compile_app(Profile, App) ->
   Context = Ctx0 #{includes => IncludeDirs, compile_options => COpts},
   CRef = ?context(Profile, App),
   persistent_term:put(CRef, Context),
-  %% 2. Get list of source files:
+  %% 2. Run pre-compile hooks. They run before the source files are
+  %% listed, since a hook may generate the sources:
+  Ch0 = anvl_hook:foreach(#erlc_pre_compile_hook{project = Project}, Context),
+  %% 3. Get list of source files:
   Sources = list_app_sources(Context),
   {FirstSources, OtherSources} = separate_first_files(Context, Sources),
   ok = filelib:ensure_path(filename:join(BuildDir, "ebin")),
   ok = filelib:ensure_path(filename:join(BuildDir, "include")),
   ok = filelib:ensure_path(filename:join(BuildDir, "anvl_deps")),
-  Ch0 = anvl_hook:foreach(#erlc_pre_compile_hook{project = Project}, Context),
   %% If built in the base profile, add compiled code to the load path:
   Profile =:= BaseProfile andalso
     begin
